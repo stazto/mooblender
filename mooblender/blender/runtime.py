@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import bpy
+import bpy.utils.previews
+
+from ..mooble.client import MoobleClient
+from .properties import ADDON_ID
+
+_previews = None
+
+
+def preview_collection():
+    global _previews
+    if _previews is None:
+        _previews = bpy.utils.previews.new()
+    return _previews
+
+
+def clear_previews() -> None:
+    global _previews
+    if _previews is not None:
+        bpy.utils.previews.remove(_previews)
+        _previews = None
+
+
+def cache_directory() -> Path:
+    root = bpy.utils.user_resource("DATAFILES", path="mooblender", create=True)
+    return Path(root) / "cache"
+
+
+def client_from_context(context) -> MoobleClient:
+    preferences = context.preferences.addons[ADDON_ID].preferences
+    return MoobleClient(
+        base_url=preferences.catalog_url,
+        region=preferences.region,
+        partnership=preferences.partnership,
+        page_size=preferences.page_size,
+        cache_dir=cache_directory(),
+    )
+
+
+def icon_for_item(item) -> int:
+    if not item.thumbnail_path:
+        return 0
+    path = Path(bpy.path.abspath(item.thumbnail_path))
+    if not path.is_file():
+        return 0
+    previews = preview_collection()
+    key = f"mooble:{item.item_id}"
+    if key not in previews:
+        try:
+            previews.load(key, str(path), "IMAGE")
+        except Exception:
+            return 0
+    return previews[key].icon_id

@@ -1,0 +1,18 @@
+schema_version = "1.0.0"
+
+id = "mooblender"
+version = "0.1.0-dev001"
+name = "Mooblender"
+tagline = "Browse Mooble and import Promob model files"
+maintainer = "Dante Dex <dante.dex.arch@gmail.com>"
+type = "add-on"
+
+website = "https://github.com/dantedex/mooblender"
+tags = ["Import-Export", "3D View"]
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 Dante Dex"]
+
+[permissions]
+network = "Browse and download models explicitly selected from Mooble"
+files = "Import Promob files and cache downloaded models and thumbnails"
