@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from .expressions import evaluate_expression
 from .scene import PmobDocument, Primitive
@@ -10,6 +11,65 @@ from .transforms import transform_point_row_vector
 
 Dimension3 = tuple[float, float, float]
 _FIELDS = ("Width", "Depth", "Height")
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigurableDimension:
+    """One user-editable insertion dimension observed in PContent metadata."""
+
+    axis: int
+    name: str
+    default: float
+    minimum: float
+    maximum: float
+
+
+_CONFIGURABLE_AXES = (
+    ("X", "Width", "Largura"),
+    ("Y", "Depth", "Profundidade"),
+    ("Z", "Height", "Altura"),
+)
+
+
+def _dimension_value(value: object, coordinate: str, field: str) -> float:
+    if not isinstance(value, Mapping):
+        return 0.0
+    return evaluate_expression(value.get(coordinate, value.get(field)))
+
+
+def configurable_dimensions(
+    properties: Mapping[str, object],
+) -> tuple[ConfigurableDimension, ...]:
+    """Return axes whose observed ``InsertDimension`` range is editable.
+
+    Mooble's catalog payload uses X/Y/Z for these limits, while the decompiled
+    domain model names the same values Width/Depth/Height. Supporting both
+    spellings keeps this parser tied to semantics instead of one serializer.
+    Values remain in Promob millimetres at this Blender-independent boundary.
+    """
+
+    insertion = properties.get("InsertDimension")
+    if not isinstance(insertion, Mapping):
+        return ()
+    minimum = insertion.get("Min")
+    maximum = insertion.get("Max")
+    defaults = property_dimensions(properties)
+    result = []
+    for axis, (coordinate, field, name) in enumerate(_CONFIGURABLE_AXES):
+        lower = _dimension_value(minimum, coordinate, field)
+        upper = _dimension_value(maximum, coordinate, field)
+        default = defaults[axis]
+        if default > 0.0 and upper > lower:
+            result.append(
+                ConfigurableDimension(
+                    axis=axis,
+                    name=name,
+                    default=default,
+                    minimum=lower,
+                    maximum=upper,
+                )
+            )
+    return tuple(result)
 
 
 def property_dimensions(

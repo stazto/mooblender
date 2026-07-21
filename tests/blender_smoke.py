@@ -29,6 +29,39 @@ from mooblender.model.scene import (  # noqa: E402
 from mooblender.mooble.models import CatalogItem, CatalogPage  # noqa: E402
 
 
+def _set_modifier_input(modifier, socket, value) -> None:
+    interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
+    if interface_inputs is not None and hasattr(interface_inputs, socket.identifier):
+        getattr(interface_inputs, socket.identifier).value = value
+    else:
+        modifier[socket.identifier] = value
+    modifier.node_group.interface_update(bpy.context)
+    modifier.id_data.update_tag(refresh={"OBJECT"})
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
+
+
+def _remove_collection(collection) -> None:
+    materials = {
+        material
+        for obj in collection.all_objects
+        if obj.type == "MESH"
+        for material in obj.data.materials
+        if material is not None
+    }
+    for obj in list(collection.all_objects):
+        mesh = obj.data
+        bpy.data.objects.remove(obj, do_unlink=True)
+        if mesh is not None and mesh.users == 0:
+            bpy.data.meshes.remove(mesh)
+    for child_collection in list(collection.children):
+        bpy.data.collections.remove(child_collection)
+    bpy.data.collections.remove(collection)
+    for material in materials:
+        if material.users == 0:
+            bpy.data.materials.remove(material)
+
+
 def main() -> None:
     collection = None
     registered = False
@@ -107,6 +140,20 @@ def main() -> None:
             layers=[SceneLayer(name="Compatibility", meshes=[source])],
             materials=[],
         )
+        static_collection = build_document(
+            document,
+            bpy.context,
+            collection_name="Static model",
+            structure_mode="GEOMETRY_NODES",
+        )
+        static_controller = bpy.data.objects[static_collection["promob_root_object"]]
+        static_modifier = static_controller.modifiers["Mooblender"]
+        if any(
+            item.socket_type == "NodeSocketFloat"
+            for item in static_modifier.node_group.interface.items_tree
+        ):
+            raise AssertionError("static model received an unnecessary opening control")
+        _remove_collection(static_collection)
         root_material = PContentPackage(
             document=PmobDocument(
                 name="Root Finish",
@@ -224,6 +271,17 @@ def main() -> None:
                         "Position": {"X": 150, "Y": 0, "Z": 0},
                     }
                 ],
+                "OpenServices": [
+                    {
+                        "Type": "Drawer",
+                        "AggregatePath": [0, 0],
+                        "Max": "50",
+                        "Description": "Nested drawer",
+                        "Localizations": [
+                            {"Id": "pt-br", "Name": "Gaveta interna"}
+                        ],
+                    }
+                ],
             },
             resolved_aggregates=[
                 ResolvedAggregate(index=0, specification_id="nested", package=nested)
@@ -235,6 +293,10 @@ def main() -> None:
             properties={
                 "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
                 "DrawingDimension": {"Width": 200, "Depth": 100, "Height": 1},
+                "InsertDimension": {
+                    "Min": {"X": 100, "Y": 50, "Z": 0},
+                    "Max": {"X": 2000, "Y": 1000, "Z": 0},
+                },
                 "Models": [
                     {
                         "Id": "root-finish",
@@ -249,6 +311,17 @@ def main() -> None:
                         "Description": "Child",
                         "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
                         "Position": {"X": 300, "Y": 0, "Z": 0},
+                    }
+                ],
+                "OpenServices": [
+                    {
+                        "Type": "Drawer",
+                        "AggregatePath": [0, 0],
+                        "Max": "100",
+                        "Description": "Child drawer",
+                        "Localizations": [
+                            {"Id": "pt-br", "Name": "Gaveta externa"}
+                        ],
                     }
                 ],
             },
@@ -288,10 +361,104 @@ def main() -> None:
         evaluated_mesh = evaluated.to_mesh()
         if modifier is None or len(evaluated_mesh.polygons) != 3:
             raise AssertionError("single-object Geometry Nodes import is not producing geometry")
-        if not any(
-            item.name == "Open Ratio" for item in modifier.node_group.interface.items_tree
-        ):
-            raise AssertionError("Geometry Nodes modifier has no Open Ratio control")
+        interface_items = modifier.node_group.interface.items_tree
+        if any(item.name == "Open Ratio" for item in interface_items):
+            raise AssertionError("legacy shared Open Ratio control is still exposed")
+        control_sockets = {
+            item.name: item
+            for item in interface_items
+            if item.socket_type == "NodeSocketFloat"
+        }
+        expected_controls = {
+            "Gaveta externa",
+            "Gaveta interna",
+            "Largura",
+            "Profundidade",
+        }
+        if set(control_sockets) != expected_controls:
+            raise AssertionError(
+                f"unexpected component/dimension controls: {set(control_sockets)}"
+            )
+        for name in ("Gaveta externa", "Gaveta interna"):
+            socket = control_sockets[name]
+            if socket.min_value != 0.0 or socket.max_value != 1.0:
+                raise AssertionError(f"opening range is invalid for {name}")
+        dimension_ranges = {
+            "Largura": (0.2, 0.1, 2.0),
+            "Profundidade": (0.1, 0.05, 1.0),
+        }
+        for name, expected in dimension_ranges.items():
+            socket = control_sockets[name]
+            observed = (socket.default_value, socket.min_value, socket.max_value)
+            if socket.subtype != "DISTANCE" or any(
+                abs(value - target) > 1e-6
+                for value, target in zip(observed, expected, strict=True)
+            ):
+                raise AssertionError(f"dimension range is invalid for {name}: {observed}")
+        motions = {
+            obj.get("mooblender_open_service"): obj
+            for obj in collection.all_objects
+            if obj.get("mooblender_open_service")
+        }
+        _set_modifier_input(modifier, control_sockets["Gaveta externa"], 1.0)
+        external_y = motions["Gaveta externa"].evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).location.y
+        internal_y = motions["Gaveta interna"].evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).location.y
+        if round(external_y, 3) != -0.1 or round(internal_y, 3) != 0.0:
+            raise AssertionError("one opening control moved more than its own component")
+        _set_modifier_input(modifier, control_sockets["Gaveta externa"], 0.0)
+        _set_modifier_input(modifier, control_sockets["Gaveta interna"], 1.0)
+        external_y = motions["Gaveta externa"].evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).location.y
+        internal_y = motions["Gaveta interna"].evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).location.y
+        if round(external_y, 3) != 0.0 or round(internal_y, 3) != -0.05:
+            raise AssertionError("nested opening control is not independent")
+        _set_modifier_input(modifier, control_sockets["Gaveta interna"], 0.0)
+
+        baseline_mesh = controller.evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).to_mesh()
+        base_x = max(vertex.co.x for vertex in baseline_mesh.vertices) - min(
+            vertex.co.x for vertex in baseline_mesh.vertices
+        )
+        base_y = max(vertex.co.y for vertex in baseline_mesh.vertices) - min(
+            vertex.co.y for vertex in baseline_mesh.vertices
+        )
+        _set_modifier_input(modifier, control_sockets["Largura"], 0.4)
+        resized = controller.evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).to_mesh()
+        resized_x = max(vertex.co.x for vertex in resized.vertices) - min(
+            vertex.co.x for vertex in resized.vertices
+        )
+        resized_y = max(vertex.co.y for vertex in resized.vertices) - min(
+            vertex.co.y for vertex in resized.vertices
+        )
+        if round(resized_x / base_x, 3) != 2.0 or round(resized_y / base_y, 3) != 1.0:
+            raise AssertionError("Largura did not resize only the X axis")
+        _set_modifier_input(modifier, control_sockets["Largura"], 0.2)
+        _set_modifier_input(modifier, control_sockets["Profundidade"], 0.2)
+        resized = controller.evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).to_mesh()
+        resized_x = max(vertex.co.x for vertex in resized.vertices) - min(
+            vertex.co.x for vertex in resized.vertices
+        )
+        resized_y = max(vertex.co.y for vertex in resized.vertices) - min(
+            vertex.co.y for vertex in resized.vertices
+        )
+        if round(resized_x / base_x, 3) != 1.0 or round(resized_y / base_y, 3) != 2.0:
+            raise AssertionError("Profundidade did not resize only the Y axis")
+        _set_modifier_input(modifier, control_sockets["Profundidade"], 0.1)
+        evaluated_mesh = controller.evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).to_mesh()
         used_materials = {
             evaluated_mesh.materials[polygon.material_index].name
             for polygon in evaluated_mesh.polygons
@@ -333,12 +500,8 @@ def main() -> None:
         if [item.name for item in menu_switch.enum_items] != ["Child A", "Child B"]:
             raise AssertionError("finish menu does not expose source style names")
         interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
-        if interface_inputs is not None and hasattr(
-            interface_inputs,
-            finish_socket.identifier,
-        ):
-            finish_value = getattr(interface_inputs, finish_socket.identifier)
-            finish_value.value = "Child B"
+        if interface_inputs is not None and hasattr(interface_inputs, finish_socket.identifier):
+            _set_modifier_input(modifier, finish_socket, "Child B")
         else:
             items = modifier.id_properties_ui(
                 finish_socket.identifier
@@ -346,10 +509,10 @@ def main() -> None:
             modifier[finish_socket.identifier] = next(
                 item[-1] for item in items if item[0] == "Child B"
             )
-        modifier.node_group.interface_update(bpy.context)
-        controller.update_tag(refresh={"OBJECT"})
-        bpy.context.view_layer.update()
-        bpy.context.evaluated_depsgraph_get().update()
+            modifier.node_group.interface_update(bpy.context)
+            controller.update_tag(refresh={"OBJECT"})
+            bpy.context.view_layer.update()
+            bpy.context.evaluated_depsgraph_get().update()
         evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
         switched_mesh = evaluated.to_mesh()
         switched_materials = {
@@ -364,23 +527,7 @@ def main() -> None:
         print(f"Mooblender smoke test passed on Blender {bpy.app.version_string}")
     finally:
         if collection is not None:
-            materials = {
-                material
-                for obj in collection.all_objects
-                if obj.type == "MESH"
-                for material in obj.data.materials
-                if material is not None
-            }
-            for obj in list(collection.all_objects):
-                mesh = obj.data
-                bpy.data.objects.remove(obj, do_unlink=True)
-                if mesh is not None and mesh.users == 0:
-                    bpy.data.meshes.remove(mesh)
-            for child in list(collection.children):
-                bpy.data.collections.remove(child)
-            bpy.data.collections.remove(collection)
-            for material in materials:
-                bpy.data.materials.remove(material)
+            _remove_collection(collection)
         if registered:
             mooblender.unregister()
 

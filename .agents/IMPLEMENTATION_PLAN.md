@@ -124,7 +124,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
   the background, with caching, cycle/depth/entity limits, and package reuse.
 - Evaluate the observed numeric dimension, position, inversion, and opening
   expression subset without executing arbitrary code.
-- Reconstruct doors and drawers and drive them from a shared Open Ratio.
+- Reconstruct doors and drawers with independent, lazily created controls named
+  from their Mooble component localization.
+- Map observed variable `InsertDimension` axes to bounded Geometry Nodes
+  distance controls such as Largura and Profundidade.
 - Default to one visible Geometry Nodes object; retain an editable collection
   hierarchy preference.
 - Convert multi-option model finish groups into named Geometry Nodes menu inputs
@@ -143,9 +146,12 @@ four doors, one drawer, and four base/foot instances. It has no unmaterialed
 source meshes and evaluates to approximately 0.70 × 0.552 × 2.30 m closed. The
 exact `Armário Geladeira 80cm 2 Portas (728)` sample evaluates to 0.80 × 0.330 ×
 0.425 m with both doors, independent cabinet/door finishes, and working opening
-drivers. Closed/open bounds and finish switching were checked in Blender 4.5
-and 5.2 LTS. The general smoke fixture passes both releases and covers default
-remote materials plus same-layer-name finish isolation.
+drivers named `Esq` and `Dir`. The exact `Prateleira Editável 15mm (PE27-15)`
+sample exposes bounded Largura and Profundidade controls and resizes each axis
+independently. Closed/open bounds, parameter resizing, and finish switching
+were checked in Blender 4.5 and 5.2 LTS. The general smoke fixture passes both
+releases and covers independent openings, optional controls, configurable
+dimensions, default remote materials, and same-layer-name finish isolation.
 
 ## Milestone 4 — Identify and implement `.content`
 

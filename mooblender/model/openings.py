@@ -8,6 +8,22 @@ from collections.abc import Mapping
 from .expressions import evaluate_expression
 
 
+def service_name(service: Mapping[str, object], fallback: str) -> str:
+    """Return the component name shown by Mooble, preferring pt-BR metadata."""
+
+    localizations = service.get("Localizations", ())
+    if isinstance(localizations, list):
+        for localization in localizations:
+            if (
+                isinstance(localization, Mapping)
+                and str(localization.get("Id", "")).casefold() == "pt-br"
+                and str(localization.get("Name", "")).strip()
+            ):
+                return str(localization["Name"]).strip()
+    description = str(service.get("Description", "")).strip()
+    return description or fallback
+
+
 def door_motion(
     service: Mapping[str, object],
     dimensions: tuple[float, float, float],

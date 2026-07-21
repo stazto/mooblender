@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import tempfile
 import zlib
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import PurePosixPath
 from typing import Any
@@ -15,9 +17,13 @@ import bpy
 from mathutils import Matrix
 
 from ..formats.pcontent import PContentPackage
-from ..model.dimensions import property_dimensions, serialized_geometry_dimensions
+from ..model.dimensions import (
+    configurable_dimensions,
+    property_dimensions,
+    serialized_geometry_dimensions,
+)
 from ..model.expressions import evaluate_expression
-from ..model.openings import door_motion
+from ..model.openings import door_motion, service_name
 from ..model.scene import Material, PmobDocument, Primitive, PrimitiveType
 from ..model.transforms import blender_matrix_rows
 
@@ -430,7 +436,7 @@ def _apply_open_services(
     *,
     prefix: tuple[int, ...],
     controller,
-    controller_data_path: str,
+    opening_control: Callable[[dict[str, object], str], tuple[str, str]],
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
 ) -> int:
     services = package.properties.get("OpenServices", [])
@@ -476,6 +482,12 @@ def _apply_open_services(
                 (width, depth, height),
                 inverted=inverted,
             )
+            if abs(angle) <= 1e-12:
+                continue
+            controller_data_path, control_name = opening_control(
+                service,
+                data["placement"].name,
+            )
             motion.location = tuple(value * 0.001 for value in pivot)
             content.location = tuple(-value * 0.001 for value in pivot)
             _add_open_driver(
@@ -487,6 +499,12 @@ def _apply_open_services(
             )
         elif service_type == "drawer":
             distance = maximum * -0.001
+            if abs(distance) <= 1e-12:
+                continue
+            controller_data_path, control_name = opening_control(
+                service,
+                data["placement"].name,
+            )
             _add_open_driver(
                 motion,
                 1,
@@ -496,7 +514,7 @@ def _apply_open_services(
             )
         else:
             continue
-        motion["mooblender_open_service"] = str(service.get("Description", ""))
+        motion["mooblender_open_service"] = control_name
         motion["mooblender_open_service_type"] = str(service.get("Type", ""))
         applied += 1
     return applied
@@ -650,16 +668,6 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
         in_out="OUTPUT",
         socket_type="NodeSocketGeometry",
     )
-    open_socket = node_group.interface.new_socket(
-        name="Open Ratio",
-        in_out="INPUT",
-        socket_type="NodeSocketFloat",
-    )
-    open_socket.default_value = 0.0
-    open_socket.min_value = 0.0
-    open_socket.max_value = 1.0
-    open_socket.description = "Open all supported doors and drawers"
-
     nodes = node_group.nodes
     links = node_group.links
     collection_info = nodes.new("GeometryNodeCollectionInfo")
@@ -670,8 +678,68 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
     output.is_active_output = True
     links.new(collection_info.outputs["Instances"], realize.inputs["Geometry"])
     links.new(realize.outputs["Geometry"], output.inputs[output_socket.name])
-    data_path = _modifier_socket_value(modifier, open_socket, 0.0)
-    return controller, data_path, modifier, group_input, realize, output
+    return controller, modifier, group_input, realize, output
+
+
+def _add_dimension_controls(
+    package: PContentPackage,
+    *,
+    controller,
+    modifier,
+    group_input,
+    output,
+) -> int:
+    dimensions = configurable_dimensions(package.properties)
+    if not dimensions:
+        return 0
+
+    node_group = modifier.node_group
+    output_geometry = output.inputs.get("Geometry")
+    geometry_link = next(iter(output_geometry.links), None)
+    if geometry_link is None:
+        return 0
+    geometry = geometry_link.from_socket
+    node_group.links.remove(geometry_link)
+
+    combine = node_group.nodes.new("ShaderNodeCombineXYZ")
+    combine.inputs["X"].default_value = 1.0
+    combine.inputs["Y"].default_value = 1.0
+    combine.inputs["Z"].default_value = 1.0
+    transform = node_group.nodes.new("GeometryNodeTransform")
+    node_group.links.new(geometry, transform.inputs["Geometry"])
+    node_group.links.new(combine.outputs["Vector"], transform.inputs["Scale"])
+    node_group.links.new(transform.outputs["Geometry"], output_geometry)
+
+    defaults = []
+    for dimension in dimensions:
+        socket = node_group.interface.new_socket(
+            name=dimension.name,
+            in_out="INPUT",
+            socket_type="NodeSocketFloat",
+        )
+        socket.subtype = "DISTANCE"
+        socket.default_value = dimension.default * 0.001
+        socket.min_value = dimension.minimum * 0.001
+        socket.max_value = dimension.maximum * 0.001
+        socket.description = (
+            f"Mooble range: {dimension.minimum:g}–{dimension.maximum:g} mm"
+        )
+        divide = node_group.nodes.new("ShaderNodeMath")
+        divide.operation = "DIVIDE"
+        divide.inputs[1].default_value = dimension.default * 0.001
+        node_group.links.new(group_input.outputs[socket.name], divide.inputs[0])
+        node_group.links.new(
+            divide.outputs[0],
+            combine.inputs[dimension.axis],
+        )
+        defaults.append((socket, dimension.default * 0.001))
+
+    node_group.interface_update(bpy.context)
+    for socket, value in defaults:
+        _modifier_socket_value(modifier, socket, value)
+    node_group.interface_update(bpy.context)
+    controller["mooblender_dimension_control_count"] = len(dimensions)
+    return len(dimensions)
 
 
 def _model_groups(package: PContentPackage):
@@ -914,7 +982,6 @@ def build_document(
         collection.children.link(source_collection)
         (
             root,
-            controller_data_path,
             geometry_modifier,
             group_input,
             realize,
@@ -934,15 +1001,38 @@ def build_document(
         collection.objects.link(root)
         hierarchy_root = root
         target_collection = collection
-        root["Open Ratio"] = 0.0
-        root.id_properties_ui("Open Ratio").update(
+    control_name_counts: dict[str, int] = {}
+
+    def opening_control(
+        service: dict[str, object],
+        fallback: str,
+    ) -> tuple[str, str]:
+        base = service_name(service, fallback)
+        count = control_name_counts.get(base, 0) + 1
+        control_name_counts[base] = count
+        name = base if count == 1 else f"{base} ({count})"
+        if geometry_nodes:
+            socket = geometry_modifier.node_group.interface.new_socket(
+                name=name,
+                in_out="INPUT",
+                socket_type="NodeSocketFloat",
+            )
+            socket.default_value = 0.0
+            socket.min_value = 0.0
+            socket.max_value = 1.0
+            socket.description = f"Open {base}"
+            geometry_modifier.node_group.interface_update(bpy.context)
+            return _modifier_socket_value(geometry_modifier, socket, 0.0), name
+        root[name] = 0.0
+        root.id_properties_ui(name).update(
             min=0.0,
             max=1.0,
             soft_min=0.0,
             soft_max=1.0,
-            description="Open all supported doors and drawers",
+            description=f"Open {base}",
         )
-        controller_data_path = '["Open Ratio"]'
+        return f"[{json.dumps(name, ensure_ascii=False)}]", name
+
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]] = {}
     cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
@@ -969,7 +1059,7 @@ def build_document(
                 current,
                 prefix=prefix,
                 controller=root,
-                controller_data_path=controller_data_path,
+                opening_control=opening_control,
                 aggregate_nodes=aggregate_nodes,
             )
             stack.extend(
@@ -987,6 +1077,13 @@ def build_document(
                 realize=realize,
                 output=group_output,
                 material_cache=material_cache,
+            )
+            _add_dimension_controls(
+                package,
+                controller=root,
+                modifier=geometry_modifier,
+                group_input=group_input,
+                output=group_output,
             )
     elif document is not None:
         _document_root(

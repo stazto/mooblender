@@ -3,10 +3,25 @@ from __future__ import annotations
 import math
 import unittest
 
-from mooblender.model.openings import door_motion
+from mooblender.model.openings import door_motion, service_name
 
 
 class OpeningTests(unittest.TestCase):
+    def test_service_name_matches_mooble_pt_br_name(self):
+        service = {
+            "Description": "Left",
+            "Localizations": [
+                {"Id": "en-us", "Name": "Left"},
+                {"Id": "pt-br", "Name": "Esq"},
+            ],
+        }
+
+        self.assertEqual(service_name(service, "Door"), "Esq")
+
+    def test_service_name_falls_back_to_description_then_component(self):
+        self.assertEqual(service_name({"Description": "Gaveta"}, "Part"), "Gaveta")
+        self.assertEqual(service_name({}, "Part"), "Part")
+
     def test_mirrored_pair_uses_opposite_world_hinges_and_opens_outward(self):
         service = {
             "X": "@($I$?-$W$+($D$/2):$W$-$D$/2)",

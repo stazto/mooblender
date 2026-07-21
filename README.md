@@ -58,8 +58,11 @@ After enabling it:
 4. For local files, use **File → Import → Promob Model**.
 
 The default import mode creates one visible object with a Geometry Nodes
-modifier. Its **Open Ratio** input drives all recognized doors and drawers, and
-its named **Finish** menus select the styles exposed by the source model.
+modifier. Each recognized door or drawer gets its own 0–1 input, named from its
+Mooble component metadata; models without movable components get no opening
+inputs. Editable insertion dimensions become distance inputs such as
+**Largura** and **Profundidade**, with the source limits preserved. Named
+**Finish** menus select the styles exposed by the source model.
 Default remote finishes are applied before any selection, and finish controls
 are scoped to their source package so same-named cabinet and door layers do not
 overwrite one another.
@@ -133,6 +136,8 @@ The current scene builder preserves PMob primitive hierarchy and transforms,
 reuses referenced layer meshes, converts observed units correctly, builds
 Principled materials from embedded textures, reconstructs Mooble aggregates,
 and exposes supported opening and finish choices through Geometry Nodes.
+Observed `InsertDimension` ranges are also exposed as axis-specific Geometry
+Nodes controls.
 Unverified PMob animation timing, smoothing-group semantics, some mapping
 modes, alternative non-default aggregate specifications, and all
 `.content`/`.mob` behavior remain planned work.

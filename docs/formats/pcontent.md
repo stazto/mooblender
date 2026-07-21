@@ -49,10 +49,23 @@ kept on the aggregate placement so it mirrors both geometry and nested parts.
 
 `OpenServices.AggregatePath` alternates aggregate-container and selected-option
 indices. Doors supply a pivot and maximum angle; drawers supply maximum travel.
-The single-object import maps those operations to a 0–1 Geometry Nodes
-**Open Ratio** input. `Models` groups map layer IDs to material specification
-UUIDs. Multi-option groups become named **Finish** menu inputs whose entries use
-the source style names, and select the resolved remote material per face layer.
+The single-object import gives every valid movable component its own 0–1
+Geometry Nodes input, preferring its `pt-br` localization and then its source
+description. It creates these controls lazily, so entities without a valid
+door or drawer expose no opening input.
+
+Observed resizable entities use `InsertDimension.Min` and
+`InsertDimension.Max` to describe editable insertion ranges. The public API
+serializes axes as X/Y/Z, while the decompiled domain model calls the same
+values Width/Depth/Height. An editable 15 mm shelf observed on 2026-07-21 had a
+600 × 150 × 15 mm default, X limits of 10–2740 mm, Y limits of 10–1840 mm, and
+fixed Z. Mooblender consequently exposes **Largura** and **Profundidade** as
+meter-based Blender distance inputs and scales only their corresponding axes;
+an axis with no variable range gets no control.
+
+`Models` groups map layer IDs to material specification UUIDs. Multi-option
+groups become named **Finish** menu inputs whose entries use the source style
+names, and select the resolved remote material per face layer.
 The first option in every model group is also assigned as the default, including
 single-option groups and PMob meshes whose local material ID is `-1`. Finish
 selections match both package identity and layer ID, because parent bodies and
