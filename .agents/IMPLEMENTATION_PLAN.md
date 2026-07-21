@@ -144,7 +144,9 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Evaluate the observed numeric dimension, position, inversion, and opening
   expression subset without executing arbitrary code.
 - Reconstruct doors and drawers with independent, lazily created controls named
-  from their Mooble component localization.
+  from their Mooble component localization. Bind services to exact aggregate
+  paths and collapse alternate service records so each movable component owns
+  one single-value input and driver.
 - Map observed variable `InsertDimension` axes to bounded Geometry Nodes
   distance controls such as Largura and Profundidade, scoped per package
   instance so nested/repeated configurable components remain independent.
@@ -153,6 +155,8 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Convert multi-option model finish groups into named Geometry Nodes menu inputs
   that assign the resolved material by PMob layer and package scope; apply the
   first option from single- and multi-option groups as the default material.
+  Consolidate identical menus shared by package scopes and give distinct option
+  sets unique interface names so node input lookup is never ambiguous.
 - Convert mirrored opening-service pivots and handedness into the negative-X
   aggregate representation so paired doors retain separate symmetric hinges
   and open outward.
@@ -173,6 +177,10 @@ were checked in Blender 4.5 and 5.2 LTS. The general smoke fixture passes both
 releases and covers independent openings, optional controls, configurable
 root and nested-instance dimensions, default remote materials, and
 same-layer-name finish isolation.
+The smoke fixture also rejects duplicate interface entries, verifies all
+user-facing inputs are single values rather than fields, consolidates repeated
+material definitions, and confirms the controller still evaluates to mesh
+geometry after those controls are built.
 
 ## Milestone 4 — Identify and implement `.content`
 

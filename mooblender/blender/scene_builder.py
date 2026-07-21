@@ -455,6 +455,7 @@ def _apply_open_services(
     controller,
     opening_control: Callable[[dict[str, object], str], tuple[str, str]],
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
+    controlled_paths: set[tuple[int, ...]],
 ) -> int:
     services = package.properties.get("OpenServices", [])
     if not isinstance(services, list):
@@ -475,8 +476,8 @@ def _apply_open_services(
             for offset, value in enumerate(raw_path)
             if offset % 2 == 0 and isinstance(value, int)
         )
-        while path and path not in aggregate_nodes:
-            path = path[:-1]
+        if path in controlled_paths:
+            continue
         data = aggregate_nodes.get(path)
         if data is None:
             continue
@@ -533,6 +534,7 @@ def _apply_open_services(
             continue
         motion["mooblender_open_service"] = control_name
         motion["mooblender_open_service_type"] = str(service.get("Type", ""))
+        controlled_paths.add(path)
         applied += 1
     return applied
 
@@ -704,11 +706,6 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
     node_group = bpy.data.node_groups.new(f"{name} Controls", "GeometryNodeTree")
     modifier.node_group = node_group
 
-    node_group.interface.new_socket(
-        name="Geometry",
-        in_out="INPUT",
-        socket_type="NodeSocketGeometry",
-    )
     output_socket = node_group.interface.new_socket(
         name="Geometry",
         in_out="OUTPUT",
@@ -725,6 +722,10 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
     links.new(collection_info.outputs["Instances"], realize.inputs["Geometry"])
     links.new(realize.outputs["Geometry"], output.inputs[output_socket.name])
     return controller, modifier, group_input, realize, output
+
+
+def _make_socket_single_value(socket) -> None:
+    socket.structure_type = "SINGLE"
 
 
 def _add_dimension_controls(
@@ -756,6 +757,7 @@ def _add_dimension_controls(
                 in_out="INPUT",
                 socket_type="NodeSocketFloat",
             )
+            _make_socket_single_value(socket)
             socket.subtype = "DISTANCE"
             socket.default_value = dimension.default * 0.001
             socket.min_value = dimension.minimum * 0.001
@@ -833,15 +835,17 @@ def _model_groups(package: PContentPackage):
 def _create_remote_materials(groups, cache):
     result = {}
     for group in groups.values():
+        scope = int(group.get("scope", 0))
         materials = group.get("materials", {})
         if not isinstance(materials, dict):
             continue
         for material_id, package in materials.items():
-            if material_id in result or not isinstance(package, PContentPackage):
+            key = (scope, material_id)
+            if key in result or not isinstance(package, PContentPackage):
                 continue
             material = _remote_material(material_id, package, cache)
             if material is not None:
-                result[material_id] = material
+                result[key] = material
     return result
 
 
@@ -891,40 +895,61 @@ def _add_material_options(
     geometry = realize.outputs["Geometry"]
     controls = 0
     menu_defaults = []
+    bundles: dict[tuple[str, tuple[str, ...]], list[dict[str, object]]] = {}
     for group in groups.values():
-        options = group.get("options", [])
+        options = group.get("options")
         if not isinstance(options, list) or len(options) < 2:
             continue
-        layers = sorted(
-            {
-                layer
-                for option in options
-                if isinstance(option, dict)
-                for layer in option.get("assignments", {})
-            }
-        )
-        usable_layers = [
-            layer
-            for layer in layers
-            if all(
-                isinstance(option, dict)
-                and materials.get(option.get("assignments", {}).get(layer)) is not None
-                for option in options
+        option_names = tuple(_menu_option_names(options))
+        group_name = str(group.get("name") or "Material")
+        bundles.setdefault((group_name, option_names), []).append(group)
+
+    used_names = {item.name for item in node_group.interface.items_tree}
+    for (group_name, option_names), bundled_groups in bundles.items():
+        applications = []
+        for group in bundled_groups:
+            options = group["options"]
+            scope = int(group.get("scope", 0))
+            layers = sorted(
+                {
+                    layer
+                    for option in options
+                    if isinstance(option, dict)
+                    for layer in option.get("assignments", {})
+                }
             )
-        ]
-        if not usable_layers:
+            usable_layers = [
+                layer
+                for layer in layers
+                if all(
+                    isinstance(option, dict)
+                    and materials.get(
+                        (scope, option.get("assignments", {}).get(layer))
+                    )
+                    is not None
+                    for option in options
+                )
+            ]
+            if usable_layers:
+                applications.append((scope, options, usable_layers))
+        if not applications:
             continue
+
+        base_name = f"Finish: {group_name}"
+        socket_name = base_name
+        suffix = 2
+        while socket_name in used_names:
+            socket_name = f"{base_name} ({suffix})"
+            suffix += 1
+        used_names.add(socket_name)
         socket = node_group.interface.new_socket(
-            name=f"Finish: {group.get('name', 'Material')}",
+            name=socket_name,
             in_out="INPUT",
             socket_type="NodeSocketMenu",
         )
-        socket.description = " / ".join(
-            str(option.get("name", "")) for option in options if isinstance(option, dict)
-        )
+        _make_socket_single_value(socket)
+        socket.description = " / ".join(option_names)
         option_output = group_input.outputs[socket.name]
-        option_names = _menu_option_names(options)
-        scope = int(group.get("scope", 0))
         style_switch = node_group.nodes.new("GeometryNodeMenuSwitch")
         style_switch.data_type = "INT"
         style_switch.enum_items.clear()
@@ -932,54 +957,57 @@ def _add_material_options(
             style_switch.enum_items.new(name)
             style_switch.inputs[index + 1].default_value = index
         socket.from_socket(style_switch, style_switch.inputs["Menu"])
-        socket.name = f"Finish: {group.get('name', 'Material')}"
+        socket.name = socket_name
         links.new(option_output, style_switch.inputs["Menu"])
-        for layer in usable_layers:
-            named_layer = node_group.nodes.new("GeometryNodeInputNamedAttribute")
-            named_layer.data_type = "INT"
-            named_layer.inputs["Name"].default_value = "mooblender_layer"
-            compare_layer = node_group.nodes.new("FunctionNodeCompare")
-            compare_layer.data_type = "INT"
-            compare_layer.operation = "EQUAL"
-            compare_layer.inputs["B"].default_value = (
-                zlib.crc32(layer.casefold().encode("utf-8")) & 0x7FFFFFFF
-            )
-            named_entity = node_group.nodes.new("GeometryNodeInputNamedAttribute")
-            named_entity.data_type = "INT"
-            named_entity.inputs["Name"].default_value = "mooblender_entity"
-            compare_entity = node_group.nodes.new("FunctionNodeCompare")
-            compare_entity.data_type = "INT"
-            compare_entity.operation = "EQUAL"
-            compare_entity.inputs["B"].default_value = scope
-            selection = node_group.nodes.new("FunctionNodeBooleanMath")
-            selection.operation = "AND"
-            material_switch = node_group.nodes.new("GeometryNodeIndexSwitch")
-            material_switch.data_type = "MATERIAL"
-            while len(material_switch.index_switch_items) < len(options):
-                material_switch.index_switch_items.new()
-            while len(material_switch.index_switch_items) > len(options):
-                material_switch.index_switch_items.remove(
-                    material_switch.index_switch_items[-1]
-            )
-            for index, option in enumerate(options):
-                material_id = option["assignments"][layer]
-                material_switch.inputs[index + 1].default_value = materials[material_id]
-            set_material = node_group.nodes.new("GeometryNodeSetMaterial")
-            links.new(named_layer.outputs["Attribute"], compare_layer.inputs["A"])
-            links.new(named_entity.outputs["Attribute"], compare_entity.inputs["A"])
-            links.new(compare_layer.outputs["Result"], selection.inputs[0])
-            links.new(compare_entity.outputs["Result"], selection.inputs[1])
-            links.new(selection.outputs["Boolean"], set_material.inputs["Selection"])
-            links.new(
-                style_switch.outputs["Output"],
-                material_switch.inputs["Index"],
-            )
-            links.new(
-                material_switch.outputs["Output"],
-                set_material.inputs["Material"],
-            )
-            links.new(geometry, set_material.inputs["Geometry"])
-            geometry = set_material.outputs["Geometry"]
+        for scope, options, usable_layers in applications:
+            for layer in usable_layers:
+                named_layer = node_group.nodes.new("GeometryNodeInputNamedAttribute")
+                named_layer.data_type = "INT"
+                named_layer.inputs["Name"].default_value = "mooblender_layer"
+                compare_layer = node_group.nodes.new("FunctionNodeCompare")
+                compare_layer.data_type = "INT"
+                compare_layer.operation = "EQUAL"
+                compare_layer.inputs["B"].default_value = (
+                    zlib.crc32(layer.casefold().encode("utf-8")) & 0x7FFFFFFF
+                )
+                named_entity = node_group.nodes.new("GeometryNodeInputNamedAttribute")
+                named_entity.data_type = "INT"
+                named_entity.inputs["Name"].default_value = "mooblender_entity"
+                compare_entity = node_group.nodes.new("FunctionNodeCompare")
+                compare_entity.data_type = "INT"
+                compare_entity.operation = "EQUAL"
+                compare_entity.inputs["B"].default_value = scope
+                selection = node_group.nodes.new("FunctionNodeBooleanMath")
+                selection.operation = "AND"
+                material_switch = node_group.nodes.new("GeometryNodeIndexSwitch")
+                material_switch.data_type = "MATERIAL"
+                while len(material_switch.index_switch_items) < len(options):
+                    material_switch.index_switch_items.new()
+                while len(material_switch.index_switch_items) > len(options):
+                    material_switch.index_switch_items.remove(
+                        material_switch.index_switch_items[-1]
+                    )
+                for index, option in enumerate(options):
+                    material_id = option["assignments"][layer]
+                    material_switch.inputs[index + 1].default_value = materials[
+                        (scope, material_id)
+                    ]
+                set_material = node_group.nodes.new("GeometryNodeSetMaterial")
+                links.new(named_layer.outputs["Attribute"], compare_layer.inputs["A"])
+                links.new(named_entity.outputs["Attribute"], compare_entity.inputs["A"])
+                links.new(compare_layer.outputs["Result"], selection.inputs[0])
+                links.new(compare_entity.outputs["Result"], selection.inputs[1])
+                links.new(selection.outputs["Boolean"], set_material.inputs["Selection"])
+                links.new(
+                    style_switch.outputs["Output"],
+                    material_switch.inputs["Index"],
+                )
+                links.new(
+                    material_switch.outputs["Output"],
+                    set_material.inputs["Material"],
+                )
+                links.new(geometry, set_material.inputs["Geometry"])
+                geometry = set_material.outputs["Geometry"]
         socket.default_value = option_names[0]
         menu_defaults.append((socket, option_names[0], 0))
         controls += 1
@@ -1050,6 +1078,7 @@ def build_document(
                 in_out="INPUT",
                 socket_type="NodeSocketFloat",
             )
+            _make_socket_single_value(socket)
             socket.default_value = 0.0
             socket.min_value = 0.0
             socket.max_value = 1.0
@@ -1082,6 +1111,7 @@ def build_document(
             dimension_nodes=dimension_nodes,
         )
         open_services = 0
+        controlled_paths: set[tuple[int, ...]] = set()
         stack = [(package, ())]
         visited: set[tuple[int, tuple[int, ...]]] = set()
         while stack:
@@ -1096,6 +1126,7 @@ def build_document(
                 controller=root,
                 opening_control=opening_control,
                 aggregate_nodes=aggregate_nodes,
+                controlled_paths=controlled_paths,
             )
             stack.extend(
                 (item.package, prefix + (item.index,))

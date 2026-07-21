@@ -390,6 +390,24 @@ def main() -> None:
                             {"LayerId": "Compatibility", "MaterialId": "child-b"}
                         ],
                     },
+                    {
+                        "Id": "child-a-copy",
+                        "Name": "Child A",
+                        "ModelDefinitionId": "child-finish-copy",
+                        "ModelDefinitionName": "Child finish",
+                        "Components": [
+                            {"LayerId": "Compatibility", "MaterialId": "child-a"}
+                        ],
+                    },
+                    {
+                        "Id": "child-b-copy",
+                        "Name": "Child B",
+                        "ModelDefinitionId": "child-finish-copy",
+                        "ModelDefinitionName": "Child finish",
+                        "Components": [
+                            {"LayerId": "Compatibility", "MaterialId": "child-b"}
+                        ],
+                    },
                 ],
                 "Aggregates": [
                     {
@@ -407,7 +425,16 @@ def main() -> None:
                         "Localizations": [
                             {"Id": "pt-br", "Name": "Gaveta interna"}
                         ],
-                    }
+                    },
+                    {
+                        "Type": "Drawer",
+                        "AggregatePath": [0, 1],
+                        "Max": "50",
+                        "Description": "Alternate nested front",
+                        "Localizations": [
+                            {"Id": "pt-br", "Name": "Frente interna alternativa"}
+                        ],
+                    },
                 ],
             },
             resolved_aggregates=[
@@ -449,7 +476,16 @@ def main() -> None:
                         "Localizations": [
                             {"Id": "pt-br", "Name": "Gaveta externa"}
                         ],
-                    }
+                    },
+                    {
+                        "Type": "Drawer",
+                        "AggregatePath": [0, 1],
+                        "Max": "100",
+                        "Description": "Alternate child front",
+                        "Localizations": [
+                            {"Id": "pt-br", "Name": "Frente externa alternativa"}
+                        ],
+                    },
                 ],
             },
             resolved_aggregates=[
@@ -499,6 +535,9 @@ def main() -> None:
         if modifier is None or len(evaluated_mesh.polygons) != 3:
             raise AssertionError("single-object Geometry Nodes import is not producing geometry")
         interface_items = modifier.node_group.interface.items_tree
+        interface_names = [item.name for item in interface_items]
+        if len(interface_names) != len(set(interface_names)):
+            raise AssertionError(f"duplicate node interface entries: {interface_names}")
         if any(item.name == "Open Ratio" for item in interface_items):
             raise AssertionError("legacy shared Open Ratio control is still exposed")
         control_sockets = {
@@ -517,6 +556,8 @@ def main() -> None:
             raise AssertionError(
                 f"unexpected component/dimension controls: {set(control_sockets)}"
             )
+        if any(socket.structure_type != "SINGLE" for socket in control_sockets.values()):
+            raise AssertionError("modifier float controls are fields instead of single values")
         for name in ("Gaveta externa", "Gaveta interna"):
             socket = control_sockets[name]
             if socket.min_value != 0.0 or socket.max_value != 1.0:
@@ -660,6 +701,10 @@ def main() -> None:
         )
         if finish_socket.socket_type != "NodeSocketMenu":
             raise AssertionError("finish control is not a named menu")
+        if finish_socket.structure_type != "SINGLE":
+            raise AssertionError("finish control is a field instead of a single value")
+        if sum(item.name == "Finish: Child finish" for item in interface_items) != 1:
+            raise AssertionError("identical material controls were not consolidated")
         menu_switch = next(
             node
             for node in modifier.node_group.nodes
@@ -667,6 +712,11 @@ def main() -> None:
         )
         if [item.name for item in menu_switch.enum_items] != ["Child A", "Child B"]:
             raise AssertionError("finish menu does not expose source style names")
+        if sum(
+            node.bl_idname == "GeometryNodeMenuSwitch"
+            for node in modifier.node_group.nodes
+        ) != 1:
+            raise AssertionError("identical material groups created duplicate menu nodes")
         interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
         if interface_inputs is not None and hasattr(interface_inputs, finish_socket.identifier):
             _set_modifier_input(modifier, finish_socket, "Child B")

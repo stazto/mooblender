@@ -60,9 +60,13 @@ After enabling it:
 The default import mode creates one visible object with a Geometry Nodes
 modifier. Each recognized door or drawer gets its own 0–1 input, named from its
 Mooble component metadata; models without movable components get no opening
-inputs. Editable insertion dimensions become distance inputs such as
+inputs. Alternate Promob records that address the same movable aggregate share
+that component's one control instead of creating duplicate drivers. Door,
+drawer, dimension, and finish inputs are single values, not geometry fields.
+Editable insertion dimensions become distance inputs such as
 **Largura** and **Profundidade**, with the source limits preserved. Named
-**Finish** menus select the styles exposed by the source model.
+**Finish** menus select the styles exposed by the source model; identical style
+menus reused by package scopes are consolidated into one input.
 Nested editable components receive scoped labels such as
 **Prateleira: Largura**, so repeated package instances remain independent.
 Default remote finishes are applied before any selection, and finish controls

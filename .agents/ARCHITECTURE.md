@@ -48,6 +48,14 @@ scene Outliner while preserving their datablocks, parenting, drivers, and
 procedural controls. Collection-hierarchy mode remains the explicit editable
 alternative.
 
+Modifier interfaces use single-value sockets for openings, configurable
+dimensions, and finish menus. Opening services bind only to an exact resolved
+aggregate path, and multiple source records for that path collapse to the one
+movable component control. Material definitions with the same display name and
+ordered style names share one menu across package scopes; differing option sets
+receive unique interface names. The controller node group has a geometry output
+only because source geometry enters through its Collection Info node.
+
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite
 snapshot or report that synchronization is required. Thumbnail and model
