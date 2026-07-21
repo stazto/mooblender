@@ -10,7 +10,7 @@ class PROMOB_PT_browser(bpy.types.Panel):
     bl_idname = "PROMOB_PT_mooble_browser"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Promob"
+    bl_category = "Mooble"
 
     def draw(self, context) -> None:
         layout = self.layout

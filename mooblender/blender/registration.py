@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import suppress
+
 import bpy
 
 from . import operators, panels, properties
@@ -25,8 +27,11 @@ def register_addon() -> None:
 
 
 def unregister_addon() -> None:
-    bpy.types.TOPBAR_MT_file_import.remove(_menu_import)
-    del bpy.types.WindowManager.promob_browser
+    with suppress(RuntimeError):
+        bpy.types.TOPBAR_MT_file_import.remove(_menu_import)
+    if hasattr(bpy.types.WindowManager, "promob_browser"):
+        del bpy.types.WindowManager.promob_browser
     clear_previews()
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        if cls.is_registered:
+            bpy.utils.unregister_class(cls)

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import bpy
 
-ADDON_ID = __package__.split(".")[0]
-
 
 class PROMOB_PG_catalog_category(bpy.types.PropertyGroup):
     category_id: bpy.props.StringProperty()  # type: ignore
@@ -50,7 +48,7 @@ def _reset_browser(_self, _context) -> None:
 
 
 class PROMOB_AP_preferences(bpy.types.AddonPreferences):
-    bl_idname = ADDON_ID
+    bl_idname = "bl_ext.user_default.mooblender"
 
     catalog_url: bpy.props.StringProperty(  # type: ignore
         name="Catalog API",

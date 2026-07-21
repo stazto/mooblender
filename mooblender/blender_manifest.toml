@@ -9,7 +9,7 @@ type = "add-on"
 
 website = "https://github.com/dantedex/mooblender"
 tags = ["Import-Export", "3D View"]
-blender_version_min = "4.2.0"
+blender_version_min = "4.5.0"
 license = ["SPDX:GPL-3.0-or-later"]
 copyright = ["2026 Dante Dex"]
 

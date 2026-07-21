@@ -18,7 +18,7 @@ rejected until their formats are identified from reproducible samples.
 
 ## Install and use
 
-The extension targets Blender 4.2 or newer. Build an installable, reproducible
+The extension targets Blender 4.5 or newer. Build an installable, reproducible
 ZIP from the repository root:
 
 ```bash
@@ -49,7 +49,7 @@ python3 build_blender_addon.py --git-tag v0.1.0 --dev-build 1
 
 After enabling it:
 
-1. Open the **Promob** tab in the 3D View sidebar.
+1. Open the **Mooble** tab in the 3D View sidebar.
 2. Enable Blender's **Online Access** setting when using Mooble.
 3. Select **Refresh**, browse a collection or search, then select **Import**.
 4. For local files, use **File → Import → Promob Model**.
@@ -58,6 +58,12 @@ The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store
 credentials or bypass access controls.
 
+## Blender compatibility
+
+Mooblender supports Blender 4.5 LTS and 5.2 LTS. The extension manifest keeps
+`blender_version_min = "4.5.0"` and intentionally has no maximum. The add-on
+uses the `bl_ext.user_default.mooblender` Blender Extensions identifier.
+
 ## Development
 
 Run the Blender-independent suite from the repository root:
@@ -65,6 +71,13 @@ Run the Blender-independent suite from the repository root:
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+CI additionally launches the add-on in official Blender 4.5.0 and 5.2.0
+binaries. Each smoke test registers the add-on and builds disposable
+geometry, UVs, and material datablocks through the real Blender Python API.
+Each exact Blender installation is cached separately by operating system,
+architecture, version, and cache-layout revision, so later runs skip the large
+download and extraction.
 
 The normal suite is entirely offline. An opt-in live check verifies the
 observed Mooble catalog endpoint:

@@ -62,7 +62,9 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
         if not _online_or_report(self):
             return {"CANCELLED"}
         state = context.window_manager.promob_browser
-        preferences = context.preferences.addons[__package__.split(".")[0]].preferences
+        preferences = context.preferences.addons[
+            "bl_ext.user_default.mooblender"
+        ].preferences
         state.status = "Loading Mooble..."
         try:
             page = client_from_context(context).browse(

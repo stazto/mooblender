@@ -28,6 +28,9 @@ working with Promob assets.
 
 ## Acceptance criteria
 
+- The add-on registers and its core scene builder works on Blender 4.5 LTS and
+  Blender 5.2 LTS.
+
 An imported asset should preserve all supported information, including:
 
 - object names and hierarchy;

@@ -6,7 +6,6 @@ import bpy
 import bpy.utils.previews
 
 from ..mooble.client import MoobleClient
-from .properties import ADDON_ID
 
 _previews = None
 
@@ -31,7 +30,9 @@ def cache_directory() -> Path:
 
 
 def client_from_context(context) -> MoobleClient:
-    preferences = context.preferences.addons[ADDON_ID].preferences
+    preferences = context.preferences.addons[
+        "bl_ext.user_default.mooblender"
+    ].preferences
     return MoobleClient(
         base_url=preferences.catalog_url,
         region=preferences.region,
