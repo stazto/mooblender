@@ -45,8 +45,9 @@ Geometry Nodes imports expose exactly one scene-linked controller object. The
 source mesh and transform hierarchy lives in an unlinked collection referenced
 by the controller's Collection Info node. This keeps helper empties out of the
 scene Outliner while preserving their datablocks, parenting, drivers, and
-procedural controls. Collection-hierarchy mode remains the explicit editable
-alternative.
+procedural controls. Collection-hierarchy mode is no longer exposed: every
+import returns one controller linked directly to the active collection, while
+the source collection remains an unlinked implementation detail.
 
 Modifier interfaces use single-value sockets for openings, configurable
 dimensions, and finish menus. Opening services bind only to an exact resolved
@@ -55,6 +56,14 @@ movable component control. Material definitions with the same display name and
 ordered style names share one menu across package scopes; differing option sets
 receive unique interface names. The controller node group has a geometry output
 only because source geometry enters through its Collection Info node.
+Float inputs also feed hidden zero-effect sink nodes, keeping Blender's modifier
+UI controls enabled while their values drive source-hierarchy transforms.
+
+`Constant` aggregate edges suppress the resolved child's insertion controls.
+For flattened geometry, explicitly non-editable component layers that occupy
+less than half of a resized axis retain their size on that axis. Generated
+materials carry both a source/resource fingerprint and a current node-state
+fingerprint; reuse requires both to match, so edited materials are preserved.
 
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite

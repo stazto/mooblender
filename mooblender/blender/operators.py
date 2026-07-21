@@ -601,15 +601,11 @@ class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
 
     @staticmethod
     def _apply_model(context, document, *, item_name, item_id):
-        preferences = context.preferences.addons[
-            "bl_ext.user_default.mooblender"
-        ].preferences
         build_document(
             document,
             context,
             collection_name=item_name,
             source_id=item_id,
-            structure_mode=preferences.import_structure,
         )
         context.window_manager.promob_browser.status = f"Imported {item_name}"
 
@@ -649,14 +645,10 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
                 _ACTIVE_POLLS.add(callback)
                 bpy.app.timers.register(callback, first_interval=0.1)
                 return {"FINISHED"}
-            preferences = context.preferences.addons[
-                "bl_ext.user_default.mooblender"
-            ].preferences
             build_document(
                 loaded,
                 context,
                 collection_name=path.stem,
-                structure_mode=preferences.import_structure,
             )
         except (
             UnsupportedPromobFormat,
@@ -671,14 +663,10 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
 
     @staticmethod
     def _apply_file(context, loaded, *, name):
-        preferences = context.preferences.addons[
-            "bl_ext.user_default.mooblender"
-        ].preferences
         build_document(
             loaded,
             context,
             collection_name=name,
-            structure_mode=preferences.import_structure,
         )
         context.window_manager.promob_browser.status = f"Imported {name}"
 

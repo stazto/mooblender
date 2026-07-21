@@ -150,8 +150,9 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Map observed variable `InsertDimension` axes to bounded Geometry Nodes
   distance controls such as Largura and Profundidade, scoped per package
   instance so nested/repeated configurable components remain independent.
-- Default to one visible Geometry Nodes object; retain an editable collection
-  hierarchy preference.
+  Suppress those controls below a `Constant` aggregate edge.
+- Import one visible Geometry Nodes object directly into the active collection;
+  keep the node source collection unlinked and create no visible import wrapper.
 - Convert multi-option model finish groups into named Geometry Nodes menu inputs
   that assign the resolved material by PMob layer and package scope; apply the
   first option from single- and multi-option groups as the default material.
@@ -162,6 +163,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
   and open outward.
 - Measure serialized PMob geometry after primitive transforms, redimension only
   that geometry, and leave nested aggregate placement in target coordinates.
+  Preserve partial-axis fixed hardware size when a non-editable component layer
+  is flattened into resized panel geometry.
+- Interpret PMob colors as RGBA and reuse an existing generated material only
+  when its source resources and current Blender node state are exactly equal.
 
 Validated evidence: a random six-category corpus contained three standalone
 renderable products and three properties-only aggregates. A sampled 2.30 m
@@ -181,6 +186,10 @@ The smoke fixture also rejects duplicate interface entries, verifies all
 user-facing inputs are single values rather than fields, consolidates repeated
 material definitions, and confirms the controller still evaluates to mesh
 geometry after those controls are built.
+Cached R678 validation now exposes only its door-opening control and renders its
+near-black handle with equal RGB channels. Cached 728 validation keeps both
+handles at their serialized height while the door panels reach their target
+height.
 
 ## Milestone 4 — Identify and implement `.content`
 

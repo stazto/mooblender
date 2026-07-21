@@ -66,8 +66,8 @@ class SceneLayer:
 @dataclass(slots=True)
 class Material:
     name: str = ""
-    color: Color = (255, 0, 0, 0)
-    specular_color: Color = (255, 0, 0, 0)
+    color: Color = (0, 0, 0, 255)
+    specular_color: Color = (0, 0, 0, 255)
     ambient: float = 0.0
     specular_power: float = 0.0
     reflection_max: float | None = None

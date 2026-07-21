@@ -62,10 +62,22 @@ values Width/Depth/Height. An editable 15 mm shelf observed on 2026-07-21 had a
 fixed Z. Mooblender consequently exposes **Largura** and **Profundidade** as
 meter-based Blender distance inputs and scales only their corresponding axes;
 an axis with no variable range gets no control.
+An aggregate with `Constant: true` fixes its resolved child in the parent,
+even when that reusable child specification publishes broad insertion limits.
+Those child limits are therefore not user controls. This distinction is
+observed in `Aéreo de Canto Reto (R678)` and its fixed door package.
 Controls belong to the concrete package instance. A root entity uses the plain
 dimension name, while nested entities use a component-qualified name such as
 `Prateleira: Largura`; changing one nested control scales that entity subtree
 without changing a sibling instance.
+
+Some fixed hardware is flattened into the same PMob document as a resizable
+panel. In the observed 728 door, `Models.Components` marks `PUXADOR` with
+`Edit: false`; its geometry spans the door width but only a small fraction of
+the resized height. Mooblender keeps that small non-editable component fixed on
+the partial axis while allowing full-span axes and the panel to resize. This is
+an evidence-based fallback for packages that do not place hardware in a
+separate constant aggregate.
 
 `Models` groups map layer IDs to material specification UUIDs. Multi-option
 groups become named **Finish** menu inputs whose entries use the source style

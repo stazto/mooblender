@@ -57,27 +57,28 @@ After enabling it:
    collection or search the local snapshot and select **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
-The default import mode creates one visible object with a Geometry Nodes
-modifier. Each recognized door or drawer gets its own 0–1 input, named from its
+Each import creates one visible object with a Geometry Nodes modifier. Each
+recognized door or drawer gets its own 0–1 input, named from its
 Mooble component metadata; models without movable components get no opening
 inputs. Alternate Promob records that address the same movable aggregate share
 that component's one control instead of creating duplicate drivers. Door,
-drawer, dimension, and finish inputs are single values, not geometry fields.
+drawer, dimension, and finish inputs are connected single values, not geometry
+fields, so Blender keeps them editable in the modifier.
 Editable insertion dimensions become distance inputs such as
-**Largura** and **Profundidade**, with the source limits preserved. Named
-**Finish** menus select the styles exposed by the source model; identical style
-menus reused by package scopes are consolidated into one input.
+**Largura** and **Profundidade**, with the source limits preserved. Child
+packages marked `Constant` remain fixed and do not expose misleading controls.
+Named **Finish** menus select the styles exposed by the source model; identical
+style menus reused by package scopes are consolidated into one input.
 Nested editable components receive scoped labels such as
 **Prateleira: Largura**, so repeated package instances remain independent.
 Default remote finishes are applied before any selection, and finish controls
 are scoped to their source package so same-named cabinet and door layers do not
-overwrite one another.
+overwrite one another. PMob RGBA colors retain their source channel order, and
+exactly equal, unmodified materials are reused across imports.
 The source meshes and transform helpers are retained in a private collection
 referenced by the Geometry Nodes graph, but that collection is not linked to
-the scene. Consequently, the imported collection and normal Outliner contain
-only the single controller object.
-Choose **Collection hierarchy** in the extension preferences when individual
-Promob primitives and aggregates are more useful than a single object.
+the scene. The controller is linked directly to the active Blender collection,
+so importing does not create a visible wrapper collection in the Outliner.
 
 **Sync Catalog** is the only catalog-network action. It downloads the complete
 model index and category tree into a temporary SQLite database, then atomically

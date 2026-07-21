@@ -26,6 +26,10 @@ animation times/transforms, layers, mesh lists, vertices, triangle indices,
 normals, UV coordinates, line indices, smoothing groups, material IDs, and the
 known material properties from type IDs `0x1a` through `0x38`.
 
+Material color payloads are four bytes in RGBA order. This matches the
+decompiled serializer (`Color.FromArgb(buffer[3], buffer[0], buffer[1],
+buffer[2])`) and observed near-black handle payloads such as `(5, 5, 5, 255)`.
+
 ## Confirmed transform convention
 
 The decompiled `Mooble.Math3D` implementation and asymmetric Blender tests agree

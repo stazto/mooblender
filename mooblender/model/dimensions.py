@@ -108,16 +108,19 @@ def bounding_box_dimensions(properties: Mapping[str, object]) -> Dimension3:
     )  # type: ignore[return-value]
 
 
-def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
-    """Measure PMob geometry after applying its serialized primitive transforms."""
-
+def _document_points_by_layer(
+    document: PmobDocument | None,
+) -> dict[str, list[tuple[float, float, float]]]:
     if document is None:
-        return (0.0, 0.0, 0.0)
+        return {}
     layers = {layer.name.casefold(): layer for layer in document.layers}
-    points: list[tuple[float, float, float]] = []
+    points: dict[str, list[tuple[float, float, float]]] = {
+        name: [] for name in layers
+    }
 
     def append_layer(layer_ref: str, transforms) -> None:
-        layer = layers.get(layer_ref.casefold())
+        layer_name = layer_ref.casefold()
+        layer = layers.get(layer_name)
         if layer is None:
             return
         for mesh in layer.meshes:
@@ -125,7 +128,7 @@ def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
                 point = source_point
                 for matrix in reversed(transforms):
                     point = transform_point_row_vector(point, matrix)
-                points.append(point)
+                points[layer_name].append(point)
 
     def visit(primitive: Primitive, transforms=()) -> None:
         current = transforms + (primitive.matrix,)
@@ -139,11 +142,33 @@ def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
     else:
         for layer in document.layers:
             append_layer(layer.name, ())
+    return points
+
+
+def _point_dimensions(points: list[tuple[float, float, float]]) -> Dimension3:
     if not points:
         return (0.0, 0.0, 0.0)
     minimum = tuple(min(point[index] for point in points) for index in range(3))
     maximum = tuple(max(point[index] for point in points) for index in range(3))
     return tuple(maximum[index] - minimum[index] for index in range(3))  # type: ignore[return-value]
+
+
+def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
+    """Measure PMob geometry after applying its serialized primitive transforms."""
+
+    points_by_layer = _document_points_by_layer(document)
+    return _point_dimensions(
+        [point for points in points_by_layer.values() for point in points]
+    )
+
+
+def document_layer_dimensions(document: PmobDocument | None) -> dict[str, Dimension3]:
+    """Measure each PMob layer after applying its primitive transforms."""
+
+    return {
+        name: _point_dimensions(points)
+        for name, points in _document_points_by_layer(document).items()
+    }
 
 
 def serialized_geometry_dimensions(

@@ -167,24 +167,6 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         max=48,
         update=_reset_browser,
     )
-    import_structure: bpy.props.EnumProperty(  # type: ignore
-        name="Imported structure",
-        description="Choose a single Geometry Nodes object or an editable collection hierarchy",
-        items=(
-            (
-                "GEOMETRY_NODES",
-                "Single Geometry Nodes object",
-                "Import one visible object with procedural opening and finish controls",
-            ),
-            (
-                "COLLECTIONS",
-                "Collection hierarchy",
-                "Keep every Promob primitive and aggregate as editable Blender objects",
-            ),
-        ),
-        default="GEOMETRY_NODES",
-    )
-
     def draw(self, _context) -> None:
         layout = self.layout
         layout.prop(self, "catalog_url")
@@ -192,7 +174,6 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         layout.prop(self, "start_category")
         layout.prop(self, "partnership")
         layout.prop(self, "page_size")
-        layout.prop(self, "import_structure")
         layout.label(text="Credentials are never stored by this add-on.", icon="INFO")
 
 

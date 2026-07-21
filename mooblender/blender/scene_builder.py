@@ -10,6 +10,7 @@ import tempfile
 import zlib
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import asdict
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -19,6 +20,8 @@ from mathutils import Matrix
 from ..formats.pcontent import PContentPackage
 from ..model.dimensions import (
     configurable_dimensions,
+    document_geometry_dimensions,
+    document_layer_dimensions,
     property_dimensions,
     serialized_geometry_dimensions,
 )
@@ -103,14 +106,119 @@ def _connect_texture_coordinates(nodes, links, source: Material, texture_nodes) 
         links.new(vector_output, node.inputs["Vector"])
 
 
+def _socket_default(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if hasattr(value, "name"):
+        return (type(value).__name__, value.name)
+    try:
+        return tuple(value)
+    except TypeError:
+        return repr(value)
+
+
+def _material_state_digest(material) -> str:
+    node_tree = material.node_tree if material.use_nodes else None
+    nodes = []
+    links = []
+    if node_tree is not None:
+        nodes = [
+            {
+                "name": node.name,
+                "type": node.bl_idname,
+                "label": node.label,
+                "settings": {
+                    name: getattr(node, name)
+                    for name in (
+                        "blend_type",
+                        "data_type",
+                        "extension",
+                        "interpolation",
+                        "operation",
+                        "projection",
+                        "vector_type",
+                    )
+                    if hasattr(node, name)
+                },
+                "image": (
+                    node.image.get("mooblender_sha256") or node.image.name
+                    if getattr(node, "image", None) is not None
+                    else None
+                ),
+                "inputs": [
+                    (socket.identifier, _socket_default(socket.default_value))
+                    for socket in node.inputs
+                    if hasattr(socket, "default_value")
+                ],
+            }
+            for node in sorted(node_tree.nodes, key=lambda item: item.name)
+        ]
+        links = sorted(
+            (
+                link.from_node.name,
+                link.from_socket.identifier,
+                link.to_node.name,
+                link.to_socket.identifier,
+            )
+            for link in node_tree.links
+        )
+    payload = {
+        "diffuse_color": tuple(material.diffuse_color),
+        "metallic": material.metallic,
+        "roughness": material.roughness,
+        "surface_render_method": getattr(material, "surface_render_method", None),
+        "use_nodes": material.use_nodes,
+        "nodes": nodes,
+        "links": links,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def _create_material(
     source: Material,
     index: int,
     package: PContentPackage | None,
 ):
+    digest_payload = asdict(source)
+    digest_payload.pop("name", None)
+    digest_payload["resources"] = {
+        texture_name: hashlib.sha256(data).hexdigest() if data is not None else None
+        for texture_name in (
+            source.diffuse_texture,
+            source.specular_texture,
+            source.normal_texture,
+            _transparent_texture_name(source.diffuse_texture),
+        )
+        if texture_name
+        for data in (package.resource(texture_name) if package is not None else None,)
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=repr,
+        ).encode("utf-8")
+    ).hexdigest()
+    existing = next(
+        (
+            material
+            for material in bpy.data.materials
+            if material.get("mooblender_material_sha256") == digest
+            and material.get("mooblender_material_state_sha256")
+            == _material_state_digest(material)
+        ),
+        None,
+    )
+    if existing is not None:
+        return existing
+
     name = _unique_name(source.name, f"Promob Material {index}")
     material = bpy.data.materials.new(name)
-    alpha, red, green, blue = source.color
+    red, green, blue, alpha = source.color
     opacity = max(
         0.0,
         min(1.0, source.opacity if source.opacity is not None else alpha / 255.0),
@@ -175,12 +283,14 @@ def _create_material(
                 material.surface_render_method = "DITHERED"
 
     material["promob_material_index"] = index
+    material["mooblender_material_sha256"] = digest
     if source.diffuse_texture:
         material["promob_diffuse_texture"] = source.diffuse_texture
     if source.specular_texture:
         material["promob_specular_texture"] = source.specular_texture
     if source.normal_texture:
         material["promob_normal_texture"] = source.normal_texture
+    material["mooblender_material_state_sha256"] = _material_state_digest(material)
     return material
 
 
@@ -254,6 +364,8 @@ def _instantiate_primitive(
     unit_scale: float,
     source_id: str,
     fallback_index: int,
+    fixed_layer_axes: dict[str, tuple[bool, bool, bool]],
+    geometry_scale: tuple[float, float, float],
 ):
     name = _unique_name(primitive.name, f"Primitive {fallback_index}")
     node = bpy.data.objects.new(name, None)
@@ -279,6 +391,13 @@ def _instantiate_primitive(
     for mesh_index, mesh in enumerate(meshes_by_layer.get(primitive.layer_ref.casefold(), ())):
         obj = bpy.data.objects.new(f"{name}_{mesh_index}", mesh)
         obj.parent = node
+        fixed_axes = fixed_layer_axes.get(primitive.layer_ref.casefold(), (False,) * 3)
+        obj.scale = tuple(
+            1.0 / geometry_scale[axis]
+            if fixed_axes[axis] and abs(geometry_scale[axis]) > 1e-12
+            else 1.0
+            for axis in range(3)
+        )
         obj["promob_layer"] = primitive.layer_ref
         obj["promob_material_id"] = mesh.get("promob_material_id", -1)
         if source_id:
@@ -294,6 +413,8 @@ def _instantiate_primitive(
             unit_scale=unit_scale,
             source_id=source_id,
             fallback_index=child_index,
+            fixed_layer_axes=fixed_layer_axes,
+            geometry_scale=geometry_scale,
         )
     return node
 
@@ -326,6 +447,47 @@ def _default_material_assignments(package: PContentPackage) -> dict[str, str]:
     return assignments
 
 
+def _fixed_size_layer_axes(
+    package: PContentPackage | None,
+    geometry_scale: tuple[float, float, float],
+) -> dict[str, tuple[bool, bool, bool]]:
+    if package is None or package.document is None:
+        return {}
+    edit_states: dict[str, set[object]] = {}
+    models = package.properties.get("Models", [])
+    if isinstance(models, list):
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            components = model.get("Components", [])
+            if not isinstance(components, list):
+                continue
+            for component in components:
+                if not isinstance(component, dict):
+                    continue
+                layer = str(component.get("LayerId") or "").casefold()
+                if layer:
+                    edit_states.setdefault(layer, set()).add(component.get("Edit"))
+
+    fixed_candidates = {
+        layer for layer, states in edit_states.items() if states == {False}
+    }
+    if not fixed_candidates:
+        return {}
+    document_dimensions = document_geometry_dimensions(package.document)
+    layer_dimensions = document_layer_dimensions(package.document)
+    return {
+        layer: tuple(
+            abs(geometry_scale[axis] - 1.0) > 1e-6
+            and document_dimensions[axis] > 1e-9
+            and dimensions[axis] / document_dimensions[axis] < 0.5
+            for axis in range(3)
+        )
+        for layer, dimensions in layer_dimensions.items()
+        if layer in fixed_candidates
+    }
+
+
 def _remote_material(
     material_id: str,
     package: PContentPackage,
@@ -352,6 +514,7 @@ def _document_root(
     source_id: str,
     cache: dict[int, dict[str, list[bpy.types.Mesh]]],
     material_cache: dict[tuple[int, int], bpy.types.Material],
+    geometry_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ):
     cache_key = id(package) if package is not None else id(document)
     meshes_by_layer = cache.get(cache_key)
@@ -403,6 +566,8 @@ def _document_root(
         unit_scale=document.unit_scale_to_meters,
         source_id=source_id,
         fallback_index=0,
+        fixed_layer_axes=_fixed_size_layer_axes(package, geometry_scale),
+        geometry_scale=geometry_scale,
     )
 
 
@@ -553,6 +718,7 @@ def _build_package_tree(
     current_dimensions: tuple[float, float, float] | None = None,
     document_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
     control_label: str = "",
+    dimension_controls_enabled: bool = True,
 ):
     logical_dimensions = property_dimensions(package.properties)
     parent_dimensions = current_dimensions or serialized_geometry_dimensions(
@@ -561,13 +727,17 @@ def _build_package_tree(
         fallback=logical_dimensions,
     )
     package_parent = parent
-    dimensions = tuple(
-        dimension
-        for dimension in configurable_dimensions(
-            package.properties,
-            defaults=parent_dimensions,
+    dimensions = (
+        tuple(
+            dimension
+            for dimension in configurable_dimensions(
+                package.properties,
+                defaults=parent_dimensions,
+            )
+            if dimension.minimum <= dimension.default <= dimension.maximum
         )
-        if dimension.minimum <= dimension.default <= dimension.maximum
+        if dimension_controls_enabled
+        else ()
     )
     if dimension_nodes is not None and dimensions:
         label = _unique_name(
@@ -602,6 +772,7 @@ def _build_package_tree(
             source_id=source_id,
             cache=cache,
             material_cache=material_cache,
+            geometry_scale=document_scale,
         )
     for resolved in package.resolved_aggregates:
         raw = _raw_aggregate(package, resolved.index)
@@ -685,6 +856,9 @@ def _build_package_tree(
             current_dimensions=target_dimensions,
             document_scale=tuple(scale),
             control_label=name,
+            dimension_controls_enabled=(
+                dimension_controls_enabled and raw.get("Constant") is not True
+            ),
         )
 
 
@@ -728,11 +902,21 @@ def _make_socket_single_value(socket) -> None:
     socket.structure_type = "SINGLE"
 
 
+def _keep_modifier_input_active(node_group, group_input, socket) -> None:
+    value_sink = node_group.nodes.new("ShaderNodeMath")
+    value_sink.operation = "MULTIPLY"
+    value_sink.hide = True
+    value_sink.label = "Modifier input driver"
+    value_sink.inputs[1].default_value = 0.0
+    node_group.links.new(group_input.outputs[socket.name], value_sink.inputs[0])
+
+
 def _add_dimension_controls(
     dimension_nodes: list[dict[str, Any]],
     *,
     controller,
     modifier,
+    group_input,
 ) -> int:
     if not dimension_nodes:
         return 0
@@ -770,6 +954,7 @@ def _add_dimension_controls(
 
     node_group.interface_update(bpy.context)
     for socket, value, target, axis in defaults:
+        _keep_modifier_input_active(node_group, group_input, socket)
         data_path = _modifier_socket_value(modifier, socket, value)
         _add_dimension_driver(target, axis, controller, data_path, value)
     node_group.interface_update(bpy.context)
@@ -1027,8 +1212,7 @@ def build_document(
     *,
     collection_name: str = "",
     source_id: str = "",
-    structure_mode: str = "COLLECTIONS",
-) -> bpy.types.Collection:
+) -> bpy.types.Object:
     package = source if isinstance(source, PContentPackage) else None
     document = package.document if package is not None else source
     if document is None and package is not None and not package.resolved_aggregates:
@@ -1036,32 +1220,23 @@ def build_document(
 
     document_name = document.name if document is not None else ""
     name = _unique_name(collection_name or document_name, "Promob Import")
-    collection = bpy.data.collections.new(name)
-    context.scene.collection.children.link(collection)
-    geometry_nodes = structure_mode == "GEOMETRY_NODES"
-    if geometry_nodes:
-        source_collection = bpy.data.collections.new(f"{name} Source")
-        (
-            root,
-            geometry_modifier,
-            group_input,
-            realize,
-            group_output,
-        ) = _geometry_nodes_controller(
-            name,
-            collection,
-            source_collection,
-        )
-        hierarchy_root = bpy.data.objects.new(f"{name} Hierarchy", None)
-        hierarchy_root.empty_display_type = "CUBE"
-        source_collection.objects.link(hierarchy_root)
-        target_collection = source_collection
-    else:
-        root = bpy.data.objects.new(name, None)
-        root.empty_display_type = "CUBE"
-        collection.objects.link(root)
-        hierarchy_root = root
-        target_collection = collection
+    destination = context.collection or context.scene.collection
+    source_collection = bpy.data.collections.new(f"{name} Source")
+    (
+        root,
+        geometry_modifier,
+        group_input,
+        realize,
+        group_output,
+    ) = _geometry_nodes_controller(
+        name,
+        destination,
+        source_collection,
+    )
+    hierarchy_root = bpy.data.objects.new(f"{name} Hierarchy", None)
+    hierarchy_root.empty_display_type = "CUBE"
+    source_collection.objects.link(hierarchy_root)
+    target_collection = source_collection
     control_name_counts: dict[str, int] = {}
 
     def opening_control(
@@ -1072,31 +1247,26 @@ def build_document(
         count = control_name_counts.get(base, 0) + 1
         control_name_counts[base] = count
         name = base if count == 1 else f"{base} ({count})"
-        if geometry_nodes:
-            socket = geometry_modifier.node_group.interface.new_socket(
-                name=name,
-                in_out="INPUT",
-                socket_type="NodeSocketFloat",
-            )
-            _make_socket_single_value(socket)
-            socket.default_value = 0.0
-            socket.min_value = 0.0
-            socket.max_value = 1.0
-            socket.description = f"Open {base}"
-            geometry_modifier.node_group.interface_update(bpy.context)
-            return _modifier_socket_value(geometry_modifier, socket, 0.0), name
-        root[name] = 0.0
-        root.id_properties_ui(name).update(
-            min=0.0,
-            max=1.0,
-            soft_min=0.0,
-            soft_max=1.0,
-            description=f"Open {base}",
+        socket = geometry_modifier.node_group.interface.new_socket(
+            name=name,
+            in_out="INPUT",
+            socket_type="NodeSocketFloat",
         )
-        return f"[{json.dumps(name, ensure_ascii=False)}]", name
+        _make_socket_single_value(socket)
+        socket.default_value = 0.0
+        socket.min_value = 0.0
+        socket.max_value = 1.0
+        socket.description = f"Open {base}"
+        geometry_modifier.node_group.interface_update(bpy.context)
+        _keep_modifier_input_active(
+            geometry_modifier.node_group,
+            group_input,
+            socket,
+        )
+        return _modifier_socket_value(geometry_modifier, socket, 0.0), name
 
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]] = {}
-    dimension_nodes: list[dict[str, Any]] | None = [] if geometry_nodes else None
+    dimension_nodes: list[dict[str, Any]] = []
     cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
     if package is not None:
@@ -1134,21 +1304,21 @@ def build_document(
             )
         if open_services:
             root["mooblender_open_service_count"] = open_services
-        if geometry_nodes:
-            _add_material_options(
-                package,
-                controller=root,
-                modifier=geometry_modifier,
-                group_input=group_input,
-                realize=realize,
-                output=group_output,
-                material_cache=material_cache,
-            )
-            _add_dimension_controls(
-                dimension_nodes,
-                controller=root,
-                modifier=geometry_modifier,
-            )
+        _add_material_options(
+            package,
+            controller=root,
+            modifier=geometry_modifier,
+            group_input=group_input,
+            realize=realize,
+            output=group_output,
+            material_cache=material_cache,
+        )
+        _add_dimension_controls(
+            dimension_nodes,
+            controller=root,
+            modifier=geometry_modifier,
+            group_input=group_input,
+        )
     elif document is not None:
         _document_root(
             document,
@@ -1159,10 +1329,8 @@ def build_document(
             cache=cache,
             material_cache=material_cache,
         )
-    if geometry_nodes:
-        source_collection["mooblender_node_source"] = True
-    collection["promob_root_object"] = root.name
-    collection["promob_version"] = document.version if document is not None else 0
+    source_collection["mooblender_node_source"] = True
+    root["promob_version"] = document.version if document is not None else 0
     if source_id:
-        collection["mooble_item_id"] = source_id
-    return collection
+        root["mooble_item_id"] = source_id
+    return root

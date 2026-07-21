@@ -41,21 +41,17 @@ def _set_modifier_input(modifier, socket, value) -> None:
     bpy.context.evaluated_depsgraph_get().update()
 
 
-def _remove_collection(collection) -> None:
-    source_collections = set()
-    node_groups = set()
-    for obj in collection.all_objects:
-        for modifier in obj.modifiers:
-            if modifier.type != "NODES" or modifier.node_group is None:
-                continue
-            node_groups.add(modifier.node_group)
-            source_collections.update(
-                node.inputs["Collection"].default_value
-                for node in modifier.node_group.nodes
-                if node.bl_idname == "GeometryNodeCollectionInfo"
-                and node.inputs["Collection"].default_value is not None
-            )
-    objects = set(collection.all_objects)
+def _remove_import(controller) -> None:
+    modifier = controller.modifiers.get("Mooblender")
+    node_groups = {modifier.node_group} if modifier and modifier.node_group else set()
+    source_collections = {
+        node.inputs["Collection"].default_value
+        for node_group in node_groups
+        for node in node_group.nodes
+        if node.bl_idname == "GeometryNodeCollectionInfo"
+        and node.inputs["Collection"].default_value is not None
+    }
+    objects = {controller}
     for source_collection in source_collections:
         objects.update(source_collection.all_objects)
     meshes = {obj.data for obj in objects if obj.type == "MESH"}
@@ -70,11 +66,8 @@ def _remove_collection(collection) -> None:
     for mesh in meshes:
         if mesh.users == 0:
             bpy.data.meshes.remove(mesh)
-    for child_collection in list(collection.children):
-        bpy.data.collections.remove(child_collection)
     for source_collection in source_collections:
         bpy.data.collections.remove(source_collection)
-    bpy.data.collections.remove(collection)
     for node_group in node_groups:
         if node_group.users == 0:
             bpy.data.node_groups.remove(node_group)
@@ -101,7 +94,7 @@ def _geometry_source_collection(controller):
 
 
 def main() -> None:
-    collection = None
+    controller = None
     registered = False
     try:
         mooblender.register()
@@ -233,7 +226,7 @@ def main() -> None:
             vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 100.0, 0.0)],
             indices=[0, 1, 2],
             texture_coordinates=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
-            material_id=-1,
+            material_id=0,
         )
         document = PmobDocument(
             name="Mooblender LTS Smoke Test",
@@ -256,34 +249,62 @@ def main() -> None:
                 ],
             ),
             layers=[SceneLayer(name="Compatibility", meshes=[source])],
-            materials=[],
+            materials=[Material(name="Near black", color=(5, 5, 5, 255))],
         )
-        static_collection = build_document(
+        collection_count = len(bpy.data.collections)
+        static_controller = build_document(
             document,
             bpy.context,
             collection_name="Static model",
-            structure_mode="GEOMETRY_NODES",
         )
-        static_controller = bpy.data.objects[static_collection["promob_root_object"]]
         static_source = _geometry_source_collection(static_controller)
-        if tuple(static_collection.all_objects) != (static_controller,):
-            raise AssertionError("Geometry Nodes import linked helper objects to the scene")
-        if static_source.name in static_collection.children:
-            raise AssertionError("Geometry Nodes source collection is visible in the scene")
+        if tuple(static_controller.users_collection) != (bpy.context.collection,):
+            raise AssertionError("import did not link its object to the active collection")
+        if len(bpy.data.collections) != collection_count + 1:
+            raise AssertionError("single-object import created a visible import collection")
         static_modifier = static_controller.modifiers["Mooblender"]
         if any(
             item.socket_type == "NodeSocketFloat"
             for item in static_modifier.node_group.interface.items_tree
         ):
             raise AssertionError("static model received an unnecessary opening control")
-        _remove_collection(static_collection)
+        static_object = next(obj for obj in static_source.all_objects if obj.type == "MESH")
+        static_material = static_object.data.materials[0]
+        if any(abs(value - 5 / 255) > 1e-6 for value in static_material.diffuse_color[:3]):
+            raise AssertionError("PMob RGBA color channels were interpreted in the wrong order")
+        duplicate_controller = build_document(
+            document,
+            bpy.context,
+            collection_name="Static model duplicate",
+        )
+        duplicate_source = _geometry_source_collection(duplicate_controller)
+        duplicate_object = next(
+            obj for obj in duplicate_source.all_objects if obj.type == "MESH"
+        )
+        if duplicate_object.data.materials[0] is not static_material:
+            raise AssertionError("an exactly equal existing material was not reused")
+        _remove_import(duplicate_controller)
+        static_material.roughness = 0.25
+        changed_controller = build_document(
+            document,
+            bpy.context,
+            collection_name="Static model after material edit",
+        )
+        changed_source = _geometry_source_collection(changed_controller)
+        changed_object = next(
+            obj for obj in changed_source.all_objects if obj.type == "MESH"
+        )
+        if changed_object.data.materials[0] is static_material:
+            raise AssertionError("a user-modified material was incorrectly reused")
+        _remove_import(changed_controller)
+        _remove_import(static_controller)
         root_material = PContentPackage(
             document=PmobDocument(
                 name="Root Finish",
                 materials=[
                     Material(
                         name="Root Finish",
-                        color=(255, 64, 128, 255),
+                        color=(64, 128, 255, 255),
                         metallic=0.25,
                         roughness=0.75,
                         diffuse_texture="compatibility.png",
@@ -308,7 +329,12 @@ def main() -> None:
                         name="Child Compatibility",
                         kind=PrimitiveType.LAYER,
                         layer_ref="Compatibility",
-                    )
+                    ),
+                    Primitive(
+                        name="Fixed Handle",
+                        kind=PrimitiveType.LAYER,
+                        layer_ref="Handle",
+                    ),
                 ],
             ),
             layers=[
@@ -321,19 +347,33 @@ def main() -> None:
                             material_id=-1,
                         )
                     ],
-                )
+                ),
+                SceneLayer(
+                    name="Handle",
+                    meshes=[
+                        Mesh(
+                            vertices=[
+                                (0.0, 0.0, 0.0),
+                                (10.0, 0.0, 0.0),
+                                (0.0, 10.0, 0.0),
+                            ],
+                            indices=[0, 1, 2],
+                            material_id=-1,
+                        )
+                    ],
+                ),
             ],
         )
         child_a = PContentPackage(
             document=PmobDocument(
                 name="Child A",
-                materials=[Material(name="Child A", color=(255, 255, 0, 0))],
+                materials=[Material(name="Child A", color=(255, 0, 0, 255))],
             )
         )
         child_b = PContentPackage(
             document=PmobDocument(
                 name="Child B",
-                materials=[Material(name="Child B", color=(255, 0, 0, 255))],
+                materials=[Material(name="Child B", color=(0, 0, 255, 255))],
             )
         )
         nested = PContentPackage(
@@ -378,7 +418,12 @@ def main() -> None:
                         "ModelDefinitionId": "child-finish",
                         "ModelDefinitionName": "Child finish",
                         "Components": [
-                            {"LayerId": "Compatibility", "MaterialId": "child-a"}
+                            {"LayerId": "Compatibility", "MaterialId": "child-a"},
+                            {
+                                "LayerId": "Handle",
+                                "MaterialId": "child-a",
+                                "Edit": False,
+                            },
                         ],
                     },
                     {
@@ -387,7 +432,12 @@ def main() -> None:
                         "ModelDefinitionId": "child-finish",
                         "ModelDefinitionName": "Child finish",
                         "Components": [
-                            {"LayerId": "Compatibility", "MaterialId": "child-b"}
+                            {"LayerId": "Compatibility", "MaterialId": "child-b"},
+                            {
+                                "LayerId": "Handle",
+                                "MaterialId": "child-b",
+                                "Edit": False,
+                            },
                         ],
                     },
                     {
@@ -396,7 +446,12 @@ def main() -> None:
                         "ModelDefinitionId": "child-finish-copy",
                         "ModelDefinitionName": "Child finish",
                         "Components": [
-                            {"LayerId": "Compatibility", "MaterialId": "child-a"}
+                            {"LayerId": "Compatibility", "MaterialId": "child-a"},
+                            {
+                                "LayerId": "Handle",
+                                "MaterialId": "child-a",
+                                "Edit": False,
+                            },
                         ],
                     },
                     {
@@ -405,7 +460,12 @@ def main() -> None:
                         "ModelDefinitionId": "child-finish-copy",
                         "ModelDefinitionName": "Child finish",
                         "Components": [
-                            {"LayerId": "Compatibility", "MaterialId": "child-b"}
+                            {"LayerId": "Compatibility", "MaterialId": "child-b"},
+                            {
+                                "LayerId": "Handle",
+                                "MaterialId": "child-b",
+                                "Edit": False,
+                            },
                         ],
                     },
                 ],
@@ -463,6 +523,7 @@ def main() -> None:
                 "Aggregates": [
                     {
                         "Description": "Child",
+                        "Constant": True,
                         "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
                         "Position": {"X": 300, "Y": 0, "Z": 0},
                     }
@@ -493,18 +554,17 @@ def main() -> None:
             ],
             resolved_materials={"root-finish": root_material},
         )
-        collection = build_document(
+        collection_count = len(bpy.data.collections)
+        controller = build_document(
             package,
             bpy.context,
-            structure_mode="GEOMETRY_NODES",
         )
         bpy.context.view_layer.update()
-        controller = bpy.data.objects[collection["promob_root_object"]]
         source_collection = _geometry_source_collection(controller)
-        if tuple(collection.all_objects) != (controller,):
+        if tuple(controller.users_collection) != (bpy.context.collection,):
             raise AssertionError("Geometry Nodes import did not create one scene object")
-        if source_collection.name in collection.children:
-            raise AssertionError("Geometry Nodes helpers are still linked to the scene")
+        if len(bpy.data.collections) != collection_count + 1:
+            raise AssertionError("Geometry Nodes import created a visible import collection")
         if any(
             tuple(obj.users_collection) != (source_collection,)
             for obj in source_collection.all_objects
@@ -532,8 +592,19 @@ def main() -> None:
         modifier = controller.modifiers.get("Mooblender")
         evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
         evaluated_mesh = evaluated.to_mesh()
-        if modifier is None or len(evaluated_mesh.polygons) != 3:
+        if modifier is None or len(evaluated_mesh.polygons) != 4:
             raise AssertionError("single-object Geometry Nodes import is not producing geometry")
+        handle = next(
+            obj
+            for obj in source_collection.all_objects
+            if obj.type == "MESH" and obj.get("promob_layer") == "Handle"
+        )
+        handle_points = [handle.matrix_world @ vertex.co for vertex in handle.data.vertices]
+        handle_width = max(point.x for point in handle_points) - min(
+            point.x for point in handle_points
+        )
+        if round(handle_width, 3) != 0.01:
+            raise AssertionError("fixed-size handle stretched with its constant parent")
         interface_items = modifier.node_group.interface.items_tree
         interface_names = [item.name for item in interface_items]
         if len(interface_names) != len(set(interface_names)):
@@ -550,7 +621,6 @@ def main() -> None:
             "Gaveta interna",
             "Largura",
             "Profundidade",
-            "Nested: Largura",
         }
         if set(control_sockets) != expected_controls:
             raise AssertionError(
@@ -558,6 +628,16 @@ def main() -> None:
             )
         if any(socket.structure_type != "SINGLE" for socket in control_sockets.values()):
             raise AssertionError("modifier float controls are fields instead of single values")
+        group_input = next(
+            node
+            for node in modifier.node_group.nodes
+            if node.bl_idname == "NodeGroupInput"
+        )
+        if any(
+            not group_input.outputs[socket.name].is_linked
+            for socket in control_sockets.values()
+        ):
+            raise AssertionError("modifier controls are disconnected and appear disabled")
         for name in ("Gaveta externa", "Gaveta interna"):
             socket = control_sockets[name]
             if socket.min_value != 0.0 or socket.max_value != 1.0:
@@ -565,7 +645,6 @@ def main() -> None:
         dimension_ranges = {
             "Largura": (1.0, 0.1, 2.0),
             "Profundidade": (1.0, 0.05, 2.0),
-            "Nested: Largura": (0.01, 0.005, 0.03),
         }
         for name, expected in dimension_ranges.items():
             socket = control_sockets[name]
@@ -665,35 +744,6 @@ def main() -> None:
                 "nested aggregate position inherited geometry redimension scale: "
                 f"{nested_center_x}"
             )
-        nested_width = max(
-            evaluated_mesh.vertices[index].co.x for index in nested_polygon.vertices
-        ) - min(
-            evaluated_mesh.vertices[index].co.x for index in nested_polygon.vertices
-        )
-        _set_modifier_input(modifier, control_sockets["Nested: Largura"], 0.02)
-        resized_nested_mesh = controller.evaluated_get(
-            bpy.context.evaluated_depsgraph_get()
-        ).to_mesh()
-        nested_index = next(
-            index
-            for index, material in enumerate(resized_nested_mesh.materials)
-            if material.name == "Nested"
-        )
-        resized_nested_polygon = next(
-            polygon
-            for polygon in resized_nested_mesh.polygons
-            if polygon.material_index == nested_index
-        )
-        resized_nested_width = max(
-            resized_nested_mesh.vertices[index].co.x
-            for index in resized_nested_polygon.vertices
-        ) - min(
-            resized_nested_mesh.vertices[index].co.x
-            for index in resized_nested_polygon.vertices
-        )
-        if round(resized_nested_width / nested_width, 3) != 2.0:
-            raise AssertionError("nested Largura did not resize its own package instance")
-        _set_modifier_input(modifier, control_sockets["Nested: Largura"], 0.01)
         finish_socket = next(
             item
             for item in modifier.node_group.interface.items_tree
@@ -744,8 +794,8 @@ def main() -> None:
             )
         print(f"Mooblender smoke test passed on Blender {bpy.app.version_string}")
     finally:
-        if collection is not None:
-            _remove_collection(collection)
+        if controller is not None and controller.name in bpy.data.objects:
+            _remove_import(controller)
         if registered:
             mooblender.unregister()
 
