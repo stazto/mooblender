@@ -11,6 +11,17 @@ _MANUFACTURER_ITEMS = [
 _COLLECTION_ITEMS = [
     (ALL_COLLECTIONS, "All collections", "Do not filter by brand collection")
 ]
+CATALOG_DEPARTMENTS = (
+    ("sync_catalog_furniture", "Moveis", "Móveis", True),
+    ("sync_catalog_decor", "Decoracao", "Decor", False),
+    ("sync_catalog_construction", "Aberturas", "Construção", False),
+    ("sync_catalog_appliances", "Eletrodomesticos", "Eletros", False),
+    ("sync_catalog_fireplaces", "G5aMaaCZme", "Lareiras | Churrasqueiras", False),
+    ("sync_catalog_layout", "Paredes", "Layout", False),
+    ("sync_catalog_lights", "Luminarias", "Luzes", False),
+    ("sync_catalog_materials", "Revestimentos", "Materiais", False),
+    ("sync_catalog_plants", "qm7nVNRHRi", "Plantas", False),
+)
 
 
 def _manufacturer_items(_self, _context):
@@ -33,6 +44,14 @@ def set_collection_items(collections) -> None:
         (ALL_COLLECTIONS, "All collections", "Do not filter by brand collection"),
         *((name, name, f"Show only models in {name}") for name in collections),
     ]
+
+
+def selected_catalog_departments(preferences) -> tuple[str, ...]:
+    return tuple(
+        department_id
+        for property_name, department_id, _label, default in CATALOG_DEPARTMENTS
+        if getattr(preferences, property_name, default)
+    )
 
 
 def _search_changed(_self, _context) -> None:
@@ -133,6 +152,14 @@ def _reset_browser(_self, _context) -> None:
             state.status = "Settings changed; select Sync Catalog"
 
 
+def _catalog_scope_changed(_self, _context) -> None:
+    for window_manager in bpy.data.window_managers:
+        if hasattr(window_manager, "promob_browser"):
+            state = window_manager.promob_browser
+            if not state.is_syncing:
+                state.status = "Catalog selection changed; select Sync Catalog"
+
+
 class PROMOB_AP_preferences(bpy.types.AddonPreferences):
     bl_idname = "bl_ext.user_default.mooblender"
 
@@ -148,11 +175,59 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         default="br",
         update=_reset_browser,
     )
-    start_category: bpy.props.StringProperty(  # type: ignore
-        name="Start category",
-        description="Initial Departamento tag identifier",
-        default="Moveis",
-        update=_reset_browser,
+    sync_catalog_furniture: bpy.props.BoolProperty(  # type: ignore
+        name="Móveis",
+        description="Download the Móveis department during catalog sync",
+        default=True,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_decor: bpy.props.BoolProperty(  # type: ignore
+        name="Decor",
+        description="Download the Decor department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_construction: bpy.props.BoolProperty(  # type: ignore
+        name="Construção",
+        description="Download the Construção department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_appliances: bpy.props.BoolProperty(  # type: ignore
+        name="Eletros",
+        description="Download the Eletros department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_fireplaces: bpy.props.BoolProperty(  # type: ignore
+        name="Lareiras | Churrasqueiras",
+        description="Download fireplaces and grills during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_layout: bpy.props.BoolProperty(  # type: ignore
+        name="Layout",
+        description="Download the Layout department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_lights: bpy.props.BoolProperty(  # type: ignore
+        name="Luzes",
+        description="Download the Luzes department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_materials: bpy.props.BoolProperty(  # type: ignore
+        name="Materiais",
+        description="Download the Materiais department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
+    )
+    sync_catalog_plants: bpy.props.BoolProperty(  # type: ignore
+        name="Plantas",
+        description="Download the Plantas department during catalog sync",
+        default=False,
+        update=_catalog_scope_changed,
     )
     partnership: bpy.props.StringProperty(  # type: ignore
         name="Partnership",
@@ -171,7 +246,6 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         layout = self.layout
         layout.prop(self, "catalog_url")
         layout.prop(self, "region")
-        layout.prop(self, "start_category")
         layout.prop(self, "partnership")
         layout.prop(self, "page_size")
         layout.label(text="Credentials are never stored by this add-on.", icon="INFO")

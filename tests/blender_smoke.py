@@ -6,6 +6,7 @@ import base64
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -16,6 +17,11 @@ if str(PROJECT_ROOT) not in sys.path:
 import mooblender  # noqa: E402
 from mooblender.blender import operators  # noqa: E402
 from mooblender.blender.panels import PROMOB_PT_browser  # noqa: E402
+from mooblender.blender.properties import (  # noqa: E402
+    CATALOG_DEPARTMENTS,
+    PROMOB_AP_preferences,
+    selected_catalog_departments,
+)
 from mooblender.blender.scene_builder import build_document  # noqa: E402
 from mooblender.formats.pcontent import PContentPackage, ResolvedAggregate  # noqa: E402
 from mooblender.model.scene import (  # noqa: E402
@@ -108,6 +114,25 @@ def main() -> None:
         state = bpy.context.window_manager.promob_browser
         if state.is_loading or state.is_syncing:
             raise AssertionError("Mooblender browser started in a loading state")
+        expected_departments = {
+            "Moveis",
+            "Decoracao",
+            "Aberturas",
+            "Eletrodomesticos",
+            "G5aMaaCZme",
+            "Paredes",
+            "Luminarias",
+            "Revestimentos",
+            "qm7nVNRHRi",
+        }
+        if {entry[1] for entry in CATALOG_DEPARTMENTS} != expected_departments:
+            raise AssertionError("catalog section checkboxes are incomplete")
+        preference_defaults = SimpleNamespace(**{
+            property_name: PROMOB_AP_preferences.bl_rna.properties[property_name].default
+            for property_name, _department_id, _label, _default in CATALOG_DEPARTMENTS
+        })
+        if selected_catalog_departments(preference_defaults) != ("Moveis",):
+            raise AssertionError("only Móveis should be synchronized by default")
 
         class LocalStore:
             def __init__(self):

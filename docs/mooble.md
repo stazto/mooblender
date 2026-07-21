@@ -27,27 +27,40 @@ be parsed or pagination silently appears empty.
 
 ## Catalog synchronization and local queries
 
-The observed root furniture category reports more than 14,000 models. Mooblender
-contacts Explorer catalog endpoints only after the user selects **Sync
-Catalog**. The background synchronizer follows the root pagination and every
-category branch with a 48-item request size, per-category page and cycle limits,
-and global category, item, and membership safety limits. Thumbnails and model
-PContent are not part of catalog synchronization.
+The unfiltered department root observed on 2026-07-21 exposes nine sections:
+`Moveis` (Móveis), `Decoracao` (Decor), `Aberturas` (Construção),
+`Eletrodomesticos` (Eletros), `G5aMaaCZme` (Lareiras/Churrasqueiras), `Paredes`
+(Layout), `Luminarias` (Luzes), `Revestimentos` (Materiais), and `qm7nVNRHRi`
+(Plantas). The opaque identifiers are treated as observed service values, not
+translated or guessed names.
+As a bounded end-to-end check on the same date, synchronizing only
+Lareiras/Churrasqueiras and Plantas produced one local root with both department
+children and 41 unique items, matching their reported 28 plus 13 records.
+
+The sidebar exposes one persistent checkbox for each section, with only Móveis
+enabled by default. Mooblender contacts Explorer catalog endpoints only after
+the user selects **Sync Catalog**. The background synchronizer follows every
+selected department's root pagination and category branches with a 48-item
+request size, per-category page and cycle limits, and global category, item,
+and membership safety limits. Thumbnails and model PContent are not part of
+catalog synchronization.
 
 Although observed continuation URLs default to 15 records, their endpoint was
 verified to accept 48 and returns the next skip value accordingly. The indexer
-normalizes that existing `$top` parameter to 48. It also compares the final
-unique-item count with the selected root category's `SpecCount`; an early or
-misparsed end aborts the sync instead of publishing a partial index. On
+normalizes that existing `$top` parameter to 48. It also compares each
+department's final unique-item count with that selected root's `SpecCount`; an
+early or misparsed end aborts the sync instead of publishing a partial index. On
 2026-07-21 this check reported 14,310 root furniture items, and a bounded live
 `kappesberg` verification returned all 310 reported matches in seven pages.
 
 The API summaries do not expose their department membership directly. The sync
 therefore records each category's complete ordered item-ID set while
-deduplicating model summaries in a temporary SQLite database. That database
-replaces the previous snapshot atomically only after the complete category tree
-succeeds. A failed or interrupted synchronization leaves the last usable
-snapshot untouched.
+deduplicating model summaries in a temporary SQLite database. A synthetic local
+root contains every unique item and exposes the selected departments as its
+children, enabling global local search without flattening department browsing.
+That database replaces the previous snapshot atomically only after every
+selected category tree succeeds. A failed or interrupted synchronization leaves
+the last usable snapshot untouched.
 
 Startup opens the SQLite snapshot and makes no catalog request. Category, Back,
 search, manufacturer, and pagination actions query the local snapshot only.

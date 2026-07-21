@@ -74,7 +74,8 @@ Mooble-specific additions:
 
 - hierarchical category navigation using Explorer tag URLs;
 - back navigation and paged **Load More** results;
-- region, partnership, start category, page size, and API URL preferences;
+- region, partnership, page size, API URL preferences, and persistent sidebar
+  checkboxes for each observed top-level catalog department;
 - flexible mapping of tags, specifications, details, and content links; and
 - HTTPS/host validation and bounded downloads.
 
@@ -93,8 +94,13 @@ Implemented follow-up work:
   Collection menu exposes only `Collection.Name` values available for the
   selected manufacturer in that category, and composes with the text query.
 - Catalog access is now explicit and local-first: **Sync Catalog** crawls the
-  complete category tree and writes deduplicated items plus category membership
-  into a temporary SQLite snapshot, atomically publishing it only on success.
+  complete trees of every enabled top-level department and writes deduplicated
+  items plus category membership into a temporary SQLite snapshot, atomically
+  publishing it only on success. A synthetic local root combines global search
+  with department-preserving navigation.
+- A bounded live sync of the two smallest non-furniture departments,
+  Lareiras/Churrasqueiras and Plantas, persisted both roots and all 41 reported
+  unique items in one snapshot.
 - Startup, search, manufacturer filtering, category navigation, Back, and Load
   More perform no catalog requests. The previous snapshot remains usable while
   a new sync reports page/category progress in the background.

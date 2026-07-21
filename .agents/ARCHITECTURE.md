@@ -87,7 +87,10 @@ Z to the aggregate attachment normal before its axial `Rotation` is applied.
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite
 snapshot or report that synchronization is required. Thumbnail and model
-downloads remain lazy, independent caches.
+downloads remain lazy, independent caches. The sync scope is a hardcoded set of
+observed top-level department identifiers exposed as sidebar checkboxes. Each
+enabled department is crawled as a separate root, then attached below one
+synthetic local root whose deduplicated item membership supports global search.
 
 ## Design rules
 

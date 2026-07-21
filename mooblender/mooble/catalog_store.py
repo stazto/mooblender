@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import tempfile
@@ -15,7 +16,8 @@ from pathlib import Path
 from .client import MoobleClient
 from .models import CatalogCategory, CatalogItem, CatalogPage
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
+LOCAL_ROOT_URL = "mooblender://catalog/root"
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +129,8 @@ class CatalogStore:
         with closing(self._connect()) as connection:
             item_count = connection.execute("SELECT COUNT(*) FROM items").fetchone()[0]
             category_count = connection.execute(
-                "SELECT COUNT(*) FROM categories"
+                "SELECT COUNT(*) FROM categories WHERE url != ?",
+                (LOCAL_ROOT_URL,),
             ).fetchone()[0]
             return CatalogSummary(
                 item_count=item_count,
@@ -207,31 +210,64 @@ class CatalogStore:
         self,
         client: MoobleClient,
         *,
-        category: str,
+        categories: tuple[str, ...],
         progress: Callable[[CatalogSyncProgress], None] | None = None,
         max_pages_per_category: int = 2048,
         max_categories: int = 4096,
         max_unique_items: int = 100_000,
         max_memberships: int = 1_000_000,
     ) -> CatalogSummary:
-        """Download the complete category tree into a temporary database."""
+        """Download selected department trees into one atomic local database."""
 
+        categories = tuple(dict.fromkeys(category for category in categories if category))
+        if not categories:
+            client.close()
+            raise ValueError("Select at least one Mooble catalog section")
+
+        try:
+            source_urls = tuple(
+                client.root_url(category=category, search="", page_size=48)
+                for category in categories
+            )
+        except Exception:
+            client.close()
+            raise
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=self.path.name + ".", suffix=".tmp", dir=self.path.parent
         )
         os.close(descriptor)
         temporary_path = Path(temporary_name)
-        root_url = client.root_url(category=category, search="", page_size=48)
         pages = 0
         memberships = 0
         visited: set[str] = set()
-        pending = deque([(root_url, "", 0)])
+        pending = deque(
+            (url, LOCAL_ROOT_URL, position, category)
+            for position, (category, url) in enumerate(
+                zip(categories, source_urls, strict=True),
+                1,
+            )
+        )
+        root_item_ids: list[str] = []
+        root_item_set: set[str] = set()
         try:
             with closing(sqlite3.connect(temporary_path)) as connection:
                 self._create_schema(connection)
+                self._write_category(
+                    connection,
+                    CatalogCategory(
+                        id="mooblender-root",
+                        name="Catalog",
+                        url=LOCAL_ROOT_URL,
+                        level=-1,
+                        item_count=0,
+                        selected=True,
+                    ),
+                    parent_url="",
+                    position=0,
+                )
                 while pending:
-                    url, parent_url, category_position = pending.popleft()
+                    url, parent_url, category_position, fallback_category = pending.popleft()
                     url = client.with_page_size(url, 48)
                     if url in visited:
                         continue
@@ -268,8 +304,8 @@ class CatalogStore:
                     current = _selected_category(page)
                     if current is None:
                         current = CatalogCategory(
-                            id=category,
-                            name=category,
+                            id=fallback_category,
+                            name=fallback_category,
                             url=url,
                             item_count=len(page.items),
                             selected=True,
@@ -303,8 +339,12 @@ class CatalogStore:
                             position=position,
                         )
                         if child_url not in visited:
-                            pending.append((child_url, url, position))
+                            pending.append((child_url, url, position, child.id))
                     self._write_items(connection, url, page.items)
+                    for item in page.items:
+                        if item.id not in root_item_set:
+                            root_item_set.add(item.id)
+                            root_item_ids.append(item.id)
                     memberships += len(page.items)
                     if memberships > max_memberships:
                         raise ValueError("Mooble catalog exceeds the membership safety limit")
@@ -324,9 +364,42 @@ class CatalogStore:
                                 current_category=current.name,
                             )
                         )
+                self._write_category(
+                    connection,
+                    CatalogCategory(
+                        id="mooblender-root",
+                        name="Catalog",
+                        url=LOCAL_ROOT_URL,
+                        level=-1,
+                        item_count=len(root_item_ids),
+                        selected=True,
+                    ),
+                    parent_url="",
+                    position=0,
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO category_items(category_url, item_id, position)
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        (LOCAL_ROOT_URL, item_id, position)
+                        for position, item_id in enumerate(root_item_ids)
+                    ),
+                )
                 synced_at = datetime.now(UTC).isoformat(timespec="seconds")
                 self._set_metadata(connection, "schema_version", SCHEMA_VERSION)
-                self._set_metadata(connection, "root_url", root_url)
+                self._set_metadata(connection, "root_url", LOCAL_ROOT_URL)
+                self._set_metadata(
+                    connection,
+                    "departments",
+                    json.dumps(categories, separators=(",", ":")),
+                )
+                self._set_metadata(
+                    connection,
+                    "source_urls",
+                    json.dumps(source_urls, separators=(",", ":")),
+                )
                 self._set_metadata(connection, "synced_at", synced_at)
                 connection.commit()
             os.replace(temporary_path, self.path)

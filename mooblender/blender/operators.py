@@ -26,6 +26,7 @@ from .background import (
 from .properties import (
     ALL_COLLECTIONS,
     ALL_MANUFACTURERS,
+    selected_catalog_departments,
     set_collection_items,
     set_manufacturer_items,
 )
@@ -49,7 +50,7 @@ def _browser_preferences(context):
     except KeyError:
         # Direct source registration in the headless compatibility test does
         # not create Blender's installed-extension preference entry.
-        return SimpleNamespace(start_category="Moveis", page_size=12)
+        return SimpleNamespace(page_size=12)
 
 
 def shutdown_async_operators() -> None:
@@ -185,21 +186,8 @@ def _load_local_index(context, url: str = "") -> CatalogPage | None:
     store = _catalog_store()
     if not store.exists():
         return None
-    stored_root = store.root_url()
     if not target:
-        preferences = _browser_preferences(context)
-        client = client_from_context(context)
-        try:
-            configured_root = client.root_url(
-                category=preferences.start_category,
-                search="",
-                page_size=48,
-            )
-        finally:
-            client.close()
-        if stored_root != configured_root:
-            return None
-        target = stored_root
+        target = store.root_url()
     page = store.page(target)
     if page is not None:
         _CATALOG_INDEXES[page.current_url] = page
@@ -411,14 +399,20 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
             return {"CANCELLED"}
         state = context.window_manager.promob_browser
         preferences = _browser_preferences(context)
+        departments = selected_catalog_departments(preferences)
+        if not departments:
+            state.error = "Select at least one catalog section"
+            state.status = "Catalog sync was not started"
+            self.report({"WARNING"}, state.error)
+            return {"CANCELLED"}
         state.is_syncing = True
         state.error = ""
-        state.status = "Starting complete Mooble catalog sync..."
+        state.status = f"Starting sync for {len(departments)} catalog section(s)..."
         progress_queue = SimpleQueue()
         future = JOBS.submit(
             _catalog_store().sync,
             client_from_context(context),
-            category=preferences.start_category,
+            categories=departments,
             progress=progress_queue.put,
         )
         callback = _CatalogSyncCompletion(future, progress_queue)

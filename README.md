@@ -53,7 +53,7 @@ After enabling it:
 
 1. Open the **Mooble** tab in the 3D View sidebar.
 2. Enable Blender's **Online Access** setting when using Mooble.
-3. Select **Sync Catalog** once to download the complete catalog, then browse a
+3. Choose the catalog sections you want, select **Sync Catalog**, then browse a
    collection or search the local snapshot and select **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
@@ -94,11 +94,14 @@ angle reconstruct continuous custom normals, while incompatible normal fans
 remain split as hard edges. The original and welded vertex counts are retained
 on each generated mesh for diagnostics.
 
-**Sync Catalog** is the only catalog-network action. It downloads the complete
-model index and category tree into a temporary SQLite database, then atomically
-replaces the previous on-disk snapshot after every page succeeds. Existing
-catalog data stays fully usable while synchronization runs. The first sync can
-take several minutes for the currently reported 14,000-plus records and their
+**Sync Catalog** is the only catalog-network action. Checkboxes in the sidebar
+select Móveis, Decor, Construção, Eletros, Lareiras/Churrasqueiras, Layout,
+Luzes, Materiais, and Plantas independently; only Móveis is enabled by default.
+Synchronization downloads the complete model index and category tree for every
+enabled section into a temporary SQLite database, then atomically replaces the
+previous on-disk snapshot after every page succeeds. Existing catalog data
+stays fully usable while synchronization runs. A furniture-only sync can take
+several minutes for the currently reported 14,000-plus records and their
 category memberships, but it does not block Blender's main thread.
 
 Startup performs no catalog request. It opens the last successful snapshot
@@ -107,7 +110,9 @@ filtering, Back, and Load More query only that snapshot and therefore work
 offline without requesting catalog pages.
 
 Search is case- and accent-insensitive and runs entirely against that local
-index. Filters remain scoped to the currently browsed category. Committing the
+index. The local root combines every enabled department, while opening a
+department or subcategory scopes subsequent searches and filters to that
+branch. Committing the
 search field or selecting its magnifier updates the cards; committing an empty
 field restores the unfiltered category. Only one bounded result batch becomes
 UI cards at a time. A manufacturer menu contains the brands available in that

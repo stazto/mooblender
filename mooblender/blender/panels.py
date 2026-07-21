@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import bpy
 
-from .operators import ensure_thumbnails
+from .operators import _browser_preferences, ensure_thumbnails
+from .properties import CATALOG_DEPARTMENTS
 from .runtime import icon_for_item
 
 
@@ -34,6 +35,23 @@ class PROMOB_PT_browser(bpy.types.Panel):
 
         content = layout.column()
         content.enabled = not state.is_loading
+
+        preferences = _browser_preferences(context)
+        scope = content.box()
+        scope.enabled = not state.is_syncing
+        scope.label(text="Catalog content", icon="CHECKBOX_HLT")
+        if hasattr(preferences, "bl_rna"):
+            options = scope.grid_flow(
+                row_major=True,
+                columns=2,
+                even_columns=True,
+                even_rows=False,
+                align=True,
+            )
+            for property_name, _department_id, label, _default in CATALOG_DEPARTMENTS:
+                options.prop(preferences, property_name, text=label)
+        else:
+            scope.label(text="Móveis", icon="CHECKMARK")
 
         sync = content.row()
         sync.enabled = not state.is_syncing and bpy.app.online_access
