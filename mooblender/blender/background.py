@@ -24,6 +24,59 @@ def fetch_catalog(
         client.close()
 
 
+def fetch_catalog_index(
+    client: MoobleClient,
+    *,
+    category: str,
+    max_pages: int = 2048,
+    max_items: int = 100_000,
+) -> CatalogPage:
+    """Download every metadata page for a department into its root cache."""
+
+    root_url = client.root_url(category=category, search="", page_size=48)
+    visited = {root_url}
+    try:
+        cached = client.load_cached_page(root_url)
+        page = client.browse_url(root_url, cache=False)
+        if (
+            cached is not None
+            and not cached.next_url
+            and cached.categories == page.categories
+            and len(cached.items) >= len(page.items)
+            and cached.items[: len(page.items)] == page.items
+        ):
+            return cached
+        categories = {value.id: value for value in page.categories}
+        items = {value.id: value for value in page.items}
+        next_url = page.next_url
+        pin_name = page.pin_name
+        pages = 1
+        while next_url:
+            if next_url in visited:
+                raise ValueError("Mooble catalog pagination contains a cycle")
+            if pages >= max_pages:
+                raise ValueError("Mooble catalog exceeds the page safety limit")
+            visited.add(next_url)
+            page = client.browse_url(next_url, cache=False)
+            categories.update((value.id, value) for value in page.categories)
+            items.update((value.id, value) for value in page.items)
+            next_url = page.next_url
+            pin_name = pin_name or page.pin_name
+            pages += 1
+            if len(items) > max_items:
+                raise ValueError("Mooble catalog exceeds the item safety limit")
+        merged = CatalogPage(
+            categories=tuple(categories.values()),
+            items=tuple(items.values()),
+            current_url=root_url,
+            pin_name=pin_name,
+        )
+        client.cache_catalog_page(root_url, merged)
+        return merged
+    finally:
+        client.close()
+
+
 def fetch_catalog_url(
     client: MoobleClient,
     url: str,

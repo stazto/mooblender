@@ -85,7 +85,14 @@ class MoobleClient:
     def __exit__(self, _exception_type, _exception, _traceback) -> None:
         self.close()
 
-    def root_url(self, *, category: str = "Moveis", search: str = "") -> str:
+    def root_url(
+        self,
+        *,
+        category: str = "Moveis",
+        search: str = "",
+        page_size: int | None = None,
+    ) -> str:
+        requested_page_size = self.page_size if page_size is None else page_size
         params: dict[str, str | int] = {
             "client": self.client_name,
             "pin": "Departamento",
@@ -93,7 +100,7 @@ class MoobleClient:
             "internal": "Item",
             "region": self.region,
             "!Departamento": category,
-            "$top": self.page_size,
+            "$top": min(max(requested_page_size, 1), 48),
         }
         if search.strip():
             params["search"] = search.strip()
@@ -120,15 +127,21 @@ class MoobleClient:
             return preserved
         return live
 
-    def browse_url(self, url: str) -> CatalogPage:
+    def browse_url(self, url: str, *, cache: bool = True) -> CatalogPage:
         try:
             self.transport.validate_url(url)
             payload = self.transport.get_json(url)
             page = self._parse_page(payload, current_url=url)
-            self._write_catalog_cache(url, page)
+            if cache:
+                self._write_catalog_cache(url, page)
             return page
         except (TransportError, KeyError, TypeError, ValueError) as error:
             raise MoobleError(f"could not browse Mooble catalog: {error}") from error
+
+    def cache_catalog_page(self, url: str, page: CatalogPage) -> None:
+        """Persist a completely assembled catalog page atomically."""
+
+        self._write_catalog_cache(url, page)
 
     def load_cached_page(self, url: str) -> CatalogPage | None:
         if self.cache_dir is None:

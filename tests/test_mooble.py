@@ -33,6 +33,13 @@ class MoobleClientTests(unittest.TestCase):
         self.assertIn("%24top=8", url)
         self.assertIn("search=mesa", url)
 
+    def test_catalog_index_can_request_the_maximum_page_size(self):
+        client = MoobleClient(page_size=12, transport=FakeTransport({}))
+
+        url = client.root_url(category="Moveis", page_size=48)
+
+        self.assertIn("%24top=48", url)
+
     def test_maps_categories_items_and_pagination(self):
         payload = {
             "Output": {

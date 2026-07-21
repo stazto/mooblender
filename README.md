@@ -71,17 +71,24 @@ overwrite one another.
 Choose **Collection hierarchy** in the extension preferences when individual
 Promob primitives and aggregates are more useful than a single object.
 
-Catalog pages are cached on disk and restored immediately at startup. A
-background request then compares the live response with the cached fingerprint,
-replacing the cards only when catalog data changed. Cards appear before their
-visible thumbnails, which are fetched as one background batch. Each card shows
-a loading symbol until its preview arrives. During catalog or model operations,
-the panel remains visible with its controls disabled and a loading message above
-them. Blender data is only created on its main thread.
+The complete catalog metadata index is downloaded through the Explorer pages
+and cached on disk; model binaries remain on-demand. At startup, the cached
+index appears immediately and one background first-page check compares its
+items and category counts. A detected change rebuilds the index atomically.
 
-Every visited category remains in the disk cache. Opening an already visited
-category or using **Back** restores that cached page immediately without a
-network request, including all pages previously added with **Load More**.
+Search is case- and accent-insensitive and runs entirely against that local
+index. Committing the search field or selecting its magnifier updates the cards;
+committing an empty field restores the unfiltered catalog. Only one bounded
+result batch becomes UI cards at a time, and **Load More** expands the local
+matches without contacting Mooble. Thumbnails are fetched only for those
+visible cards. Each card shows a loading symbol until its preview arrives.
+During catalog or model operations, the panel remains visible with its controls
+disabled and a loading message above it. Blender data is only created on its
+main thread.
+
+Every separately visited category also remains in the disk cache. Opening an
+already visited category or using **Back** restores that cached page immediately
+without a network request.
 
 The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store

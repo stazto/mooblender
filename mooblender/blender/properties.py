@@ -2,6 +2,30 @@ from __future__ import annotations
 
 import bpy
 
+_SEARCH_REVISION = 0
+
+
+def _search_changed(_self, _context) -> None:
+    """Debounce text edits and apply them against the local catalog index."""
+
+    global _SEARCH_REVISION
+    _SEARCH_REVISION += 1
+    revision = _SEARCH_REVISION
+
+    def submit_search():
+        if revision != _SEARCH_REVISION:
+            return None
+        try:
+            state = bpy.context.window_manager.promob_browser
+            if state.is_loading:
+                return 0.2
+            bpy.ops.promob.catalog_search()
+        except (AttributeError, RuntimeError):
+            pass
+        return None
+
+    bpy.app.timers.register(submit_search, first_interval=0.15)
+
 
 class PROMOB_PG_catalog_category(bpy.types.PropertyGroup):
     category_id: bpy.props.StringProperty()  # type: ignore
@@ -27,7 +51,7 @@ class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
 
 
 class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
-    query: bpy.props.StringProperty(name="Search")  # type: ignore
+    query: bpy.props.StringProperty(name="Search", update=_search_changed)  # type: ignore
     status: bpy.props.StringProperty(default="Select Refresh to load Mooble")  # type: ignore
     is_loading: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     error: bpy.props.StringProperty()  # type: ignore
@@ -35,6 +59,9 @@ class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
     next_url: bpy.props.StringProperty()  # type: ignore
     history_json: bpy.props.StringProperty(default="[]", options={"HIDDEN"})  # type: ignore
     page_signature: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    using_local_index: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
+    local_result_total: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
+    local_result_limit: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
     categories: bpy.props.CollectionProperty(type=PROMOB_PG_catalog_category)  # type: ignore
     items: bpy.props.CollectionProperty(type=PROMOB_PG_catalog_item)  # type: ignore
 
@@ -47,6 +74,9 @@ def _reset_browser(_self, _context) -> None:
             state.next_url = ""
             state.history_json = "[]"
             state.page_signature = ""
+            state.using_local_index = False
+            state.local_result_total = 0
+            state.local_result_limit = 0
             state.categories.clear()
             state.items.clear()
             state.is_loading = False

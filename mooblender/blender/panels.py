@@ -19,9 +19,8 @@ class PROMOB_PT_browser(bpy.types.Panel):
 
         if not bpy.app.online_access:
             layout.label(text="Blender is in offline mode", icon="ERROR")
-            layout.label(text="Enable Online Access to browse Mooble")
+            layout.label(text="Cached catalog search remains available")
             layout.operator("screen.userpref_show", text="Open Preferences").section = "SYSTEM"
-            return
 
         if state.is_loading:
             loading = layout.box()
@@ -33,6 +32,7 @@ class PROMOB_PT_browser(bpy.types.Panel):
 
         search = content.row(align=True)
         search.prop(state, "query", text="", icon="VIEWZOOM")
+        search.operator("promob.catalog_search", text="", icon="VIEWZOOM")
         search.operator("promob.catalog_refresh", text="", icon="FILE_REFRESH")
 
         navigation = content.row(align=True)
@@ -80,7 +80,7 @@ class PROMOB_PT_browser(bpy.types.Panel):
             operator = box.operator("promob.catalog_import", text="Import", icon="IMPORT")
             operator.item_id = item.item_id
 
-        if state.next_url:
+        if state.local_result_limit < state.local_result_total or state.next_url:
             content.operator("promob.catalog_load_more", text="Load More", icon="ADD")
 
 

@@ -111,6 +111,55 @@ def main() -> None:
         ):
             raise AssertionError("back navigation did not restore only the cached catalog")
 
+        class LocalIndexClient:
+            def __init__(self):
+                self.closed = 0
+                self.page = CatalogPage(
+                    items=(
+                        CatalogItem(
+                            id="onix",
+                            name="Armário Ônix",
+                            brand="CHF Móveis",
+                        ),
+                        *tuple(
+                            CatalogItem(id=f"item-{index}", name=f"Item {index}")
+                            for index in range(12)
+                        ),
+                    ),
+                    current_url="https://catalog.mooble.com/index",
+                )
+
+            def root_url(self, *, category, search, page_size):
+                if not category or search or page_size != 48:
+                    raise AssertionError("local search used an unexpected index URL")
+                return self.page.current_url
+
+            def load_cached_page(self, url):
+                return self.page if url == self.page.current_url else None
+
+            def close(self):
+                self.closed += 1
+
+        local_client = LocalIndexClient()
+        operators.client_from_context = lambda _context: local_client
+        try:
+            state.query = "moveis onix"
+            if bpy.ops.promob.catalog_search() != {"FINISHED"}:
+                raise AssertionError("local catalog search did not finish")
+            if [item.item_id for item in state.items] != ["onix"]:
+                raise AssertionError("local catalog search did not show only matches")
+            state.query = ""
+            if bpy.ops.promob.catalog_search() != {"FINISHED"}:
+                raise AssertionError("empty local catalog search did not finish")
+            if len(state.items) != 12 or state.local_result_total != 13:
+                raise AssertionError("empty local search did not restore a bounded index")
+            if bpy.ops.promob.catalog_load_more() != {"FINISHED"}:
+                raise AssertionError("local catalog Load More did not finish")
+            if len(state.items) != 13:
+                raise AssertionError("local Load More contacted no API but added no results")
+        finally:
+            operators.client_from_context = original_client_factory
+
         source = Mesh(
             vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 100.0, 0.0)],
             indices=[0, 1, 2],

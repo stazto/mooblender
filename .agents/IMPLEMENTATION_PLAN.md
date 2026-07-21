@@ -84,14 +84,17 @@ Implemented follow-up work:
   UI thread; Blender data is touched only by completion callbacks.
 - Catalog pages are restored from disk at startup and revalidated by parsed
   response fingerprint; cards precede one batched visible-thumbnail request.
+- The complete root catalog metadata is assembled from bounded pagination into
+  one atomic disk index. Search and empty-query reset run locally with bounded
+  result cards and local **Load More**; thumbnails and models remain on-demand.
 
 Remaining exit work:
 
 - Add cancellation, progress, retry-after support, ETag/Last-Modified cache
   validation, cache size controls, and a clear-cache operator.
 - Add a selected-product details panel with dimensions and source URL.
-- Preserve search/category state per Blender window and avoid reloading
-  thumbnails already held in previews.
+- Preserve category state per Blender window and avoid reloading thumbnails
+  already held in previews.
 - Add schema-change diagnostics that retain a redacted response shape.
 - Validate regional and partnership behavior without assuming all catalog
   content is public or redistributable.

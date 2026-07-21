@@ -21,33 +21,32 @@ navigation URLs and counts. Specification summaries expose IDs, names,
 descriptions, brands, collections, thumbnail links, dimensions, and detail URLs.
 Pagination is supplied as a server-generated `Links.Next` URL.
 
-## Category loading strategy
+## Catalog indexing and category strategy
 
-Category pages are loaded lazily. The observed root furniture category reports
-more than 14,000 models and exposes its immediate children, while selecting a
-child makes another Explorer request that can expose an additional category
-level. Recursively fetching the entire tree on startup would therefore add many
-requests to the catalog API without improving the first visible result.
+The observed root furniture category reports more than 14,000 models. Mooblender
+follows its server-provided pagination links in a background worker with a
+48-item request size, 2,048-page limit, 100,000-item limit, and pagination-cycle
+check. It stores summary metadata only; thumbnails and model PContent are not
+part of this full index download.
 
-Mooblender parses the complete category metadata returned by each requested
-page, creates its cards immediately, and then fetches the card thumbnails as a
-separate background batch. Category branches are requested only when opened.
+The complete root index replaces the previous cache atomically only after every
+page succeeds. On startup, the old index is displayed immediately. A background
+request checks the first live page, including category records and their model
+counts. If that prefix differs, the complete index is rebuilt; otherwise the
+single check request is sufficient. This is a practical change detector because
+the observed service does not return `ETag` or `Last-Modified` validators and
+marks responses `no-cache`.
 
-Requested catalog pages are cached on disk. On add-on startup, the initial page
-is restored from that cache before a background revalidation request. The
-observed service does not return `ETag` or `Last-Modified` validators and marks
-responses `no-cache`, so Mooblender compares a fingerprint of the parsed live
-page with the displayed cached page. Existing cards and previews are replaced
-only when that fingerprint changes.
+Search never sends the query to the Explorer API. It matches all whitespace-
+separated terms, case- and accent-insensitively, against cached name,
+description, brand, collection, and ID fields. Empty search restores the full
+index. The sidebar materializes only a preference-sized window of results;
+**Load More** expands that local window, and only visible cards request
+thumbnails.
 
-Category navigation is cache-first after the first visit. Opening a previously
-visited category and Back navigation read only the disk cache and do not start
-a background HTTP request. Pagination responses are merged into the cache entry
-for the category's original URL, so returning also restores models previously
-revealed by **Load More**. Revalidating page one retains those appended pages
-when its live categories and item prefix are unchanged; a changed first page
-replaces the cached catalog. Explicit Refresh remains the operation that asks
-the live service for updated catalog data.
+Category branches remain available for navigation and are requested only when
+opened. Category and Back navigation are cache-first after the initial visit.
+Those pages are separate from the root search index.
 
 Fetching a specification detail URL can add `Links.Content`. Publicly visible
 shape records observed during development linked to HTTPS CDN `.pcontent`
@@ -69,6 +68,9 @@ The sidebar borrows the compact workflow of the open-source
 [IKEA Browser](https://github.com/shish/blender-ikea-browser/): search, thumbnail
 cards, metadata, cache, and one-click import. Mooble additionally requires a
 hierarchical collection list, back navigation, and server pagination.
+The search field is debounced locally while editing; committing it with Enter
+or selecting the magnifier therefore always displays only matching cached
+objects, including the empty-query reset case.
 
 ## Compatibility policy
 

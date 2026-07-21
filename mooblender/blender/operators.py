@@ -4,6 +4,7 @@ import hashlib
 import json
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
@@ -11,11 +12,12 @@ from bpy_extras.io_utils import ImportHelper
 from ..formats import PContentPackage, UnsupportedPromobFormat, load_path
 from ..formats.pcontent import PContentFormatError
 from ..formats.pmob.reader import PmobFormatError
-from ..mooble import CatalogItem
+from ..mooble import CatalogItem, CatalogPage
+from ..mooble.search import filter_catalog_items
 from .background import (
     JOBS,
     THUMBNAIL_JOBS,
-    fetch_catalog,
+    fetch_catalog_index,
     fetch_catalog_url,
     fetch_file,
     fetch_model,
@@ -26,6 +28,18 @@ from .scene_builder import build_document
 
 _ACTIVE_POLLS = set()
 _ACTIVE_THUMBNAILS = {}
+_CATALOG_INDEXES: dict[str, CatalogPage] = {}
+
+
+def _browser_preferences(context):
+    try:
+        return context.preferences.addons[
+            "bl_ext.user_default.mooblender"
+        ].preferences
+    except KeyError:
+        # Direct source registration in the headless compatibility test does
+        # not create Blender's installed-extension preference entry.
+        return SimpleNamespace(start_category="Moveis", page_size=12)
 
 
 def shutdown_async_operators() -> None:
@@ -35,6 +49,7 @@ def shutdown_async_operators() -> None:
             bpy.app.timers.unregister(callback)
     _ACTIVE_POLLS.clear()
     _ACTIVE_THUMBNAILS.clear()
+    _CATALOG_INDEXES.clear()
 
 
 def _online_or_report(operator) -> bool:
@@ -83,20 +98,57 @@ def _set_page(context, page, *, append: bool = False) -> None:
     state.error = ""
     state.status = f"{len(state.items)} model(s) loaded"
     state.page_signature = _page_signature(page) if not append else ""
+    state.using_local_index = False
+    state.local_result_total = 0
+    state.local_result_limit = 0
 
 
 def _page_signature(page) -> str:
     return hashlib.sha256(repr(page).encode("utf-8")).hexdigest()
 
 
-def _set_page_if_changed(context, page) -> bool:
+def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) -> None:
     state = context.window_manager.promob_browser
-    if state.page_signature == _page_signature(page):
-        state.error = ""
-        state.status = f"{len(state.items)} model(s) loaded; catalog is up to date"
-        return False
-    _set_page(context, page)
-    return True
+    preferences = _browser_preferences(context)
+    _CATALOG_INDEXES[page.current_url] = page
+    matches = filter_catalog_items(page.items, state.query)
+    visible_limit = min(
+        len(matches),
+        limit if limit is not None else preferences.page_size,
+    )
+    visible = CatalogPage(
+        categories=page.categories if not state.query.strip() else (),
+        items=matches[:visible_limit],
+        current_url=page.current_url,
+        pin_name=page.pin_name,
+    )
+    _set_page(context, visible)
+    state.using_local_index = True
+    state.local_result_total = len(matches)
+    state.local_result_limit = visible_limit
+    suffix = "" if not page.next_url else " while index refreshes"
+    state.status = f"{visible_limit} of {len(matches)} local match(es){suffix}"
+    state.history_json = "[]"
+
+
+def _load_local_index(context) -> CatalogPage | None:
+    preferences = _browser_preferences(context)
+    client = client_from_context(context)
+    try:
+        url = client.root_url(
+            category=preferences.start_category,
+            search="",
+            page_size=48,
+        )
+        cached = _CATALOG_INDEXES.get(url)
+        if cached is not None:
+            return cached
+        cached = client.load_cached_page(url)
+        if cached is not None:
+            _CATALOG_INDEXES[url] = cached
+        return cached
+    finally:
+        client.close()
 
 
 class _AsyncCatalogOperator:
@@ -237,38 +289,54 @@ class PROMOB_OT_catalog_refresh(_AsyncCatalogOperator, bpy.types.Operator):
     def execute(self, context):
         if not _online_or_report(self):
             return {"CANCELLED"}
-        state = context.window_manager.promob_browser
-        preferences = context.preferences.addons[
-            "bl_ext.user_default.mooblender"
-        ].preferences
+        preferences = _browser_preferences(context)
         client = client_from_context(context)
         cached = client.load_cached_page(
             client.root_url(
                 category=preferences.start_category,
-                search=state.query,
+                search="",
+                page_size=48,
             )
         )
         if cached is not None:
-            _set_page_if_changed(context, cached)
+            _apply_local_index(context, cached)
         return self._start(
             context,
-            fetch_catalog,
+            fetch_catalog_index,
             client,
             status=(
-                "Checking cached catalog for updates..."
+                "Refreshing complete Mooble catalog index..."
                 if cached is not None
-                else "Loading Mooble catalog..."
+                else "Downloading complete Mooble catalog index..."
             ),
             task_kwargs={
                 "category": preferences.start_category,
-                "search": state.query,
             },
         )
 
     @staticmethod
     def _completion(context, page):
-        _set_page_if_changed(context, page)
-        context.window_manager.promob_browser.history_json = "[]"
+        _apply_local_index(context, page)
+
+
+class PROMOB_OT_catalog_search(bpy.types.Operator):
+    bl_idname = "promob.catalog_search"
+    bl_label = "Search cached Mooble catalog"
+    bl_description = "Filter the complete cached catalog without an API request"
+
+    def execute(self, context):
+        state = context.window_manager.promob_browser
+        if state.is_loading:
+            return {"CANCELLED"}
+        page = _load_local_index(context)
+        if page is not None:
+            _apply_local_index(context, page)
+            return {"FINISHED"}
+        if bpy.app.online_access:
+            return bpy.ops.promob.catalog_refresh()
+        state.error = "No local Mooble catalog index is available"
+        state.status = "Catalog unavailable offline"
+        return {"CANCELLED"}
 
 
 def refresh_catalog_on_startup():
@@ -377,12 +445,26 @@ class PROMOB_OT_catalog_load_more(_AsyncCatalogOperator, bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         state = context.window_manager.promob_browser
-        return not state.is_loading and bool(state.next_url)
+        return not state.is_loading and (
+            state.local_result_limit < state.local_result_total or bool(state.next_url)
+        )
 
     def execute(self, context):
+        state = context.window_manager.promob_browser
+        if state.using_local_index:
+            page = _load_local_index(context)
+            if page is None:
+                self.report({"ERROR"}, "Local Mooble catalog index is unavailable")
+                return {"CANCELLED"}
+            preferences = _browser_preferences(context)
+            _apply_local_index(
+                context,
+                page,
+                limit=state.local_result_limit + preferences.page_size,
+            )
+            return {"FINISHED"}
         if not _online_or_report(self):
             return {"CANCELLED"}
-        state = context.window_manager.promob_browser
         return self._start(
             context,
             fetch_catalog_url,
@@ -526,6 +608,7 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
 
 
 CLASSES = (
+    PROMOB_OT_catalog_search,
     PROMOB_OT_catalog_refresh,
     PROMOB_OT_catalog_open_category,
     PROMOB_OT_catalog_back,
