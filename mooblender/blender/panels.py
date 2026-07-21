@@ -19,8 +19,13 @@ class PROMOB_PT_browser(bpy.types.Panel):
 
         if not bpy.app.online_access:
             layout.label(text="Blender is in offline mode", icon="ERROR")
-            layout.label(text="Cached catalog search remains available")
+            layout.label(text="The cached catalog remains available")
             layout.operator("screen.userpref_show", text="Open Preferences").section = "SYSTEM"
+
+        if state.is_syncing:
+            syncing = layout.box()
+            syncing.label(text=state.status or "Syncing catalog...", icon="FILE_REFRESH")
+            syncing.label(text="The cached catalog remains available while syncing")
 
         if state.is_loading:
             loading = layout.box()
@@ -30,10 +35,21 @@ class PROMOB_PT_browser(bpy.types.Panel):
         content = layout.column()
         content.enabled = not state.is_loading
 
+        sync = content.row()
+        sync.enabled = not state.is_syncing and bpy.app.online_access
+        sync.operator("promob.catalog_refresh", text="Sync Catalog", icon="FILE_REFRESH")
+        if state.has_catalog and state.catalog_synced_at:
+            content.label(
+                text=(
+                    f"{state.catalog_item_count} models in "
+                    f"{state.catalog_category_count} categories"
+                ),
+                icon="CHECKMARK",
+            )
+
         search = content.row(align=True)
         search.prop(state, "query", text="", icon="VIEWZOOM")
         search.operator("promob.catalog_search", text="", icon="VIEWZOOM")
-        search.operator("promob.catalog_refresh", text="", icon="FILE_REFRESH")
         content.prop(state, "manufacturer", text="Manufacturer")
 
         navigation = content.row(align=True)
@@ -81,7 +97,7 @@ class PROMOB_PT_browser(bpy.types.Panel):
             operator = box.operator("promob.catalog_import", text="Import", icon="IMPORT")
             operator.item_id = item.item_id
 
-        if state.local_result_limit < state.local_result_total or state.next_url:
+        if state.local_result_limit < state.local_result_total:
             content.operator("promob.catalog_load_more", text="Load More", icon="ADD")
 
 

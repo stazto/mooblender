@@ -14,5 +14,5 @@ license = ["SPDX:GPL-3.0-or-later"]
 copyright = ["2026 Dante Dex"]
 
 [permissions]
-network = "Browse and download models explicitly selected from Mooble"
-files = "Import Promob files and cache downloaded models and thumbnails"
+network = "Sync the Mooble catalog and download requested previews and models"
+files = "Import Promob files and cache the catalog, models, and thumbnails"

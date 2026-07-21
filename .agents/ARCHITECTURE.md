@@ -29,13 +29,22 @@ to mirror a future plan.
 ```text
 local file ──> format reader ──┐
                               ├──> intermediate model ──> Blender adapter
-Mooble ──> client/download ────┘
+Mooble model ──> client/download ┘
+
+Mooble Explorer ──> explicit background sync ──> atomic SQLite snapshot
+                                                     │
+                         browser/search/categories <─┘
 ```
 
 Format readers own byte-level validation and return a shared, Blender-neutral
 model. The Blender adapter owns coordinate conversion and datablock creation.
 The Mooble client owns HTTP behavior and passes downloaded bytes through the
 same format readers as local files.
+
+Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
+queries never fall back to the network: they read the last complete SQLite
+snapshot or report that synchronization is required. Thumbnail and model
+downloads remain lazy, independent caches.
 
 ## Design rules
 

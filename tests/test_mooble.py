@@ -4,6 +4,7 @@ import unittest
 from tempfile import TemporaryDirectory
 
 from mooblender.mooble.client import MoobleClient
+from mooblender.mooble.models import CatalogItem
 
 
 class FakeTransport:
@@ -177,6 +178,22 @@ class MoobleClientTests(unittest.TestCase):
 
             self.assertEqual(path.read_bytes(), b"content")
             self.assertIn("explorer/GetSpec/door-id", " ".join(transport.urls))
+
+    def test_cached_thumbnail_is_not_downloaded_again(self):
+        item = CatalogItem(
+            id="preview-id",
+            name="Preview",
+            thumbnail_url="https://cdn.mooble.com/preview.png",
+        )
+        with TemporaryDirectory() as directory:
+            transport = FakeTransport({})
+            client = MoobleClient(cache_dir=directory, transport=transport)
+            first = client.download_thumbnail(item)
+            calls_after_first = list(transport.urls)
+            second = client.download_thumbnail(item)
+
+        self.assertEqual(first, second)
+        self.assertEqual(transport.urls, calls_after_first)
 
 
 if __name__ == "__main__":

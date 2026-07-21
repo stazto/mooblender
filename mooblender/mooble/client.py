@@ -13,7 +13,7 @@ import tempfile
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urlencode, urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit, urlunsplit
 
 from .models import CatalogCategory, CatalogItem, CatalogPage, ItemDetails
 from .transport import HttpTransport, TransportError
@@ -43,6 +43,16 @@ def _string(value: object) -> str:
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def thumbnail_cache_path(cache_dir: str | Path, item: CatalogItem) -> Path:
+    """Return the deterministic disk-cache location for an item's preview."""
+
+    suffix = Path(urlparse(item.thumbnail_url).path).suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        suffix = ".img"
+    safe_key = hashlib.sha256(item.id.encode("utf-8")).hexdigest()[:32]
+    return Path(cache_dir) / "thumbnails" / f"{safe_key}{suffix}"
 
 
 class MoobleClient:
@@ -105,6 +115,25 @@ class MoobleClient:
         if search.strip():
             params["search"] = search.strip()
         return urljoin(self.base_url, "explorer/v2") + "?" + urlencode(params)
+
+    @staticmethod
+    def with_page_size(url: str, page_size: int) -> str:
+        """Normalize a server-provided catalog URL to a bounded page size."""
+
+        if not url:
+            return ""
+        parts = urlsplit(url)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+        if not any(key == "$top" for key, _value in query):
+            return url
+        bounded = min(max(page_size, 1), 48)
+        resized = [
+            (key, str(bounded) if key == "$top" else value)
+            for key, value in query
+        ]
+        return urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urlencode(resized), parts.fragment)
+        )
 
     def browse(self, *, category: str = "Moveis", search: str = "") -> CatalogPage:
         url = self.root_url(category=category, search=search)
@@ -329,10 +358,11 @@ class MoobleClient:
     ) -> Path | None:
         if not item.thumbnail_url:
             return None
-        suffix = Path(urlparse(item.thumbnail_url).path).suffix.lower()
-        if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
-            suffix = ".img"
-        path = self._cache_path("thumbnails", item.id, suffix)
+        path = thumbnail_cache_path(
+            self.cache_dir or Path(tempfile.gettempdir()) / "mooblender",
+            item,
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists() and path.stat().st_size:
             return path
         try:

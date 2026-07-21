@@ -75,46 +75,13 @@ def main() -> None:
         if not hasattr(bpy.types.WindowManager, "promob_browser"):
             raise AssertionError("Mooblender browser state did not register")
         state = bpy.context.window_manager.promob_browser
-        if state.is_loading:
+        if state.is_loading or state.is_syncing:
             raise AssertionError("Mooblender browser started in a loading state")
 
-        class CachedClient:
+        class LocalStore:
             def __init__(self):
-                self.closed = False
                 self.calls = []
-
-            def load_cached_page(self, url):
-                self.calls.append(url)
-                return CatalogPage(
-                    items=(CatalogItem(id="cached", name="Cached model"),),
-                    current_url=url,
-                )
-
-            def close(self):
-                self.closed = True
-
-        cached_client = CachedClient()
-        original_client_factory = operators.client_from_context
-        operators.client_from_context = lambda _context: cached_client
-        try:
-            state.history_json = json.dumps(["https://catalog.mooble.com/cached"])
-            if bpy.ops.promob.catalog_back() != {"FINISHED"}:
-                raise AssertionError("cached catalog back navigation did not finish")
-        finally:
-            operators.client_from_context = original_client_factory
-        if (
-            cached_client.calls != ["https://catalog.mooble.com/cached"]
-            or not cached_client.closed
-            or state.current_url != "https://catalog.mooble.com/cached"
-            or state.items[0].item_id != "cached"
-            or state.is_loading
-        ):
-            raise AssertionError("back navigation did not restore only the cached catalog")
-
-        class LocalIndexClient:
-            def __init__(self):
-                self.closed = 0
-                self.page = CatalogPage(
+                self.root = CatalogPage(
                     items=(
                         CatalogItem(
                             id="onix",
@@ -128,20 +95,46 @@ def main() -> None:
                     ),
                     current_url="https://catalog.mooble.com/index",
                 )
+                self.cached = CatalogPage(
+                    items=(CatalogItem(id="cached", name="Cached model"),),
+                    current_url="https://catalog.mooble.com/cached",
+                )
 
-            def root_url(self, *, category, search, page_size):
-                if not category or search or page_size != 48:
-                    raise AssertionError("local search used an unexpected index URL")
-                return self.page.current_url
+            def exists(self):
+                return True
 
-            def load_cached_page(self, url):
-                return self.page if url == self.page.current_url else None
+            def root_url(self):
+                return self.root.current_url
 
-            def close(self):
-                self.closed += 1
+            def page(self, url=""):
+                self.calls.append(url)
+                target = url or self.root.current_url
+                return {
+                    self.root.current_url: self.root,
+                    self.cached.current_url: self.cached,
+                }.get(target)
 
-        local_client = LocalIndexClient()
-        operators.client_from_context = lambda _context: local_client
+        local_store = LocalStore()
+        original_store_factory = operators._catalog_store
+        operators._catalog_store = lambda: local_store
+        operators._CATALOG_INDEXES.clear()
+        try:
+            state.history_json = json.dumps(["https://catalog.mooble.com/cached"])
+            if bpy.ops.promob.catalog_back() != {"FINISHED"}:
+                raise AssertionError("cached catalog back navigation did not finish")
+        finally:
+            operators._catalog_store = original_store_factory
+        if (
+            local_store.calls != ["https://catalog.mooble.com/cached"]
+            or state.current_url != "https://catalog.mooble.com/cached"
+            or state.items[0].item_id != "cached"
+            or state.is_loading
+        ):
+            raise AssertionError("back navigation did not restore only the cached catalog")
+
+        state.current_url = local_store.root.current_url
+        operators._catalog_store = lambda: local_store
+        operators._CATALOG_INDEXES.clear()
         try:
             state.query = "moveis onix"
             if bpy.ops.promob.catalog_search() != {"FINISHED"}:
@@ -170,7 +163,7 @@ def main() -> None:
             if len(state.items) != 13:
                 raise AssertionError("local Load More contacted no API but added no results")
         finally:
-            operators.client_from_context = original_client_factory
+            operators._catalog_store = original_store_factory
 
         source = Mesh(
             vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 100.0, 0.0)],

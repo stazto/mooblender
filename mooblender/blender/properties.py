@@ -72,13 +72,17 @@ class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
         items=_manufacturer_items,
         update=_search_changed,
     )
-    status: bpy.props.StringProperty(default="Select Refresh to load Mooble")  # type: ignore
+    status: bpy.props.StringProperty(default="Select Sync Catalog to load Mooble")  # type: ignore
     is_loading: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
+    is_syncing: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
+    has_catalog: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
+    catalog_item_count: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
+    catalog_category_count: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
+    catalog_synced_at: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    view_revision: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
     error: bpy.props.StringProperty()  # type: ignore
     current_url: bpy.props.StringProperty()  # type: ignore
-    next_url: bpy.props.StringProperty()  # type: ignore
     history_json: bpy.props.StringProperty(default="[]", options={"HIDDEN"})  # type: ignore
-    page_signature: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
     using_local_index: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     local_result_total: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
     local_result_limit: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
@@ -91,9 +95,7 @@ def _reset_browser(_self, _context) -> None:
         if hasattr(window_manager, "promob_browser"):
             state = window_manager.promob_browser
             state.current_url = ""
-            state.next_url = ""
             state.history_json = "[]"
-            state.page_signature = ""
             state.using_local_index = False
             state.local_result_total = 0
             state.local_result_limit = 0
@@ -101,8 +103,12 @@ def _reset_browser(_self, _context) -> None:
             set_manufacturer_items(())
             state.categories.clear()
             state.items.clear()
-            state.is_loading = False
-            state.status = "Settings changed; select Refresh"
+            state.has_catalog = False
+            state.catalog_item_count = 0
+            state.catalog_category_count = 0
+            state.catalog_synced_at = ""
+            state.view_revision += 1
+            state.status = "Settings changed; select Sync Catalog"
 
 
 class PROMOB_AP_preferences(bpy.types.AddonPreferences):

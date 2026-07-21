@@ -25,12 +25,12 @@ def register_addon() -> None:
         type=properties.PROMOB_PG_browser_state
     )
     bpy.types.TOPBAR_MT_file_import.append(_menu_import)
-    bpy.app.timers.register(operators.refresh_catalog_on_startup, first_interval=0.5)
+    bpy.app.timers.register(operators.load_catalog_on_startup, first_interval=0.5)
 
 
 def unregister_addon() -> None:
-    if bpy.app.timers.is_registered(operators.refresh_catalog_on_startup):
-        bpy.app.timers.unregister(operators.refresh_catalog_on_startup)
+    if bpy.app.timers.is_registered(operators.load_catalog_on_startup):
+        bpy.app.timers.unregister(operators.load_catalog_on_startup)
     with suppress(RuntimeError):
         bpy.types.TOPBAR_MT_file_import.remove(_menu_import)
     operators.shutdown_async_operators()

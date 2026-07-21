@@ -25,42 +25,48 @@ Initial Explorer responses place product records under
 `Data`, `Links`, and `HasMore` directly at the response root. Both shapes must
 be parsed or pagination silently appears empty.
 
-## Catalog indexing and category strategy
+## Catalog synchronization and local queries
 
 The observed root furniture category reports more than 14,000 models. Mooblender
-follows its server-provided pagination links in a background worker with a
-48-item request size, 2,048-page limit, 100,000-item limit, and pagination-cycle
-check. It stores summary metadata only; thumbnails and model PContent are not
-part of this full index download.
+contacts Explorer catalog endpoints only after the user selects **Sync
+Catalog**. The background synchronizer follows the root pagination and every
+category branch with a 48-item request size, per-category page and cycle limits,
+and global category, item, and membership safety limits. Thumbnails and model
+PContent are not part of catalog synchronization.
 
 Although observed continuation URLs default to 15 records, their endpoint was
 verified to accept 48 and returns the next skip value accordingly. The indexer
 normalizes that existing `$top` parameter to 48. It also compares the final
 unique-item count with the selected root category's `SpecCount`; an early or
-misparsed end aborts the refresh instead of publishing a partial index. On
+misparsed end aborts the sync instead of publishing a partial index. On
 2026-07-21 this check reported 14,310 root furniture items, and a bounded live
 `kappesberg` verification returned all 310 reported matches in seven pages.
 
-The complete root index replaces the previous cache atomically only after every
-page succeeds. On startup, the old index is displayed immediately. A background
-request checks the first live page, including category records and their model
-counts. If that prefix differs, the complete index is rebuilt; otherwise the
-single check request is sufficient. This is a practical change detector because
-the observed service does not return `ETag` or `Last-Modified` validators and
-marks responses `no-cache`.
+The API summaries do not expose their department membership directly. The sync
+therefore records each category's complete ordered item-ID set while
+deduplicating model summaries in a temporary SQLite database. That database
+replaces the previous snapshot atomically only after the complete category tree
+succeeds. A failed or interrupted synchronization leaves the last usable
+snapshot untouched.
+
+Startup opens the SQLite snapshot and makes no catalog request. Category, Back,
+search, manufacturer, and pagination actions query the local snapshot only.
+The old snapshot remains interactive while a new one synchronizes, with page,
+model, and category progress displayed separately from model-import activity.
 
 Search never sends the query to the Explorer API. It matches all whitespace-
-separated terms, case- and accent-insensitively, against cached name,
-description, brand, collection, and ID fields. Empty search restores the full
-index. A local manufacturer dropdown is derived from the non-empty `Brand.Name`
-values in that same index. Manufacturer equality is case- and accent-insensitive
+separated terms, case- and accent-insensitively, against the complete cached
+root catalog's name, description, brand, collection, and ID fields. Empty
+search restores the root catalog. A local manufacturer dropdown is derived
+from the non-empty `Brand.Name` values in that complete index. Manufacturer
+equality is case- and accent-insensitive
 and combines with every text term. The sidebar materializes only a preference-
 sized window of results; **Load More** expands that local window, and only
 visible cards request thumbnails.
 
-Category branches remain available for navigation and are requested only when
-opened. Category and Back navigation are cache-first after the initial visit.
-Those pages are separate from the root search index.
+Category branches and item memberships are all captured by synchronization.
+Opening a category for the first time is therefore the same local database read
+as revisiting it and works without Blender Online Access.
 
 Fetching a specification detail URL can add `Links.Content`. Publicly visible
 shape records observed during development linked to HTTPS CDN `.pcontent`
@@ -81,10 +87,12 @@ the main thread.
 The sidebar borrows the compact workflow of the open-source
 [IKEA Browser](https://github.com/shish/blender-ikea-browser/): search, thumbnail
 cards, metadata, cache, and one-click import. Mooble additionally requires a
-hierarchical collection list, back navigation, and server pagination.
+hierarchical collection list, back navigation, and bounded local result pages.
 The search field is debounced locally while editing; committing it with Enter
 or selecting the magnifier therefore always displays only matching cached
-objects, including the empty-query reset case.
+objects, including the empty-query reset case. **Sync Catalog** is deliberately
+explicit; enabling the add-on and starting Blender never triggers a catalog
+download.
 
 ## Compatibility policy
 

@@ -64,7 +64,7 @@ Remaining exit work:
 Interaction target, inspired by the open-source IKEA Browser extension:
 
 - 3D View sidebar panel;
-- search plus explicit refresh;
+- search plus explicit catalog synchronization;
 - compact thumbnail cards with model, brand, and collection names;
 - one-click download/import;
 - on-disk thumbnail/model cache; and
@@ -82,24 +82,29 @@ Implemented follow-up work:
 
 - Timer-backed catalog, thumbnail, model, and local aggregate work runs off the
   UI thread; Blender data is touched only by completion callbacks.
-- Catalog pages are restored from disk at startup and revalidated by parsed
-  response fingerprint; cards precede one batched visible-thumbnail request.
-- The complete root catalog metadata is assembled from bounded pagination into
-  one atomic disk index. Search and empty-query reset run locally with bounded
-  result cards and local **Load More**; thumbnails and models remain on-demand.
+- Search and empty-query reset run locally with bounded result cards and local
+  **Load More**; thumbnails and models remain on-demand.
 - Explorer first-page and root-level continuation response shapes are parsed
   independently; completion must reach the selected category's reported unique
   item count before the index can replace its previous cache.
 - Indexed `Brand.Name` values populate a local manufacturer menu that combines
   with text search and requires no catalog request.
+- Catalog access is now explicit and local-first: **Sync Catalog** crawls the
+  complete category tree and writes deduplicated items plus category membership
+  into a temporary SQLite snapshot, atomically publishing it only on success.
+- Startup, search, manufacturer filtering, category navigation, Back, and Load
+  More perform no catalog requests. The previous snapshot remains usable while
+  a new sync reports page/category progress in the background.
+- Cached thumbnail paths are restored before scheduling work; only materialized
+  uncached cards are requested, queued stale batches are cancelled when
+  possible, and newly visible work is not trapped behind one old batch.
 
 Remaining exit work:
 
-- Add cancellation, progress, retry-after support, ETag/Last-Modified cache
-  validation, cache size controls, and a clear-cache operator.
+- Add catalog-sync cancellation, retry-after support, cache size controls, and
+  a clear-cache operator.
 - Add a selected-product details panel with dimensions and source URL.
-- Preserve category state per Blender window and avoid reloading thumbnails
-  already held in previews.
+- Preserve category state independently for every Blender window.
 - Add schema-change diagnostics that retain a redacted response shape.
 - Validate regional and partnership behavior without assuming all catalog
   content is public or redistributable.

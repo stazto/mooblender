@@ -53,8 +53,8 @@ After enabling it:
 
 1. Open the **Mooble** tab in the 3D View sidebar.
 2. Enable Blender's **Online Access** setting when using Mooble.
-3. The catalog loads automatically; browse a collection or search, then select
-   **Import**.
+3. Select **Sync Catalog** once to download the complete catalog, then browse a
+   collection or search the local snapshot and select **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
 The default import mode creates one visible object with a Geometry Nodes
@@ -71,12 +71,17 @@ overwrite one another.
 Choose **Collection hierarchy** in the extension preferences when individual
 Promob primitives and aggregates are more useful than a single object.
 
-The complete catalog metadata index is downloaded through the Explorer pages
-and cached on disk; model binaries remain on-demand. At startup, the cached
-index appears immediately and one background first-page check compares its
-items and category counts. A detected change rebuilds the index atomically.
-The first complete build can take several minutes for the currently reported
-14,000-plus records, but it does not block Blender's main thread.
+**Sync Catalog** is the only catalog-network action. It downloads the complete
+model index and category tree into a temporary SQLite database, then atomically
+replaces the previous on-disk snapshot after every page succeeds. Existing
+catalog data stays fully usable while synchronization runs. The first sync can
+take several minutes for the currently reported 14,000-plus records and their
+category memberships, but it does not block Blender's main thread.
+
+Startup performs no catalog request. It opens the last successful snapshot
+from Blender's user data directory. Search, category navigation, manufacturer
+filtering, Back, and Load More query only that snapshot and therefore work
+offline without requesting catalog pages.
 
 Search is case- and accent-insensitive and runs entirely against that local
 index. Committing the search field or selecting its magnifier updates the cards;
@@ -84,15 +89,13 @@ committing an empty field restores the unfiltered catalog. Only one bounded
 result batch becomes UI cards at a time. A manufacturer menu is populated from
 the indexed brands and combines with the text query; **All manufacturers**
 clears that filter. **Load More** expands the local matches without contacting
-Mooble. Thumbnails are fetched only for those visible cards. Each card shows a
-loading symbol until its preview arrives.
-During catalog or model operations, the panel remains visible with its controls
-disabled and a loading message above it. Blender data is only created on its
-main thread.
-
-Every separately visited category also remains in the disk cache. Opening an
-already visited category or using **Back** restores that cached page immediately
-without a network request.
+Mooble. Thumbnails are fetched only for materialized cards that do not already
+have a cached preview. Cached paths are restored immediately, queued work from
+an old view is cancelled when possible, and newly visible cards can proceed
+past a stale in-flight batch. Each uncached card shows a loading symbol until
+its preview arrives. Catalog synchronization never disables browsing; model
+import remains isolated from it. Blender data is only created on its main
+thread.
 
 The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store
