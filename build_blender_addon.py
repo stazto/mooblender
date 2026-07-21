@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Build the Mooblender Blender extension as a deterministic ZIP archive."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import tempfile
+import tomllib
+import zipfile
+from contextlib import suppress
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_SOURCE = PROJECT_ROOT / "mooblender"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "dist"
+_ID_PATTERN = re.compile(r"[a-z][a-z0-9_]*\Z")
+_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:-dev\d{3})?\Z")
+_MANIFEST_VERSION_PATTERN = re.compile(r'^version\s*=\s*"[^"]+"\s*$', re.MULTILINE)
+_SKIPPED_DIRECTORY_NAMES = {"__pycache__"}
+_SKIPPED_SUFFIXES = {".pyc", ".pyo", ".zip"}
+
+
+class BuildError(RuntimeError):
+    """Raised when the extension source cannot be packaged safely."""
+
+
+@dataclass(frozen=True)
+class ExtensionMetadata:
+    extension_id: str
+    version: str
+
+
+def read_metadata(source: Path) -> ExtensionMetadata:
+    manifest = source / "blender_manifest.toml"
+    initializer = source / "__init__.py"
+    if not manifest.is_file() or not initializer.is_file():
+        raise BuildError("source must contain blender_manifest.toml and __init__.py")
+
+    try:
+        data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+        raise BuildError(f"could not read Blender manifest: {error}") from error
+
+    extension_id = data.get("id")
+    version = data.get("version")
+    if not isinstance(extension_id, str) or not _ID_PATTERN.fullmatch(extension_id):
+        raise BuildError("manifest id must use lowercase letters, digits, and underscores")
+    if not isinstance(version, str) or not _VERSION_PATTERN.fullmatch(version):
+        raise BuildError("manifest version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-devNNN")
+    return ExtensionMetadata(extension_id=extension_id, version=version)
+
+
+def version_from_git_tag(tag: str) -> str:
+    """Return and validate the extension version represented by a release tag."""
+    if not tag.startswith("v"):
+        raise BuildError("release tag must start with 'v'")
+    version = tag[1:]
+    if not _VERSION_PATTERN.fullmatch(version):
+        raise BuildError("release tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-devNNN")
+    return version
+
+
+def _manifest_bytes(path: Path, version: str) -> bytes:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise BuildError(f"could not read Blender manifest: {error}") from error
+    text, replacements = _MANIFEST_VERSION_PATTERN.subn(f'version = "{version}"', text)
+    if replacements != 1:
+        raise BuildError("Blender manifest must contain exactly one version field")
+    return text.encode("utf-8")
+
+
+def collect_source_files(source: Path) -> tuple[Path, ...]:
+    if not source.is_dir():
+        raise BuildError(f"extension source directory does not exist: {source}")
+
+    files: list[Path] = []
+    for path in source.rglob("*"):
+        relative = path.relative_to(source)
+        if path.is_symlink():
+            raise BuildError(f"symbolic links are not allowed in the extension: {relative}")
+        if any(part.startswith(".") or part in _SKIPPED_DIRECTORY_NAMES for part in relative.parts):
+            continue
+        if path.is_file() and path.suffix.lower() not in _SKIPPED_SUFFIXES:
+            files.append(relative)
+    return tuple(sorted(files, key=lambda path: path.as_posix()))
+
+
+def _zip_timestamp() -> tuple[int, int, int, int, int, int]:
+    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if raw_epoch is None:
+        return (2026, 1, 1, 0, 0, 0)
+    try:
+        timestamp = datetime.fromtimestamp(int(raw_epoch), tz=UTC)
+    except (ValueError, OverflowError, OSError) as error:
+        raise BuildError("SOURCE_DATE_EPOCH must be a valid Unix timestamp") from error
+    if not 1980 <= timestamp.year <= 2107:
+        raise BuildError("SOURCE_DATE_EPOCH is outside the ZIP timestamp range")
+    return (
+        timestamp.year,
+        timestamp.month,
+        timestamp.day,
+        timestamp.hour,
+        timestamp.minute,
+        timestamp.second - timestamp.second % 2,
+    )
+
+
+def build_addon(
+    source: Path = DEFAULT_SOURCE,
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    *,
+    git_tag: str | None = None,
+) -> Path:
+    source = source.resolve()
+    metadata = read_metadata(source)
+    version = version_from_git_tag(git_tag) if git_tag else metadata.version
+    files = collect_source_files(source)
+    if not files:
+        raise BuildError("extension source contains no packageable files")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{metadata.extension_id}-{version}.zip"
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=output_path.name + ".", suffix=".tmp", dir=output_dir
+    )
+    os.close(descriptor)
+    try:
+        with zipfile.ZipFile(
+            temporary_name, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+        ) as archive:
+            for relative in files:
+                info = zipfile.ZipInfo(relative.as_posix(), date_time=_zip_timestamp())
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o100644 << 16
+                if relative.as_posix() == "blender_manifest.toml":
+                    contents = _manifest_bytes(source / relative, version)
+                else:
+                    contents = (source / relative).read_bytes()
+                archive.writestr(info, contents, compresslevel=9)
+        os.chmod(temporary_name, 0o644)
+        os.replace(temporary_name, output_path)
+    except BaseException:
+        with suppress(FileNotFoundError):
+            os.unlink(temporary_name)
+        raise
+    return output_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--git-tag",
+        default=os.environ.get("MOOBLENDER_GIT_TAG") or None,
+        help="release tag such as v0.1.0-dev001; overrides the manifest version in the ZIP",
+    )
+    arguments = parser.parse_args()
+    try:
+        archive = build_addon(arguments.source, arguments.output_dir, git_tag=arguments.git_tag)
+    except BuildError as error:
+        parser.error(str(error))
+    print(archive)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
