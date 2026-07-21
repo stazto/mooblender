@@ -54,6 +54,11 @@ After enabling it:
 3. Select **Refresh**, browse a collection or search, then select **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
+Catalog pages and models download in background workers. Thumbnails are fetched
+only when **Load Preview** is selected for a model. The Mooble panel displays
+the current loading operation while Blender remains available for other work;
+Blender data is only created on its main thread.
+
 The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store
 credentials or bypass access controls.

@@ -22,6 +22,12 @@ class PROMOB_PT_browser(bpy.types.Panel):
             layout.operator("screen.userpref_show", text="Open Preferences").section = "SYSTEM"
             return
 
+        if state.is_loading:
+            loading = layout.box()
+            loading.label(text=state.status or "Loading Mooble...", icon="INFO")
+            loading.label(text="You can keep working while the download finishes")
+            return
+
         search = layout.row(align=True)
         search.prop(state, "query", text="", icon="VIEWZOOM")
         search.operator("promob.catalog_refresh", text="", icon="FILE_REFRESH")
@@ -56,6 +62,13 @@ class PROMOB_PT_browser(bpy.types.Panel):
             icon_id = icon_for_item(item)
             if icon_id:
                 box.template_icon(icon_value=icon_id, scale=6.0)
+            elif item.thumbnail_url:
+                preview = box.operator(
+                    "promob.catalog_thumbnail",
+                    text="Load Preview",
+                    icon="IMAGE_DATA",
+                )
+                preview.item_id = item.item_id
             box.label(text=item.name)
             if item.brand:
                 box.label(text=item.brand, icon="BOOKMARKS")

@@ -5,6 +5,7 @@ from contextlib import suppress
 import bpy
 
 from . import operators, panels, properties
+from .background import JOBS
 from .runtime import clear_previews
 
 CLASSES = properties.CLASSES + operators.CLASSES + panels.CLASSES
@@ -32,6 +33,8 @@ def unregister_addon() -> None:
     if hasattr(bpy.types.WindowManager, "promob_browser"):
         del bpy.types.WindowManager.promob_browser
     clear_previews()
+    operators.shutdown_async_operators()
+    JOBS.shutdown()
     for cls in reversed(CLASSES):
         if cls.is_registered:
             bpy.utils.unregister_class(cls)

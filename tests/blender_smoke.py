@@ -29,6 +29,9 @@ def main() -> None:
             raise AssertionError("Mooblender panel did not register")
         if not hasattr(bpy.types.WindowManager, "promob_browser"):
             raise AssertionError("Mooblender browser state did not register")
+        state = bpy.context.window_manager.promob_browser
+        if state.is_loading:
+            raise AssertionError("Mooblender browser started in a loading state")
 
         source = Mesh(
             vertices=[(0.0, 0.0, 0.0), (1000.0, 0.0, 0.0), (0.0, 1000.0, 0.0)],

@@ -27,6 +27,7 @@ class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
 class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
     query: bpy.props.StringProperty(name="Search")  # type: ignore
     status: bpy.props.StringProperty(default="Select Refresh to load Mooble")  # type: ignore
+    is_loading: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     error: bpy.props.StringProperty()  # type: ignore
     current_url: bpy.props.StringProperty()  # type: ignore
     next_url: bpy.props.StringProperty()  # type: ignore
@@ -44,6 +45,7 @@ def _reset_browser(_self, _context) -> None:
             state.history_json = "[]"
             state.categories.clear()
             state.items.clear()
+            state.is_loading = False
             state.status = "Settings changed; select Refresh"
 
 
