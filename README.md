@@ -60,8 +60,10 @@ After enabling it:
 Each import creates one visible object with a Geometry Nodes modifier. Each
 recognized door or drawer gets its own 0–1 input, named from its
 Mooble component metadata; models without movable components get no opening
-inputs. Alternate Promob records that address the same movable aggregate share
-that component's one control instead of creating duplicate drivers. Door,
+inputs. Ordinal or directional names retain their type, such as
+**Drawer: 1ª** or **Door: Esq**. Alternate Promob records that address the same
+movable aggregate share that component's one control instead of creating
+duplicate drivers. Door,
 drawer, dimension, and finish inputs are connected single values, not geometry
 fields, so Blender keeps them editable in the modifier.
 Editable insertion dimensions become distance inputs such as
@@ -80,6 +82,8 @@ hardware boundary while stretching the remaining panel span. Meshes without
 source UV coordinates receive a size-aware cube projection, and observed
 physical Promob texture dimensions keep their material scale consistent after
 resizing.
+Aggregate visibility expressions, attachment normals, and current drawing
+dimensions are respected when placing nested components.
 The source meshes and transform helpers are retained in a private collection
 referenced by the Geometry Nodes graph, but that collection is not linked to
 the scene. The controller is linked directly to the active Blender collection,

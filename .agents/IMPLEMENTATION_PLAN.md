@@ -141,12 +141,15 @@ geometry, hierarchy, transforms, materials, and animation independently.
 
 - Resolve properties-only aggregate and material specifications recursively in
   the background, with caching, cycle/depth/entity limits, and package reuse.
-- Evaluate the observed numeric dimension, position, inversion, and opening
-  expression subset without executing arbitrary code.
+- Evaluate the observed numeric dimension, position, visibility, inversion,
+  and opening expression subset without executing arbitrary code. Use current
+  drawing dimensions for parent formula variables without conflating them with
+  the measured mesh envelope used for redimensioning.
 - Reconstruct doors and drawers with independent, lazily created controls named
-  from their Mooble component localization. Bind services to exact aggregate
-  paths and collapse alternate service records so each movable component owns
-  one single-value input and driver.
+  from their Mooble component localization and retain a Door/Drawer prefix when
+  the localization is only ordinal or directional. Bind services to exact
+  aggregate paths and collapse alternate service records so each movable
+  component owns one single-value input and driver.
 - Map observed variable `InsertDimension` axes to bounded Geometry Nodes
   distance controls such as Largura and Profundidade, scoped per package
   instance so nested/repeated configurable components remain independent.
@@ -161,6 +164,8 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Convert mirrored opening-service pivots and handedness into the negative-X
   aggregate representation so paired doors retain separate symmetric hinges
   and open outward.
+- Orient aggregate local Z from its `Normal` vector, then apply `Rotation`
+  around that attachment axis.
 - Measure serialized PMob geometry after primitive transforms, redimension only
   that geometry, and leave nested aggregate placement in target coordinates.
   Preserve partial-axis fixed hardware size when a non-editable component layer
@@ -195,6 +200,11 @@ near-black handle with equal RGB channels. Cached 728 validation keeps both
 handles at about 30 mm high, stretches each door panel to about 370 mm, and
 generates physically scaled UVs for its source panels, which contain no UV
 records.
+Cached placement validation also keeps the SUP01.0003 cabinet within its 878 mm
+height with one condition-selected drawer body per front, positions the
+44950/007 tool-cart drawers from its 570 mm drawing depth rather than its 645 mm
+mesh envelope, and orients the 10122 bed's handles inside their 149 mm drawer
+fronts.
 
 ## Milestone 4 — Identify and implement `.content`
 

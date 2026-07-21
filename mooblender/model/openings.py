@@ -24,6 +24,21 @@ def service_name(service: Mapping[str, object], fallback: str) -> str:
     return description or fallback
 
 
+def control_name(service: Mapping[str, object], fallback: str) -> str:
+    """Return a recognizable modifier label for one opening component."""
+
+    name = service_name(service, fallback)
+    service_type = str(service.get("Type", "")).strip()
+    kind = service_type.casefold()
+    descriptive_terms = {
+        "door": ("door", "porta"),
+        "drawer": ("drawer", "gaveta"),
+    }.get(kind, ())
+    if not descriptive_terms or any(term in name.casefold() for term in descriptive_terms):
+        return name
+    return f"{service_type}: {name}"
+
+
 def door_motion(
     service: Mapping[str, object],
     dimensions: tuple[float, float, float],

@@ -52,7 +52,8 @@ the source collection remains an unlinked implementation detail.
 Modifier interfaces use single-value sockets for openings, configurable
 dimensions, and finish menus. Opening services bind only to an exact resolved
 aggregate path, and multiple source records for that path collapse to the one
-movable component control. Material definitions with the same display name and
+movable component control. Numeric or directional component names retain a
+`Door` or `Drawer` prefix. Material definitions with the same display name and
 ordered style names share one menu across package scopes; differing option sets
 receive unique interface names. The controller node group has a geometry output
 only because source geometry enters through its Collection Info node.
@@ -68,6 +69,11 @@ serialized UVs receive a target-size-aware cube projection; physical Promob
 texture dimensions then drive the material's UV scale. Generated materials
 carry both a source/resource fingerprint and a current node-state fingerprint;
 reuse requires both to match, so edited materials are preserved.
+
+Aggregate formulas use current `DrawingDimension` axes before logical
+`Dimension` axes; measured geometry is reserved for redimension scaling.
+`VisibleCondition` filters the resolved tree, while `Normal` maps local positive
+Z to the aggregate attachment normal before its axial `Rotation` is applied.
 
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite

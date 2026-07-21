@@ -17,6 +17,14 @@ class ExpressionTests(unittest.TestCase):
         self.assertEqual(evaluate_expression(expression, {"I": False, "D": 20}), 10.0)
         self.assertEqual(evaluate_expression(expression, {"I": True, "D": 20}), -10.0)
 
+    def test_observed_visibility_comparisons(self):
+        self.assertEqual(evaluate_expression("$PH$>165", {"PH": 330}), 1.0)
+        self.assertEqual(evaluate_expression("$PH$<=165", {"PH": 330}), 0.0)
+        self.assertEqual(
+            evaluate_expression("$PH$>=85 and $PH$<165", {"PH": 155}),
+            1.0,
+        )
+
     def test_never_executes_names_or_calls(self):
         self.assertEqual(evaluate_expression("open('/tmp/no')", default=7), 7)
 

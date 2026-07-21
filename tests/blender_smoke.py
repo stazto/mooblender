@@ -223,7 +223,7 @@ def main() -> None:
             operators._catalog_store = original_store_factory
 
         source = Mesh(
-            vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 100.0, 0.0)],
+            vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 120.0, 0.0)],
             indices=[0, 1, 2],
             texture_coordinates=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
             material_id=0,
@@ -298,6 +298,83 @@ def main() -> None:
             raise AssertionError("a user-modified material was incorrectly reused")
         _remove_import(changed_controller)
         _remove_import(static_controller)
+
+        oriented_part = PContentPackage(
+            document=PmobDocument(
+                name="Oriented part",
+                version=2,
+                layers=[
+                    SceneLayer(
+                        name="Oriented",
+                        meshes=[
+                            Mesh(
+                                vertices=[
+                                    (0.0, 0.0, 0.0),
+                                    (0.0, 10.0, 0.0),
+                                    (0.0, 0.0, 100.0),
+                                ],
+                                indices=[0, 1, 2],
+                            )
+                        ],
+                    )
+                ],
+                materials=[Material(name="Oriented", color=(12, 34, 56, 255))],
+            ),
+            properties={
+                "Dimension": {"Width": 10, "Depth": 10, "Height": 100},
+                "DrawingDimension": {"Width": 10, "Depth": 10, "Height": 100},
+            },
+        )
+        orientation_package = PContentPackage(
+            document=None,
+            properties={
+                "Dimension": {"Width": 500, "Depth": 400, "Height": 300},
+                "Aggregates": [
+                    {
+                        "Description": "Visible oriented part",
+                        "Dimension": {"Width": 10, "Depth": 10, "Height": 100},
+                        "Position": {"X": 100, "Y": 0, "Z": 0, "Rotation": 180},
+                        "Normal": {"X": -1, "Y": 0, "Z": 0},
+                        "VisibleCondition": "$PH$>=300",
+                    },
+                    {
+                        "Description": "Hidden alternate part",
+                        "Dimension": {"Width": 10, "Depth": 10, "Height": 100},
+                        "Position": {"X": 400, "Y": 0, "Z": 0},
+                        "VisibleCondition": "$PH$<100",
+                    },
+                ],
+            },
+            resolved_aggregates=[
+                ResolvedAggregate(index=0, specification_id="visible", package=oriented_part),
+                ResolvedAggregate(index=1, specification_id="hidden", package=oriented_part),
+            ],
+        )
+        orientation_controller = build_document(
+            orientation_package,
+            bpy.context,
+            collection_name="Aggregate metadata",
+        )
+        bpy.context.view_layer.update()
+        orientation_source = _geometry_source_collection(orientation_controller)
+        orientation_meshes = [
+            obj for obj in orientation_source.all_objects if obj.type == "MESH"
+        ]
+        if len(orientation_meshes) != 1:
+            raise AssertionError("aggregate VisibleCondition did not hide its alternate")
+        orientation_points = [
+            orientation_meshes[0].matrix_world @ vertex.co
+            for vertex in orientation_meshes[0].data.vertices
+        ]
+        orientation_extents = tuple(
+            max(point[axis] for point in orientation_points)
+            - min(point[axis] for point in orientation_points)
+            for axis in range(3)
+        )
+        if tuple(round(value, 3) for value in orientation_extents) != (0.1, 0.01, 0.0):
+            raise AssertionError("aggregate Normal did not orient the child geometry")
+        _remove_import(orientation_controller)
+
         root_material = PContentPackage(
             document=PmobDocument(
                 name="Root Finish",
@@ -337,6 +414,11 @@ def main() -> None:
                         kind=PrimitiveType.LAYER,
                         layer_ref="Handle",
                     ),
+                    Primitive(
+                        name="Fixed Top Trim",
+                        kind=PrimitiveType.LAYER,
+                        layer_ref="Top Trim",
+                    ),
                 ],
             ),
             layers=[
@@ -347,7 +429,7 @@ def main() -> None:
                             vertices=[
                                 (10.0, 0.0, 0.0),
                                 (100.0, 0.0, 0.0),
-                                (10.0, 100.0, 0.0),
+                                (10.0, 90.0, 0.0),
                             ],
                             indices=source.indices,
                             material_id=-1,
@@ -361,7 +443,21 @@ def main() -> None:
                             vertices=[
                                 (0.0, 0.0, 0.0),
                                 (10.0, 0.0, 0.0),
-                                (0.0, 10.0, 0.0),
+                                (0.0, 100.0, 0.0),
+                            ],
+                            indices=[0, 1, 2],
+                            material_id=-1,
+                        )
+                    ],
+                ),
+                SceneLayer(
+                    name="Top Trim",
+                    meshes=[
+                        Mesh(
+                            vertices=[
+                                (0.0, 90.0, 0.0),
+                                (100.0, 90.0, 0.0),
+                                (0.0, 100.0, 0.0),
                             ],
                             indices=[0, 1, 2],
                             material_id=-1,
@@ -430,6 +526,11 @@ def main() -> None:
                                 "MaterialId": "child-a",
                                 "Edit": False,
                             },
+                            {
+                                "LayerId": "Top Trim",
+                                "MaterialId": "child-a",
+                                "Edit": False,
+                            },
                         ],
                     },
                     {
@@ -441,6 +542,11 @@ def main() -> None:
                             {"LayerId": "Compatibility", "MaterialId": "child-b"},
                             {
                                 "LayerId": "Handle",
+                                "MaterialId": "child-b",
+                                "Edit": False,
+                            },
+                            {
+                                "LayerId": "Top Trim",
                                 "MaterialId": "child-b",
                                 "Edit": False,
                             },
@@ -458,6 +564,11 @@ def main() -> None:
                                 "MaterialId": "child-a",
                                 "Edit": False,
                             },
+                            {
+                                "LayerId": "Top Trim",
+                                "MaterialId": "child-a",
+                                "Edit": False,
+                            },
                         ],
                     },
                     {
@@ -469,6 +580,11 @@ def main() -> None:
                             {"LayerId": "Compatibility", "MaterialId": "child-b"},
                             {
                                 "LayerId": "Handle",
+                                "MaterialId": "child-b",
+                                "Edit": False,
+                            },
+                            {
+                                "LayerId": "Top Trim",
                                 "MaterialId": "child-b",
                                 "Edit": False,
                             },
@@ -530,8 +646,8 @@ def main() -> None:
                     {
                         "Description": "Child",
                         "Constant": True,
-                        "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
-                        "Position": {"X": 300, "Y": 0, "Z": 0},
+                        "Dimension": {"Width": 200, "Depth": 200, "Height": 1},
+                        "Position": {"X": 300, "Y": "-$PD$", "Z": 0},
                     }
                 ],
                 "OpenServices": [
@@ -617,8 +733,15 @@ def main() -> None:
         modifier = controller.modifiers.get("Mooblender")
         evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
         evaluated_mesh = evaluated.to_mesh()
-        if modifier is None or len(evaluated_mesh.polygons) != 4:
+        if modifier is None or len(evaluated_mesh.polygons) != 5:
             raise AssertionError("single-object Geometry Nodes import is not producing geometry")
+        child_placement = next(
+            obj
+            for obj in source_collection.all_objects
+            if obj.get("promob_aggregate_index") == 0 and obj.name == "Child"
+        )
+        if round(child_placement.location.y, 3) != -1.0:
+            raise AssertionError("aggregate expressions did not use the logical parent size")
         handle = next(
             obj
             for obj in source_collection.all_objects
@@ -643,6 +766,25 @@ def main() -> None:
         )
         if round(panel_width, 3) != 0.19:
             raise AssertionError("panel did not stretch around its fixed-size hardware")
+        panel_height = max(point.y for point in panel_points) - min(
+            point.y for point in panel_points
+        )
+        if round(panel_height, 3) != 0.19:
+            raise AssertionError("panel did not stretch up to its fixed high-side trim")
+        top_trim = next(
+            obj
+            for obj in source_collection.all_objects
+            if obj.type == "MESH" and obj.get("promob_layer") == "Top Trim"
+        )
+        trim_points = [
+            top_trim.matrix_world @ vertex.co for vertex in top_trim.data.vertices
+        ]
+        trim_bounds = (
+            min(point.y for point in trim_points),
+            max(point.y for point in trim_points),
+        )
+        if tuple(round(value, 3) for value in trim_bounds) != (-0.81, -0.8):
+            raise AssertionError("fixed high-side trim moved away from the resized edge")
         if not child_panel.data.uv_layers or all(
             loop.uv.length_squared == 0.0
             for loop in child_panel.data.uv_layers.active.data

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from mooblender.model.openings import door_motion, service_name
+from mooblender.model.openings import control_name, door_motion, service_name
 
 
 class OpeningTests(unittest.TestCase):
@@ -21,6 +21,20 @@ class OpeningTests(unittest.TestCase):
     def test_service_name_falls_back_to_description_then_component(self):
         self.assertEqual(service_name({"Description": "Gaveta"}, "Part"), "Gaveta")
         self.assertEqual(service_name({}, "Part"), "Part")
+
+    def test_control_name_keeps_the_type_when_the_component_is_only_numbered(self):
+        self.assertEqual(
+            control_name({"Type": "Drawer", "Description": "1ª"}, "Part"),
+            "Drawer: 1ª",
+        )
+        self.assertEqual(
+            control_name({"Type": "Door", "Description": "Esq"}, "Part"),
+            "Door: Esq",
+        )
+        self.assertEqual(
+            control_name({"Type": "Drawer", "Description": "Gaveta interna"}, "Part"),
+            "Gaveta interna",
+        )
 
     def test_mirrored_pair_uses_opposite_world_hinges_and_opens_outward(self):
         service = {

@@ -15,6 +15,14 @@ _BINARY = {
     ast.Div: operator.truediv,
 }
 _UNARY = {ast.UAdd: operator.pos, ast.USub: operator.neg, ast.Not: operator.not_}
+_COMPARE = {
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+}
 
 
 def _strip_outer_parentheses(value: str) -> str:
@@ -65,6 +73,24 @@ def _evaluate_node(node: ast.AST) -> float:
         return float(_BINARY[type(node.op)](_evaluate_node(node.left), _evaluate_node(node.right)))
     if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY:
         return float(_UNARY[type(node.op)](_evaluate_node(node.operand)))
+    if isinstance(node, ast.Compare) and all(
+        type(operation) in _COMPARE for operation in node.ops
+    ):
+        values = [_evaluate_node(node.left), *map(_evaluate_node, node.comparators)]
+        return float(
+            all(
+                _COMPARE[type(operation)](left, right)
+                for operation, left, right in zip(
+                    node.ops,
+                    values[:-1],
+                    values[1:],
+                    strict=True,
+                )
+            )
+        )
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+        values = [bool(_evaluate_node(value)) for value in node.values]
+        return float(all(values) if isinstance(node.op, ast.And) else any(values))
     raise ValueError("unsupported PContent expression")
 
 

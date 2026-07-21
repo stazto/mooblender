@@ -15,7 +15,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Quaternion, Vector
 
 from ..formats.pcontent import PContentPackage
 from ..model.dimensions import (
@@ -27,7 +27,7 @@ from ..model.dimensions import (
     serialized_geometry_dimensions,
 )
 from ..model.expressions import evaluate_expression
-from ..model.openings import door_motion, service_name
+from ..model.openings import control_name, door_motion
 from ..model.scene import Material, PmobDocument, Primitive, PrimitiveType
 from ..model.transforms import blender_matrix_rows
 
@@ -534,6 +534,7 @@ def _layer_resize_corrections(
     document_maximum = tuple(
         max(bounds[1][axis] for bounds in populated_bounds) for axis in range(3)
     )
+    unit_scale = package.document.unit_scale_to_meters
     corrections = {
         layer: [[1.0, 1.0, 1.0], [0.0, 0.0, 0.0]]
         for layer in layer_bounds
@@ -565,6 +566,24 @@ def _layer_resize_corrections(
             correction_scale, correction_location = corrections[layer]
             if layer in partial_fixed:
                 correction_scale[axis] = 1.0 / global_scale
+                layer_center = (bounds[0][axis] + bounds[1][axis]) / 2.0
+                if layer_center <= center:
+                    target_anchor = (
+                        global_scale * document_minimum[axis]
+                        + bounds[0][axis]
+                        - document_minimum[axis]
+                    )
+                    translation = target_anchor - bounds[0][axis]
+                else:
+                    target_anchor = (
+                        global_scale * document_maximum[axis]
+                        - document_maximum[axis]
+                        + bounds[1][axis]
+                    )
+                    translation = target_anchor - bounds[1][axis]
+                correction_location[axis] = (
+                    translation * unit_scale / global_scale
+                )
                 continue
             source_minimum = bounds[0][axis]
             source_maximum = bounds[1][axis]
@@ -588,7 +607,7 @@ def _layer_resize_corrections(
             effective_scale = (target_maximum - target_minimum) / source_size
             translation = target_minimum - effective_scale * source_minimum
             correction_scale[axis] = effective_scale / global_scale
-            correction_location[axis] = translation * 0.001 / global_scale
+            correction_location[axis] = translation * unit_scale / global_scale
     return {
         layer: (tuple(scale), tuple(location))
         for layer, (scale, location) in corrections.items()
@@ -829,10 +848,27 @@ def _build_package_tree(
     dimension_controls_enabled: bool = True,
 ):
     logical_dimensions = property_dimensions(package.properties)
-    parent_dimensions = current_dimensions or serialized_geometry_dimensions(
+    drawing_dimensions = property_dimensions(
+        package.properties,
+        "DrawingDimension",
+    )
+    serialized_dimensions = serialized_geometry_dimensions(
         package.properties,
         document=package.document,
         fallback=logical_dimensions,
+    )
+    parent_dimensions = current_dimensions or tuple(
+        drawing
+        if abs(drawing) > 1e-9
+        else logical
+        if abs(logical) > 1e-9
+        else serialized
+        for drawing, logical, serialized in zip(
+            drawing_dimensions,
+            logical_dimensions,
+            serialized_dimensions,
+            strict=True,
+        )
     )
     package_parent = parent
     dimensions = (
@@ -904,6 +940,11 @@ def _build_package_tree(
             D=target_dimensions[1],
             H=target_dimensions[2],
         )
+        visible_condition = raw.get("VisibleCondition")
+        if visible_condition is not None and not bool(
+            evaluate_expression(visible_condition, variables)
+        ):
+            continue
         position = raw.get("Position", {})
         position = position if isinstance(position, dict) else {}
         location = tuple(
@@ -911,6 +952,20 @@ def _build_package_tree(
             for axis in ("X", "Y", "Z")
         )
         rotation = math.radians(evaluate_expression(position.get("Rotation"), variables))
+        raw_normal = raw.get("Normal", {})
+        raw_normal = raw_normal if isinstance(raw_normal, dict) else {}
+        normal = Vector(
+            tuple(
+                evaluate_expression(raw_normal.get(axis), variables)
+                for axis in ("X", "Y", "Z")
+            )
+        )
+        if normal.length_squared <= 1e-12:
+            normal = Vector((0.0, 0.0, 1.0))
+        else:
+            normal.normalize()
+        orientation = Vector((0.0, 0.0, 1.0)).rotation_difference(normal)
+        spin = Quaternion((0.0, 0.0, 1.0), rotation)
         inverted = raw.get("Inverted") is True
         geometry_dimensions = serialized_geometry_dimensions(
             child.properties,
@@ -931,7 +986,8 @@ def _build_package_tree(
         placement.empty_display_type = "CUBE"
         placement.parent = package_parent
         placement.location = location
-        placement.rotation_euler[2] = rotation
+        placement.rotation_mode = "QUATERNION"
+        placement.rotation_quaternion = orientation @ spin
         placement.scale.x = -1.0 if inverted else 1.0
         placement["mooble_specification_id"] = resolved.specification_id
         placement["promob_aggregate_index"] = resolved.index
@@ -1351,7 +1407,7 @@ def build_document(
         service: dict[str, object],
         fallback: str,
     ) -> tuple[str, str]:
-        base = service_name(service, fallback)
+        base = control_name(service, fallback)
         count = control_name_counts.get(base, 0) + 1
         control_name_counts[base] = count
         name = base if count == 1 else f"{base} ({count})"

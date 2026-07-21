@@ -28,31 +28,39 @@ datablocks.
 Observed dimension/position expressions use arithmetic variables such as
 `$PW$`, `$PD$`, `$PH$` for parent dimensions and `$W$`, `$D$`, `$H$` for child
 dimensions. Open-service expressions additionally use C-style ternaries inside
-an `@(...)` wrapper. Mooblender evaluates only a small numeric grammar; it does
-not execute Python or arbitrary source text.
+an `@(...)` wrapper. Aggregate `VisibleCondition` records use numeric
+comparisons and Boolean operators. Mooblender evaluates only this small numeric
+grammar; it does not execute Python or arbitrary source text, and it omits an
+aggregate when its visibility expression is false.
 
 `Dimension`, `DrawingDimension`, and the serialized PMob geometry are distinct.
 `Dimension` supplies logical/default values when an aggregate omits an axis.
-Parent expressions use the dimensions of the current, already-redimensioned
-entity. For scaling, Mooblender measures the PMob vertices after their primitive
-transforms; `DrawingDimension`, `GeometryBoundingBox`, and logical dimensions
-are progressively weaker fallbacks when no renderable PMob is present. This is
-necessary because observed packages include both a door whose logical width is
-100 mm while its serialized geometry is about 377 mm, and parametric fronts
-whose metadata bounding box is a 50 mm cube while their PMob primitive
-transforms produce the actual panel size.
+Parent expressions use the current aggregate target dimensions. At the root,
+each axis uses `DrawingDimension` when present, then `Dimension`, and only then
+the measured geometry. This matters because the observed 728 has a logical 600
+mm width but a current drawing width of 800 mm, while the observed tool cart has
+a 570 mm drawing depth despite a 645 mm geometry envelope. For geometry scaling,
+Mooblender separately measures PMob vertices after their primitive transforms;
+`DrawingDimension`, `GeometryBoundingBox`, and logical dimensions are
+progressively weaker fallbacks when no renderable PMob is present.
 
 Redimension scale applies only to the child package's own PMob geometry. Nested
 aggregate positions are already expressed in the redimensioned child's target
 coordinate system and must not inherit that scale a second time. Inversion is
 kept on the aggregate placement so it mirrors both geometry and nested parts.
+An aggregate `Normal` vector orients its local positive Z axis, and `Rotation`
+then spins the child around that normal. Ignoring `Normal` leaves components on
+the wrong plane; the observed 10122 bed uses `(-1, 0, 0)` to lay its long drawer
+handles horizontally.
 
 `OpenServices.AggregatePath` alternates aggregate-container and selected-option
 indices. Doors supply a pivot and maximum angle; drawers supply maximum travel.
 The single-object import gives every valid movable component its own 0–1
 Geometry Nodes input, preferring its `pt-br` localization and then its source
-description. It creates these controls lazily, so entities without a valid
-door or drawer expose no opening input.
+description. If that name does not already identify the component type, the
+input retains the source `Door` or `Drawer` prefix, for example `Drawer: 1ª`.
+It creates these controls lazily, so entities without a valid door or drawer
+expose no opening input.
 
 Observed resizable entities use `InsertDimension.Min` and
 `InsertDimension.Max` to describe editable insertion ranges. The public API
@@ -75,11 +83,12 @@ Some fixed hardware is flattened into the same PMob document as a resizable
 panel. In the observed 728 door, `Models.Components` marks `PUXADOR` with
 `Edit: false`; its geometry spans the door width but only a small fraction of
 the resized height. Mooblender keeps that small non-editable component fixed on
-the partial axis. It preserves the boundary and overlap beside that hardware,
-then stretches the panel's remaining span to the requested aggregate size. In
-the cached sample this keeps each handle about 30 mm high while each door panel
-extends about 370 mm vertically. This is an evidence-based fallback for
-packages that do not place hardware in a separate constant aggregate.
+the partial axis. It preserves the nearest outer boundary and overlap beside
+that hardware, whether the hardware is on the low or high side, then stretches
+the panel's remaining span to the requested aggregate size. In the cached 728
+sample this keeps each handle about 30 mm high while each door panel extends
+about 370 mm vertically. This is an evidence-based fallback for packages that
+do not place hardware in a separate constant aggregate.
 
 `Models` groups map layer IDs to material specification UUIDs. Multi-option
 groups become named **Finish** menu inputs whose entries use the source style
