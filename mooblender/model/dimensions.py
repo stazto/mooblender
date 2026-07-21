@@ -10,6 +10,7 @@ from .scene import PmobDocument, Primitive
 from .transforms import transform_point_row_vector
 
 Dimension3 = tuple[float, float, float]
+Bounds3 = tuple[Dimension3, Dimension3]
 _FIELDS = ("Width", "Depth", "Height")
 
 
@@ -153,6 +154,15 @@ def _point_dimensions(points: list[tuple[float, float, float]]) -> Dimension3:
     return tuple(maximum[index] - minimum[index] for index in range(3))  # type: ignore[return-value]
 
 
+def _point_bounds(points: list[tuple[float, float, float]]) -> Bounds3 | None:
+    if not points:
+        return None
+    return (
+        tuple(min(point[index] for point in points) for index in range(3)),
+        tuple(max(point[index] for point in points) for index in range(3)),
+    )  # type: ignore[return-value]
+
+
 def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
     """Measure PMob geometry after applying its serialized primitive transforms."""
 
@@ -169,6 +179,17 @@ def document_layer_dimensions(document: PmobDocument | None) -> dict[str, Dimens
         name: _point_dimensions(points)
         for name, points in _document_points_by_layer(document).items()
     }
+
+
+def document_layer_bounds(document: PmobDocument | None) -> dict[str, Bounds3]:
+    """Return transformed minimum/maximum coordinates for each PMob layer."""
+
+    result = {}
+    for name, points in _document_points_by_layer(document).items():
+        bounds = _point_bounds(points)
+        if bounds is not None:
+            result[name] = bounds
+    return result
 
 
 def serialized_geometry_dimensions(

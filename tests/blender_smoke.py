@@ -308,6 +308,8 @@ def main() -> None:
                         metallic=0.25,
                         roughness=0.75,
                         diffuse_texture="compatibility.png",
+                        mapping_type=1,
+                        mapping_scale=(1000.0, 2000.0),
                     )
                 ],
             ),
@@ -342,7 +344,11 @@ def main() -> None:
                     name="Compatibility",
                     meshes=[
                         Mesh(
-                            vertices=source.vertices,
+                            vertices=[
+                                (10.0, 0.0, 0.0),
+                                (100.0, 0.0, 0.0),
+                                (10.0, 100.0, 0.0),
+                            ],
                             indices=source.indices,
                             material_id=-1,
                         )
@@ -589,6 +595,25 @@ def main() -> None:
         ]
         if len(image_nodes) != 1 or image_nodes[0].image.packed_file is None:
             raise AssertionError("scene builder did not load and pack an embedded texture")
+        mapping_node = next(
+            node for node in obj.data.materials[0].node_tree.nodes if node.type == "MAPPING"
+        )
+        coordinate_node = next(
+            node
+            for node in obj.data.materials[0].node_tree.nodes
+            if node.type == "TEX_COORD"
+        )
+        coordinate_outputs = {
+            link.from_socket.name
+            for link in obj.data.materials[0].node_tree.links
+            if link.from_node == coordinate_node
+        }
+        if (
+            image_nodes[0].projection != "FLAT"
+            or tuple(mapping_node.inputs["Scale"].default_value) != (1.0, 0.5, 1.0)
+            or coordinate_outputs != {"UV"}
+        ):
+            raise AssertionError("material did not use its physical UV mapping")
         modifier = controller.modifiers.get("Mooblender")
         evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
         evaluated_mesh = evaluated.to_mesh()
@@ -605,6 +630,30 @@ def main() -> None:
         )
         if round(handle_width, 3) != 0.01:
             raise AssertionError("fixed-size handle stretched with its constant parent")
+        child_panel = next(
+            obj
+            for obj in source_collection.all_objects
+            if obj.type == "MESH" and obj.parent.name == "Child Compatibility"
+        )
+        panel_points = [
+            child_panel.matrix_world @ vertex.co for vertex in child_panel.data.vertices
+        ]
+        panel_width = max(point.x for point in panel_points) - min(
+            point.x for point in panel_points
+        )
+        if round(panel_width, 3) != 0.19:
+            raise AssertionError("panel did not stretch around its fixed-size hardware")
+        if not child_panel.data.uv_layers or all(
+            loop.uv.length_squared == 0.0
+            for loop in child_panel.data.uv_layers.active.data
+        ):
+            raise AssertionError("a resized panel without source UVs was not box projected")
+        panel_uvs = child_panel.data.uv_layers.active.data
+        panel_u_extent = max(loop.uv.x for loop in panel_uvs) - min(
+            loop.uv.x for loop in panel_uvs
+        )
+        if round(panel_u_extent, 3) != 0.19:
+            raise AssertionError("generated panel UVs do not follow its resized dimensions")
         interface_items = modifier.node_group.interface.items_tree
         interface_names = [item.name for item in interface_items]
         if len(interface_names) != len(set(interface_names)):

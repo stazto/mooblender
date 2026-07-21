@@ -75,9 +75,11 @@ Some fixed hardware is flattened into the same PMob document as a resizable
 panel. In the observed 728 door, `Models.Components` marks `PUXADOR` with
 `Edit: false`; its geometry spans the door width but only a small fraction of
 the resized height. Mooblender keeps that small non-editable component fixed on
-the partial axis while allowing full-span axes and the panel to resize. This is
-an evidence-based fallback for packages that do not place hardware in a
-separate constant aggregate.
+the partial axis. It preserves the boundary and overlap beside that hardware,
+then stretches the panel's remaining span to the requested aggregate size. In
+the cached sample this keeps each handle about 30 mm high while each door panel
+extends about 370 mm vertically. This is an evidence-based fallback for
+packages that do not place hardware in a separate constant aggregate.
 
 `Models` groups map layer IDs to material specification UUIDs. Multi-option
 groups become named **Finish** menu inputs whose entries use the source style

@@ -21,6 +21,7 @@ from ..formats.pcontent import PContentPackage
 from ..model.dimensions import (
     configurable_dimensions,
     document_geometry_dimensions,
+    document_layer_bounds,
     document_layer_dimensions,
     property_dimensions,
     serialized_geometry_dimensions,
@@ -95,8 +96,17 @@ def _connect_texture_coordinates(nodes, links, source: Material, texture_nodes) 
     vector_output = coordinates.outputs["UV"]
     if source.mapping_number or source.mapping_scale or source.mapping_rotation:
         mapping = nodes.new("ShaderNodeMapping")
-        repetitions = source.mapping_number or (1.0, 1.0)
-        mapping.inputs["Scale"].default_value = (*repetitions, 1.0)
+        if source.mapping_number:
+            x_scale, y_scale = source.mapping_number
+            mapping_scale = (x_scale, y_scale, 1.0)
+        elif source.mapping_scale:
+            width, height = source.mapping_scale
+            x_scale = 1000.0 / width if width > 1e-9 else 1.0
+            y_scale = 1000.0 / height if height > 1e-9 else 1.0
+            mapping_scale = (x_scale, y_scale, 1.0)
+        else:
+            mapping_scale = (1.0, 1.0, 1.0)
+        mapping.inputs["Scale"].default_value = mapping_scale
         mapping.inputs["Rotation"].default_value[2] = math.radians(
             source.mapping_rotation or 0.0
         )
@@ -355,6 +365,33 @@ def _create_meshes(
     return result
 
 
+def _box_project_uv(
+    mesh,
+    *,
+    geometry_scale: tuple[float, float, float],
+    correction_scale: tuple[float, float, float],
+    correction_location: tuple[float, float, float],
+) -> None:
+    uv_layer = mesh.uv_layers.new(name="UVMap")
+    positions = [
+        tuple(
+            geometry_scale[axis]
+            * (vertex.co[axis] * correction_scale[axis] + correction_location[axis])
+            for axis in range(3)
+        )
+        for vertex in mesh.vertices
+    ]
+    for polygon in mesh.polygons:
+        dominant_axis = max(range(3), key=lambda axis: abs(polygon.normal[axis]))
+        uv_axes = ((1, 2), (0, 2), (0, 1))[dominant_axis]
+        for loop_index in polygon.loop_indices:
+            point = positions[mesh.loops[loop_index].vertex_index]
+            uv_layer.data[loop_index].uv = (
+                point[uv_axes[0]],
+                point[uv_axes[1]],
+            )
+
+
 def _instantiate_primitive(
     primitive: Primitive,
     *,
@@ -364,7 +401,10 @@ def _instantiate_primitive(
     unit_scale: float,
     source_id: str,
     fallback_index: int,
-    fixed_layer_axes: dict[str, tuple[bool, bool, bool]],
+    layer_corrections: dict[
+        str,
+        tuple[tuple[float, float, float], tuple[float, float, float]],
+    ],
     geometry_scale: tuple[float, float, float],
 ):
     name = _unique_name(primitive.name, f"Primitive {fallback_index}")
@@ -389,15 +429,23 @@ def _instantiate_primitive(
         node["mooble_item_id"] = source_id
 
     for mesh_index, mesh in enumerate(meshes_by_layer.get(primitive.layer_ref.casefold(), ())):
-        obj = bpy.data.objects.new(f"{name}_{mesh_index}", mesh)
-        obj.parent = node
-        fixed_axes = fixed_layer_axes.get(primitive.layer_ref.casefold(), (False,) * 3)
-        obj.scale = tuple(
-            1.0 / geometry_scale[axis]
-            if fixed_axes[axis] and abs(geometry_scale[axis]) > 1e-12
-            else 1.0
-            for axis in range(3)
+        correction_scale, correction_location = layer_corrections.get(
+            primitive.layer_ref.casefold(),
+            ((1.0, 1.0, 1.0), (0.0, 0.0, 0.0)),
         )
+        object_mesh = mesh
+        if not mesh.uv_layers:
+            object_mesh = mesh.copy()
+            _box_project_uv(
+                object_mesh,
+                geometry_scale=geometry_scale,
+                correction_scale=correction_scale,
+                correction_location=correction_location,
+            )
+        obj = bpy.data.objects.new(f"{name}_{mesh_index}", object_mesh)
+        obj.parent = node
+        obj.scale = correction_scale
+        obj.location = correction_location
         obj["promob_layer"] = primitive.layer_ref
         obj["promob_material_id"] = mesh.get("promob_material_id", -1)
         if source_id:
@@ -413,7 +461,7 @@ def _instantiate_primitive(
             unit_scale=unit_scale,
             source_id=source_id,
             fallback_index=child_index,
-            fixed_layer_axes=fixed_layer_axes,
+            layer_corrections=layer_corrections,
             geometry_scale=geometry_scale,
         )
     return node
@@ -447,10 +495,10 @@ def _default_material_assignments(package: PContentPackage) -> dict[str, str]:
     return assignments
 
 
-def _fixed_size_layer_axes(
+def _layer_resize_corrections(
     package: PContentPackage | None,
     geometry_scale: tuple[float, float, float],
-) -> dict[str, tuple[bool, bool, bool]]:
+) -> dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]]:
     if package is None or package.document is None:
         return {}
     edit_states: dict[str, set[object]] = {}
@@ -476,15 +524,75 @@ def _fixed_size_layer_axes(
         return {}
     document_dimensions = document_geometry_dimensions(package.document)
     layer_dimensions = document_layer_dimensions(package.document)
-    return {
-        layer: tuple(
-            abs(geometry_scale[axis] - 1.0) > 1e-6
-            and document_dimensions[axis] > 1e-9
-            and dimensions[axis] / document_dimensions[axis] < 0.5
-            for axis in range(3)
+    layer_bounds = document_layer_bounds(package.document)
+    populated_bounds = tuple(layer_bounds.values())
+    if not populated_bounds:
+        return {}
+    document_minimum = tuple(
+        min(bounds[0][axis] for bounds in populated_bounds) for axis in range(3)
+    )
+    document_maximum = tuple(
+        max(bounds[1][axis] for bounds in populated_bounds) for axis in range(3)
+    )
+    corrections = {
+        layer: [[1.0, 1.0, 1.0], [0.0, 0.0, 0.0]]
+        for layer in layer_bounds
+    }
+    for axis, global_scale in enumerate(geometry_scale):
+        document_size = document_dimensions[axis]
+        if abs(global_scale - 1.0) <= 0.01 or document_size <= 1e-9:
+            continue
+        partial_fixed = [
+            layer
+            for layer in fixed_candidates
+            if layer in layer_bounds
+            and layer_dimensions[layer][axis] / document_size < 0.5
+        ]
+        if not partial_fixed:
+            continue
+        center = (document_minimum[axis] + document_maximum[axis]) / 2.0
+        fixed_low = any(
+            (layer_bounds[layer][0][axis] + layer_bounds[layer][1][axis]) / 2.0
+            <= center
+            for layer in partial_fixed
         )
-        for layer, dimensions in layer_dimensions.items()
-        if layer in fixed_candidates
+        fixed_high = any(
+            (layer_bounds[layer][0][axis] + layer_bounds[layer][1][axis]) / 2.0
+            > center
+            for layer in partial_fixed
+        )
+        for layer, bounds in layer_bounds.items():
+            correction_scale, correction_location = corrections[layer]
+            if layer in partial_fixed:
+                correction_scale[axis] = 1.0 / global_scale
+                continue
+            source_minimum = bounds[0][axis]
+            source_maximum = bounds[1][axis]
+            source_size = source_maximum - source_minimum
+            if source_size <= 1e-9:
+                continue
+            target_minimum = (
+                source_minimum
+                if fixed_low
+                else document_minimum[axis]
+                + global_scale * (source_minimum - document_minimum[axis])
+            )
+            target_maximum = (
+                document_minimum[axis]
+                + document_size * global_scale
+                - (document_maximum[axis] - source_maximum)
+                if fixed_high
+                else document_minimum[axis]
+                + global_scale * (source_maximum - document_minimum[axis])
+            )
+            effective_scale = (target_maximum - target_minimum) / source_size
+            translation = target_minimum - effective_scale * source_minimum
+            correction_scale[axis] = effective_scale / global_scale
+            correction_location[axis] = translation * 0.001 / global_scale
+    return {
+        layer: (tuple(scale), tuple(location))
+        for layer, (scale, location) in corrections.items()
+        if scale != [1.0, 1.0, 1.0] or location != [0.0, 0.0, 0.0]
     }
 
 
@@ -566,7 +674,7 @@ def _document_root(
         unit_scale=document.unit_scale_to_meters,
         source_id=source_id,
         fallback_index=0,
-        fixed_layer_axes=_fixed_size_layer_axes(package, geometry_scale),
+        layer_corrections=_layer_resize_corrections(package, geometry_scale),
         geometry_scale=geometry_scale,
     )
 

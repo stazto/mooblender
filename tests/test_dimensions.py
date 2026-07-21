@@ -6,6 +6,7 @@ from mooblender.model.dimensions import (
     bounding_box_dimensions,
     configurable_dimensions,
     document_geometry_dimensions,
+    document_layer_bounds,
     document_layer_dimensions,
     property_dimensions,
     serialized_geometry_dimensions,
@@ -140,6 +141,10 @@ class DimensionTests(unittest.TestCase):
         self.assertEqual(
             document_layer_dimensions(document),
             {"panel": (100.0, 60.0, 40.0)},
+        )
+        self.assertEqual(
+            document_layer_bounds(document),
+            {"panel": ((100.0, 200.0, 300.0), (200.0, 260.0, 340.0))},
         )
         self.assertEqual(
             serialized_geometry_dimensions(

@@ -75,6 +75,11 @@ Default remote finishes are applied before any selection, and finish controls
 are scoped to their source package so same-named cabinet and door layers do not
 overwrite one another. PMob RGBA colors retain their source channel order, and
 exactly equal, unmodified materials are reused across imports.
+When a resizable panel contains fixed hardware, Mooblender preserves the
+hardware boundary while stretching the remaining panel span. Meshes without
+source UV coordinates receive a size-aware cube projection, and observed
+physical Promob texture dimensions keep their material scale consistent after
+resizing.
 The source meshes and transform helpers are retained in a private collection
 referenced by the Geometry Nodes graph, but that collection is not linked to
 the scene. The controller is linked directly to the active Blender collection,
@@ -163,7 +168,8 @@ reuses referenced layer meshes, converts observed units correctly, builds
 Principled materials from embedded textures, reconstructs Mooble aggregates,
 and exposes supported opening and finish choices through Geometry Nodes.
 Observed `InsertDimension` ranges are also exposed as axis-specific Geometry
-Nodes controls.
+Nodes controls. Fixed hardware embedded in resizable panels and missing panel
+UVs are handled for the observed 728 packaging pattern.
 Unverified PMob animation timing, smoothing-group semantics, some mapping
 modes, alternative non-default aggregate specifications, and all
 `.content`/`.mob` behavior remain planned work.

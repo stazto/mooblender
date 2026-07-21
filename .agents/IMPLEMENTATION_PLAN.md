@@ -164,7 +164,11 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Measure serialized PMob geometry after primitive transforms, redimension only
   that geometry, and leave nested aggregate placement in target coordinates.
   Preserve partial-axis fixed hardware size when a non-editable component layer
-  is flattened into resized panel geometry.
+  is flattened into resized panel geometry, and stretch the panel from the
+  preserved hardware boundary to the target edge.
+- Generate target-size-aware cube-projected UVs for meshes with no serialized
+  coordinates, and convert observed physical material mapping dimensions from
+  millimetres to Blender UV scale.
 - Interpret PMob colors as RGBA and reuse an existing generated material only
   when its source resources and current Blender node state are exactly equal.
 
@@ -188,8 +192,9 @@ material definitions, and confirms the controller still evaluates to mesh
 geometry after those controls are built.
 Cached R678 validation now exposes only its door-opening control and renders its
 near-black handle with equal RGB channels. Cached 728 validation keeps both
-handles at their serialized height while the door panels reach their target
-height.
+handles at about 30 mm high, stretches each door panel to about 370 mm, and
+generates physically scaled UVs for its source panels, which contain no UV
+records.
 
 ## Milestone 4 — Identify and implement `.content`
 

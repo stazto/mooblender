@@ -61,9 +61,13 @@ UI controls enabled while their values drive source-hierarchy transforms.
 
 `Constant` aggregate edges suppress the resolved child's insertion controls.
 For flattened geometry, explicitly non-editable component layers that occupy
-less than half of a resized axis retain their size on that axis. Generated
-materials carry both a source/resource fingerprint and a current node-state
-fingerprint; reuse requires both to match, so edited materials are preserved.
+less than half of a resized axis retain their size on that axis. The adjacent
+panel stretches from the preserved hardware boundary to the resized outer
+edge, rather than reserving a scaled copy of the hardware span. Meshes without
+serialized UVs receive a target-size-aware cube projection; physical Promob
+texture dimensions then drive the material's UV scale. Generated materials
+carry both a source/resource fingerprint and a current node-state fingerprint;
+reuse requires both to match, so edited materials are preserved.
 
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite
