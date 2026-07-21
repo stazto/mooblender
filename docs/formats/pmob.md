@@ -1,7 +1,7 @@
 # PMob format notes
 
-Status: partially implemented. Claims here reflect tested parser behavior; axis
-and semantic questions remain explicitly open.
+Status: implemented for the observed public Mooble samples, with remaining
+unknowns listed below.
 
 ## Confirmed structure
 
@@ -26,20 +26,46 @@ animation times/transforms, layers, mesh lists, vertices, triangle indices,
 normals, UV coordinates, line indices, smoothing groups, material IDs, and the
 known material properties from type IDs `0x1a` through `0x38`.
 
-## Inferred semantics
+## Confirmed transform convention
 
-- Geometry values appear to use millimetres; the scene adapter currently uses
-  a `0.001` conversion to metres.
+The decompiled `Mooble.Math3D` implementation and asymmetric Blender tests agree
+on the following behavior:
+
+- matrices are serialized as 16 row-major floats;
+- points are row vectors (`point * matrix`);
+- translation occupies `M41`, `M42`, and `M43`;
+- local-to-world composition is `local * parent`; and
+- transposing each matrix produces Blender's equivalent column-vector local
+  matrix and standard `parent @ local` hierarchy.
+
+Translation and mesh coordinates are converted with `0.001` at the Blender
+boundary. The linear matrix is not unit-scaled. Three sampled product PMobs use
+a root scale of 10 over centimetre-like raw vertex values; preserving that root
+scale produces their advertised metre dimensions. Ignoring it makes those
+models exactly ten times too small.
+
+Layer primitives reference shared layer geometry by name. The Blender adapter
+creates each mesh datablock once and instances it at every primitive reference.
+
+## Confirmed and inferred geometry semantics
+
+- The composed PMob coordinate space is millimetres and uses Z as up in the
+  tested catalog products.
 - Mesh indices are interpreted as consecutive triangles.
 - Texture coordinates are interpreted as one UV per vertex.
+
+Observed PContent packages embed the diffuse, metallic, and transparency image
+members named by or derived from PMob materials. `SPECULAR_TEXTURE` points to
+the sampled `_METALLIC` image, so the adapter connects it to Principled
+Metallic. `_TRANSPARENT` is derived from a `_DIFFUSE` name and connected to
+Principled Alpha. These channel-name rules remain an observed Mooble packaging
+convention rather than a guarantee for every PMob producer.
 
 These interpretations need broader fixtures, especially asymmetric geometry,
 before being promoted to confirmed format guarantees.
 
 ## Unknown or incomplete
 
-- coordinate axes and handedness;
-- matrix row/column convention and hierarchy multiplication order;
 - meaning and topology rules for every mesh source type;
 - smoothing-group encoding;
 - line-index semantics;

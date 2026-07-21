@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .aggregates import AggregateResolutionError, resolve_aggregates
 from .pcontent import PContentPackage, read_pcontent
 from .pmob.reader import read_pmob
 
@@ -29,8 +30,10 @@ def load_path(path: str | Path):
 
 __all__ = [
     "PContentPackage",
+    "AggregateResolutionError",
     "UnsupportedPromobFormat",
     "load_path",
     "read_pcontent",
     "read_pmob",
+    "resolve_aggregates",
 ]

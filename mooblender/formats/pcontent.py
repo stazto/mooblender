@@ -18,10 +18,39 @@ class PContentFormatError(ValueError):
 
 @dataclass(slots=True)
 class PContentPackage:
-    document: PmobDocument
+    document: PmobDocument | None
     properties: dict[str, object] = field(default_factory=dict)
     pmob_member: str = ""
     members: tuple[str, ...] = ()
+    resources: dict[str, bytes] = field(default_factory=dict)
+    resolved_aggregates: list[ResolvedAggregate] = field(default_factory=list)
+    resolved_materials: dict[str, PContentPackage] = field(default_factory=dict)
+
+    def resource(self, name: str | None) -> bytes | None:
+        """Return an embedded resource by full path or case-insensitive name."""
+
+        if not name:
+            return None
+        normalized = name.replace("\\", "/").casefold()
+        direct = self.resources.get(normalized)
+        if direct is not None:
+            return direct
+        basename = PurePosixPath(normalized).name
+        return next(
+            (
+                data
+                for member, data in self.resources.items()
+                if PurePosixPath(member).name == basename
+            ),
+            None,
+        )
+
+
+@dataclass(slots=True)
+class ResolvedAggregate:
+    index: int
+    specification_id: str
+    package: PContentPackage
 
 
 def _decode_7bit_length(data: bytes) -> tuple[int, int]:
@@ -93,13 +122,11 @@ def read_pcontent(
             info for info in infos
             if not info.is_dir() and PurePosixPath(info.filename).suffix.lower() == ".pmob"
         ]
-        if not pmob_infos:
-            raise PContentFormatError("PContent contains no PMob model")
         if len(pmob_infos) > 1:
             raise PContentFormatError("PContent contains multiple PMob models")
 
-        pmob_info = pmob_infos[0]
-        document = read_pmob(archive.read(pmob_info))
+        pmob_info = pmob_infos[0] if pmob_infos else None
+        document = read_pmob(archive.read(pmob_info)) if pmob_info is not None else None
         properties_info = next(
             (
                 info for info in infos
@@ -112,9 +139,19 @@ def read_pcontent(
             if properties_info is not None
             else {}
         )
+        if document is None and properties_info is None:
+            raise PContentFormatError("PContent contains neither a PMob model nor properties")
+        image_suffixes = {".bmp", ".jpeg", ".jpg", ".png", ".tga", ".tif", ".tiff", ".webp"}
+        resources = {
+            info.filename.replace("\\", "/").casefold(): archive.read(info)
+            for info in infos
+            if not info.is_dir()
+            and PurePosixPath(info.filename).suffix.lower() in image_suffixes
+        }
         return PContentPackage(
             document=document,
             properties=properties,
-            pmob_member=pmob_info.filename,
+            pmob_member=pmob_info.filename if pmob_info is not None else "",
             members=tuple(info.filename for info in infos),
+            resources=resources,
         )

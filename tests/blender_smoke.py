@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import sys
 from pathlib import Path
 
@@ -12,9 +14,19 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import mooblender  # noqa: E402
+from mooblender.blender import operators  # noqa: E402
 from mooblender.blender.panels import PROMOB_PT_browser  # noqa: E402
 from mooblender.blender.scene_builder import build_document  # noqa: E402
-from mooblender.model.scene import Material, Mesh, PmobDocument, SceneLayer  # noqa: E402
+from mooblender.formats.pcontent import PContentPackage, ResolvedAggregate  # noqa: E402
+from mooblender.model.scene import (  # noqa: E402
+    Material,
+    Mesh,
+    PmobDocument,
+    Primitive,
+    PrimitiveType,
+    SceneLayer,
+)
+from mooblender.mooble.models import CatalogItem, CatalogPage  # noqa: E402
 
 
 def main() -> None:
@@ -33,45 +45,339 @@ def main() -> None:
         if state.is_loading:
             raise AssertionError("Mooblender browser started in a loading state")
 
+        class CachedClient:
+            def __init__(self):
+                self.closed = False
+                self.calls = []
+
+            def load_cached_page(self, url):
+                self.calls.append(url)
+                return CatalogPage(
+                    items=(CatalogItem(id="cached", name="Cached model"),),
+                    current_url=url,
+                )
+
+            def close(self):
+                self.closed = True
+
+        cached_client = CachedClient()
+        original_client_factory = operators.client_from_context
+        operators.client_from_context = lambda _context: cached_client
+        try:
+            state.history_json = json.dumps(["https://catalog.mooble.com/cached"])
+            if bpy.ops.promob.catalog_back() != {"FINISHED"}:
+                raise AssertionError("cached catalog back navigation did not finish")
+        finally:
+            operators.client_from_context = original_client_factory
+        if (
+            cached_client.calls != ["https://catalog.mooble.com/cached"]
+            or not cached_client.closed
+            or state.current_url != "https://catalog.mooble.com/cached"
+            or state.items[0].item_id != "cached"
+            or state.is_loading
+        ):
+            raise AssertionError("back navigation did not restore only the cached catalog")
+
         source = Mesh(
-            vertices=[(0.0, 0.0, 0.0), (1000.0, 0.0, 0.0), (0.0, 1000.0, 0.0)],
+            vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 100.0, 0.0)],
             indices=[0, 1, 2],
             texture_coordinates=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
+            material_id=-1,
         )
         document = PmobDocument(
             name="Mooblender LTS Smoke Test",
             version=2,
+            primitive=Primitive(
+                name="Scaled Root",
+                kind=PrimitiveType.GROUP,
+                matrix=(
+                    10.0, 0.0, 0.0, 0.0,
+                    0.0, 10.0, 0.0, 0.0,
+                    0.0, 0.0, 10.0, 0.0,
+                    1000.0, 0.0, 0.0, 1.0,
+                ),
+                children=[
+                    Primitive(
+                        name="Compatibility",
+                        kind=PrimitiveType.LAYER,
+                        layer_ref="Compatibility",
+                    )
+                ],
+            ),
             layers=[SceneLayer(name="Compatibility", meshes=[source])],
-            materials=[
-                Material(
-                    name="Compatibility Material",
-                    color=(255, 64, 128, 255),
-                    metallic=0.25,
-                    roughness=0.75,
+            materials=[],
+        )
+        root_material = PContentPackage(
+            document=PmobDocument(
+                name="Root Finish",
+                materials=[
+                    Material(
+                        name="Root Finish",
+                        color=(255, 64, 128, 255),
+                        metallic=0.25,
+                        roughness=0.75,
+                        diffuse_texture="compatibility.png",
+                    )
+                ],
+            ),
+            resources={
+                "compatibility.png": base64.b64decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4"
+                    "2mP8/x8AAusB9Y9Z4GgAAAAASUVORK5CYII="
+                )
+            },
+        )
+        child_document = PmobDocument(
+            name="Child",
+            version=2,
+            primitive=Primitive(
+                name="Child Root",
+                kind=PrimitiveType.GROUP,
+                children=[
+                    Primitive(
+                        name="Child Compatibility",
+                        kind=PrimitiveType.LAYER,
+                        layer_ref="Compatibility",
+                    )
+                ],
+            ),
+            layers=[
+                SceneLayer(
+                    name="Compatibility",
+                    meshes=[
+                        Mesh(
+                            vertices=source.vertices,
+                            indices=source.indices,
+                            material_id=-1,
+                        )
+                    ],
                 )
             ],
         )
-        collection = build_document(document, bpy.context)
-        obj = collection.objects[0]
+        child_a = PContentPackage(
+            document=PmobDocument(
+                name="Child A",
+                materials=[Material(name="Child A", color=(255, 255, 0, 0))],
+            )
+        )
+        child_b = PContentPackage(
+            document=PmobDocument(
+                name="Child B",
+                materials=[Material(name="Child B", color=(255, 0, 0, 255))],
+            )
+        )
+        nested = PContentPackage(
+            document=PmobDocument(
+                name="Nested",
+                version=2,
+                layers=[
+                    SceneLayer(
+                        name="Nested",
+                        meshes=[
+                            Mesh(
+                                vertices=[
+                                    (0.0, 0.0, 0.0),
+                                    (10.0, 0.0, 0.0),
+                                    (0.0, 10.0, 0.0),
+                                ],
+                                indices=[0, 1, 2],
+                            )
+                        ],
+                    )
+                ],
+                materials=[Material(name="Nested")],
+            ),
+            properties={
+                "Dimension": {"Width": 10, "Depth": 10, "Height": 1},
+                "DrawingDimension": {"Width": 10, "Depth": 10, "Height": 1},
+            },
+        )
+        child = PContentPackage(
+            document=child_document,
+            properties={
+                "Dimension": {"Width": 100, "Depth": 100, "Height": 1},
+                "DrawingDimension": {"Width": 100, "Depth": 100, "Height": 1},
+                "Models": [
+                    {
+                        "Id": "child-a",
+                        "Name": "Child A",
+                        "ModelDefinitionId": "child-finish",
+                        "ModelDefinitionName": "Child finish",
+                        "Components": [
+                            {"LayerId": "Compatibility", "MaterialId": "child-a"}
+                        ],
+                    },
+                    {
+                        "Id": "child-b",
+                        "Name": "Child B",
+                        "ModelDefinitionId": "child-finish",
+                        "ModelDefinitionName": "Child finish",
+                        "Components": [
+                            {"LayerId": "Compatibility", "MaterialId": "child-b"}
+                        ],
+                    },
+                ],
+                "Aggregates": [
+                    {
+                        "Description": "Nested",
+                        "Dimension": {"Width": 10, "Depth": 10, "Height": 1},
+                        "Position": {"X": 150, "Y": 0, "Z": 0},
+                    }
+                ],
+            },
+            resolved_aggregates=[
+                ResolvedAggregate(index=0, specification_id="nested", package=nested)
+            ],
+            resolved_materials={"child-a": child_a, "child-b": child_b},
+        )
+        package = PContentPackage(
+            document=document,
+            properties={
+                "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
+                "DrawingDimension": {"Width": 200, "Depth": 100, "Height": 1},
+                "Models": [
+                    {
+                        "Id": "root-finish",
+                        "ModelDefinitionId": "root-finish-group",
+                        "Components": [
+                            {"LayerId": "Compatibility", "MaterialId": "root-finish"}
+                        ],
+                    }
+                ],
+                "Aggregates": [
+                    {
+                        "Description": "Child",
+                        "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
+                        "Position": {"X": 300, "Y": 0, "Z": 0},
+                    }
+                ],
+            },
+            resolved_aggregates=[
+                ResolvedAggregate(index=0, specification_id="child", package=child)
+            ],
+            resolved_materials={"root-finish": root_material},
+        )
+        collection = build_document(
+            package,
+            bpy.context,
+            structure_mode="GEOMETRY_NODES",
+        )
+        bpy.context.view_layer.update()
+        controller = bpy.data.objects[collection["promob_root_object"]]
+        obj = next(
+            obj
+            for obj in collection.all_objects
+            if obj.type == "MESH" and obj != controller
+        )
         if len(obj.data.vertices) != 3 or len(obj.data.polygons) != 1:
             raise AssertionError("scene builder produced invalid triangle geometry")
         if len(obj.data.uv_layers) != 1 or len(obj.data.materials) != 1:
             raise AssertionError("scene builder did not preserve UVs and material assignment")
-        if tuple(obj.data.vertices[1].co) != (1.0, 0.0, 0.0):
-            raise AssertionError("scene builder did not convert millimetres to metres")
+        world_vertex = obj.matrix_world @ obj.data.vertices[1].co
+        if tuple(round(value, 5) for value in world_vertex) != (2.0, 0.0, 0.0):
+            raise AssertionError("scene builder did not apply PMob units and root transform")
+        image_nodes = [
+            node
+            for node in obj.data.materials[0].node_tree.nodes
+            if node.type == "TEX_IMAGE"
+        ]
+        if len(image_nodes) != 1 or image_nodes[0].image.packed_file is None:
+            raise AssertionError("scene builder did not load and pack an embedded texture")
+        modifier = controller.modifiers.get("Mooblender")
+        evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        evaluated_mesh = evaluated.to_mesh()
+        if modifier is None or len(evaluated_mesh.polygons) != 3:
+            raise AssertionError("single-object Geometry Nodes import is not producing geometry")
+        if not any(
+            item.name == "Open Ratio" for item in modifier.node_group.interface.items_tree
+        ):
+            raise AssertionError("Geometry Nodes modifier has no Open Ratio control")
+        used_materials = {
+            evaluated_mesh.materials[polygon.material_index].name
+            for polygon in evaluated_mesh.polygons
+        }
+        if used_materials != {"Root Finish", "Child A", "Nested"}:
+            raise AssertionError(
+                f"default model materials were not assigned: {used_materials}"
+            )
+        nested_index = next(
+            index
+            for index, material in enumerate(evaluated_mesh.materials)
+            if material.name == "Nested"
+        )
+        nested_polygon = next(
+            polygon
+            for polygon in evaluated_mesh.polygons
+            if polygon.material_index == nested_index
+        )
+        nested_center_x = sum(
+            evaluated_mesh.vertices[index].co.x for index in nested_polygon.vertices
+        ) / len(nested_polygon.vertices)
+        if round(nested_center_x, 3) != 0.453:
+            raise AssertionError(
+                "nested aggregate position inherited geometry redimension scale: "
+                f"{nested_center_x}"
+            )
+        finish_socket = next(
+            item
+            for item in modifier.node_group.interface.items_tree
+            if item.name == "Finish: Child finish"
+        )
+        if finish_socket.socket_type != "NodeSocketMenu":
+            raise AssertionError("finish control is not a named menu")
+        menu_switch = next(
+            node
+            for node in modifier.node_group.nodes
+            if node.bl_idname == "GeometryNodeMenuSwitch"
+        )
+        if [item.name for item in menu_switch.enum_items] != ["Child A", "Child B"]:
+            raise AssertionError("finish menu does not expose source style names")
+        interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
+        if interface_inputs is not None and hasattr(
+            interface_inputs,
+            finish_socket.identifier,
+        ):
+            finish_value = getattr(interface_inputs, finish_socket.identifier)
+            finish_value.value = "Child B"
+        else:
+            items = modifier.id_properties_ui(
+                finish_socket.identifier
+            ).as_dict()["items"]
+            modifier[finish_socket.identifier] = next(
+                item[-1] for item in items if item[0] == "Child B"
+            )
+        modifier.node_group.interface_update(bpy.context)
+        controller.update_tag(refresh={"OBJECT"})
+        bpy.context.view_layer.update()
+        bpy.context.evaluated_depsgraph_get().update()
+        evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        switched_mesh = evaluated.to_mesh()
+        switched_materials = {
+            switched_mesh.materials[polygon.material_index].name
+            for polygon in switched_mesh.polygons
+        }
+        if switched_materials != {"Root Finish", "Child B", "Nested"}:
+            raise AssertionError(
+                "a child finish changed a same-named layer outside its package: "
+                f"{switched_materials}"
+            )
         print(f"Mooblender smoke test passed on Blender {bpy.app.version_string}")
     finally:
         if collection is not None:
             materials = {
                 material
-                for obj in collection.objects
+                for obj in collection.all_objects
+                if obj.type == "MESH"
                 for material in obj.data.materials
                 if material is not None
             }
-            for obj in list(collection.objects):
+            for obj in list(collection.all_objects):
                 mesh = obj.data
                 bpy.data.objects.remove(obj, do_unlink=True)
-                bpy.data.meshes.remove(mesh)
+                if mesh is not None and mesh.users == 0:
+                    bpy.data.meshes.remove(mesh)
+            for child in list(collection.children):
+                bpy.data.collections.remove(child)
             bpy.data.collections.remove(collection)
             for material in materials:
                 bpy.data.materials.remove(material)

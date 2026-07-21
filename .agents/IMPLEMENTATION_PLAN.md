@@ -23,7 +23,7 @@ honor Blender's Online Access setting.
 
 Deliverables:
 
-- Blender 4.2 extension manifest and lazy package entry point.
+- Blender 4.5 extension manifest and lazy package entry point.
 - Packages for `formats`, `model`, `mooble`, and `blender`.
 - Public project, architecture, evidence, and test guidance.
 - CPython unit-test entry point with no Blender dependency.
@@ -55,11 +55,8 @@ Deliverables:
 Remaining exit work:
 
 - Validate multiple independent PMob versions and mesh source types.
-- Resolve coordinate handedness and matrix convention, then apply primitive
-  hierarchy and transforms.
 - Import custom normals and smoothing groups correctly on supported Blender
   versions.
-- Resolve textures relative to packages and create Principled BSDF node trees.
 - Map PMob animation transforms to actions.
 
 ## Milestone 2 — Mooble collection browser (implemented baseline)
@@ -81,10 +78,15 @@ Mooble-specific additions:
 - flexible mapping of tags, specifications, details, and content links; and
 - HTTPS/host validation and bounded downloads.
 
+Implemented follow-up work:
+
+- Timer-backed catalog, thumbnail, model, and local aggregate work runs off the
+  UI thread; Blender data is touched only by completion callbacks.
+- Catalog pages are restored from disk at startup and revalidated by parsed
+  response fingerprint; cards precede one batched visible-thumbnail request.
+
 Remaining exit work:
 
-- Move HTTP and image work off the UI thread using a Blender timer-backed job
-  queue; never touch Blender data from worker threads.
 - Add cancellation, progress, retry-after support, ETag/Last-Modified cache
   validation, cache size controls, and a clear-cache operator.
 - Add a selected-product details panel with dimensions and source URL.
@@ -94,16 +96,18 @@ Remaining exit work:
 - Validate regional and partnership behavior without assuming all catalog
   content is public or redistributable.
 
-## Milestone 3 — Complete PMob scene fidelity
+## Milestone 3 — Complete PMob scene fidelity (substantial implementation)
 
 Work packages:
 
-1. **Coordinates:** establish source axes, handedness, matrix storage order,
-   multiplication order, and millimetre conversion with asymmetric fixtures.
-2. **Hierarchy:** instantiate group primitives and layer references, preserving
-   reuse without duplicating mesh datablocks unnecessarily.
-3. **Materials:** map color, opacity, metallic, roughness, reflection, emission,
-   texture channels, mapping mode, scale, repetitions, and rotation.
+1. **Coordinates (implemented):** source row-vector matrices are transposed for
+   Blender; translation and vertices are unit-converted while linear root scale
+   is preserved. Asymmetric unit and Blender tests cover the convention.
+2. **Hierarchy (implemented):** group primitives and layer references retain
+   their hierarchy, with shared mesh datablocks for repeated layer geometry.
+3. **Materials (implemented baseline):** color, opacity, metallic, roughness,
+   embedded diffuse/metallic/normal/transparency textures, UV repetitions, and
+   rotation are mapped to Principled nodes.
 4. **Geometry:** validate all mesh source types; apply normals, smoothing,
    line-index behavior, culling metadata, and degenerate-face policy.
 5. **Animation:** validate time units and transform interpolation, then create
@@ -113,6 +117,35 @@ Work packages:
 
 Exit criteria: golden neutral-model tests and Blender integration fixtures prove
 geometry, hierarchy, transforms, materials, and animation independently.
+
+## Milestone 3A — Mooble aggregate fidelity (implemented baseline)
+
+- Resolve properties-only aggregate and material specifications recursively in
+  the background, with caching, cycle/depth/entity limits, and package reuse.
+- Evaluate the observed numeric dimension, position, inversion, and opening
+  expression subset without executing arbitrary code.
+- Reconstruct doors and drawers and drive them from a shared Open Ratio.
+- Default to one visible Geometry Nodes object; retain an editable collection
+  hierarchy preference.
+- Convert multi-option model finish groups into named Geometry Nodes menu inputs
+  that assign the resolved material by PMob layer and package scope; apply the
+  first option from single- and multi-option groups as the default material.
+- Convert mirrored opening-service pivots and handedness into the negative-X
+  aggregate representation so paired doors retain separate symmetric hinges
+  and open outward.
+- Measure serialized PMob geometry after primitive transforms, redimension only
+  that geometry, and leave nested aggregate placement in target coordinates.
+
+Validated evidence: a random six-category corpus contained three standalone
+renderable products and three properties-only aggregates. A sampled 2.30 m
+tower resolved 11 unique entity packages into 20 aggregate instances, including
+four doors, one drawer, and four base/foot instances. It has no unmaterialed
+source meshes and evaluates to approximately 0.70 × 0.552 × 2.30 m closed. The
+exact `Armário Geladeira 80cm 2 Portas (728)` sample evaluates to 0.80 × 0.330 ×
+0.425 m with both doors, independent cabinet/door finishes, and working opening
+drivers. Closed/open bounds and finish switching were checked in Blender 4.5
+and 5.2 LTS. The general smoke fixture passes both releases and covers default
+remote materials plus same-layer-name finish isolation.
 
 ## Milestone 4 — Identify and implement `.content`
 
@@ -138,7 +171,7 @@ Only share code when byte-level evidence demonstrates shared structures.
 
 Implemented foundation:
 
-- Blender 4.2+ and Python 3.11+ are declared as the supported baseline.
+- Blender 4.5+ and Python 3.11+ are declared as the supported baseline.
 - Ruff and offline unit tests run on Python 3.11, 3.12, and 3.13 in CI.
 - Network-dependent tests are skipped by default and run once in a dedicated
   Mooble API health-check job.
@@ -152,7 +185,7 @@ Implemented foundation:
 
 Remaining work:
 
-- Add type checking and headless Blender integration tests to CI.
+- Add type checking to CI and expand the headless Blender fixture corpus.
 - Validate the generated archive with Blender's extension tooling.
 - Add user documentation, troubleshooting, privacy notes, and a compatibility
   matrix by format version.
@@ -166,9 +199,11 @@ supported fixtures with documented results.
 
 ## Immediate next implementation sequence
 
-1. Add a small fixture writer to generate more asymmetric PMob cases.
-2. Validate coordinate/matrix behavior in Blender and implement primitive
-   hierarchy.
-3. Add texture-member discovery to PContent and build material node trees.
-4. Introduce the timer/job queue before expanding the live browser UI.
-5. Obtain `.content` and `.mob` samples and begin independent identification.
+1. Add redistributable aggregate/opening/material fixtures matching the live
+   observations without copying catalog assets.
+2. Validate PMob animation timing and interpolation, smoothing groups, and all
+   observed mesh source types.
+3. Add structured import diagnostics for unsupported expressions and semantics.
+4. Obtain `.content` and `.mob` samples and begin independent identification.
+5. Add cancellation, progress, bounded cache management, and conditional HTTP
+   validation where the service supports it.

@@ -40,11 +40,28 @@ responses `no-cache`, so Mooblender compares a fingerprint of the parsed live
 page with the displayed cached page. Existing cards and previews are replaced
 only when that fingerprint changes.
 
+Category navigation is cache-first after the first visit. Opening a previously
+visited category and Back navigation read only the disk cache and do not start
+a background HTTP request. Pagination responses are merged into the cache entry
+for the category's original URL, so returning also restores models previously
+revealed by **Load More**. Revalidating page one retains those appended pages
+when its live categories and item prefix are unchanged; a changed first page
+replaces the cached catalog. Explicit Refresh remains the operation that asks
+the live service for updated catalog data.
+
 Fetching a specification detail URL can add `Links.Content`. Publicly visible
 shape records observed during development linked to HTTPS CDN `.pcontent`
 resources. The add-on downloads only after the user selects **Import**, validates
 the HTTPS host and size, caches the response, and passes it through the same
 PContent reader used for local files.
+
+Properties-only products use the same detail endpoint for their aggregate and
+material UUIDs: `GET /api/explorer/GetSpec/<uuid>`. The observed response has a
+`Type` such as `Shape` or `Material` and an HTTPS `Links.Content` PContent URL.
+Responses observed on 2026-07-21 used `Cache-Control: public, max-age=1800`.
+Mooblender caches every downloaded child by specification ID and resolves the
+tree in its model-download worker, leaving all Blender datablock creation on
+the main thread.
 
 ## Browser interaction
 

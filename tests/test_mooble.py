@@ -94,9 +94,61 @@ class MoobleClientTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             client = MoobleClient(cache_dir=directory, transport=FakeTransport(payload))
             page = client.browse(category="Moveis")
+            calls_before_restore = list(client.transport.urls)
             restored = client.load_cached_page(page.current_url)
 
         self.assertEqual(restored, page)
+        self.assertEqual(client.transport.urls, calls_before_restore)
+
+    def test_pagination_extends_the_original_catalog_cache(self):
+        first_payload = {
+            "Output": {
+                "Pin": {"Name": "Departamento", "AvailableTags": {"Data": []}},
+                "Specifications": {
+                    "Links": {"Next": "https://catalog.mooble.com/api/page-2"},
+                    "Data": [{"Id": "one", "Name": "One", "Links": {}}],
+                },
+            }
+        }
+        second_payload = {
+            "Output": {
+                "Pin": {"Name": "Departamento", "AvailableTags": {"Data": []}},
+                "Specifications": {
+                    "Links": {},
+                    "Data": [{"Id": "two", "Name": "Two", "Links": {}}],
+                },
+            }
+        }
+        with TemporaryDirectory() as directory:
+            transport = FakeTransport(first_payload)
+            client = MoobleClient(cache_dir=directory, transport=transport)
+            first = client.browse()
+            transport.payload = second_payload
+            second = client.browse_url(first.next_url)
+            merged = client.extend_cached_page(first.current_url, second)
+            transport.payload = first_payload
+            revalidated = client.browse()
+            calls_before_restore = list(transport.urls)
+            restored = client.load_cached_page(first.current_url)
+
+        self.assertEqual([item.id for item in merged.items], ["one", "two"])
+        self.assertEqual(revalidated, merged)
+        self.assertEqual(restored, merged)
+        self.assertEqual(transport.urls, calls_before_restore)
+
+    def test_downloads_aggregate_specification_by_id(self):
+        payload = {
+            "Id": "door-id",
+            "Name": "Door",
+            "Links": {"Content": "https://cdn.mooble.com/door.pcontent"},
+        }
+        with TemporaryDirectory() as directory:
+            transport = FakeTransport(payload)
+            client = MoobleClient(cache_dir=directory, transport=transport)
+            path = client.download_specification("door-id")
+
+            self.assertEqual(path.read_bytes(), b"content")
+            self.assertIn("explorer/GetSpec/door-id", " ".join(transport.urls))
 
 
 if __name__ == "__main__":

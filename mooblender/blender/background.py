@@ -6,7 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
-from ..formats import PContentPackage, load_path
+from ..formats import PContentPackage, load_path, resolve_aggregates
 from ..mooble import CatalogItem
 from ..mooble.client import MoobleClient
 from ..mooble.models import CatalogPage
@@ -24,9 +24,17 @@ def fetch_catalog(
         client.close()
 
 
-def fetch_catalog_url(client: MoobleClient, url: str) -> CatalogPage:
+def fetch_catalog_url(
+    client: MoobleClient,
+    url: str,
+    *,
+    extend_cache_url: str = "",
+) -> CatalogPage:
     try:
-        return client.browse_url(url)
+        page = client.browse_url(url)
+        if extend_cache_url:
+            return client.extend_cached_page(extend_cache_url, page)
+        return page
     finally:
         client.close()
 
@@ -50,7 +58,35 @@ def fetch_model(client: MoobleClient, item: CatalogItem):
     try:
         path = client.download_model(item)
         loaded = load_path(path)
-        return loaded.document if isinstance(loaded, PContentPackage) else loaded
+        if isinstance(loaded, PContentPackage):
+            def load_aggregate(specification_id: str) -> PContentPackage:
+                child = load_path(client.download_specification(specification_id))
+                if not isinstance(child, PContentPackage):
+                    raise ValueError(
+                        f"aggregate {specification_id} is not a PContent package"
+                    )
+                return child
+
+            resolve_aggregates(loaded, load_aggregate)
+        return loaded
+    finally:
+        client.close()
+
+
+def fetch_file(client: MoobleClient, path):
+    try:
+        loaded = load_path(path)
+        if isinstance(loaded, PContentPackage):
+            def load_aggregate(specification_id: str) -> PContentPackage:
+                child = load_path(client.download_specification(specification_id))
+                if not isinstance(child, PContentPackage):
+                    raise ValueError(
+                        f"aggregate {specification_id} is not a PContent package"
+                    )
+                return child
+
+            resolve_aggregates(loaded, load_aggregate)
+        return loaded
     finally:
         client.close()
 

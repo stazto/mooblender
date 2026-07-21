@@ -22,12 +22,14 @@ def encode_7bit(value: int) -> bytes:
     return bytes(result)
 
 
-def make_archive(*, member: str = "model.pmob") -> bytes:
+def make_archive(*, member: str = "model.pmob", include_pmob: bool = True) -> bytes:
     stream = BytesIO()
     properties = json.dumps({"Type": "Entity", "Dimension": {"Width": "1000"}}).encode()
     with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(member, make_document())
+        if include_pmob:
+            archive.writestr(member, make_document())
         archive.writestr("properties.json", encode_7bit(len(properties)) + properties)
+        archive.writestr("Textures/Wood.JPG", b"image bytes")
     return stream.getvalue()
 
 
@@ -38,6 +40,13 @@ class PContentReaderTests(unittest.TestCase):
         self.assertEqual(package.document.name, "Sample")
         self.assertEqual(package.properties["Type"], "Entity")
         self.assertEqual(package.pmob_member, "model.pmob")
+        self.assertEqual(package.resource("wood.jpg"), b"image bytes")
+
+    def test_accepts_properties_only_aggregate_package(self):
+        package = read_pcontent(make_archive(include_pmob=False))
+
+        self.assertIsNone(package.document)
+        self.assertEqual(package.properties["Type"], "Entity")
 
     def test_plain_json_properties_are_also_accepted(self):
         self.assertEqual(decode_properties(b'{"Type":"Light"}')["Type"], "Light")

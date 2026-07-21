@@ -8,6 +8,8 @@ Mooble catalog and importing Promob models.
 - Pure-Python, bounds-checked `.pmob` parser.
 - Safe in-memory `.pcontent` ZIP reader, including its observed
   BinaryWriter-prefixed `properties.json` member.
+- Recursive Mooble aggregate resolution for properties-only furniture packages,
+  including selected child specifications and remote finish materials.
 - Blender import operator for `.pmob` and `.pcontent`.
 - Mooble sidebar with search, hierarchical collection navigation, thumbnails,
   pagination, download caching, and one-click import.
@@ -55,6 +57,15 @@ After enabling it:
    **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
+The default import mode creates one visible object with a Geometry Nodes
+modifier. Its **Open Ratio** input drives all recognized doors and drawers, and
+its named **Finish** menus select the styles exposed by the source model.
+Default remote finishes are applied before any selection, and finish controls
+are scoped to their source package so same-named cabinet and door layers do not
+overwrite one another.
+Choose **Collection hierarchy** in the extension preferences when individual
+Promob primitives and aggregates are more useful than a single object.
+
 Catalog pages are cached on disk and restored immediately at startup. A
 background request then compares the live response with the cached fingerprint,
 replacing the cards only when catalog data changed. Cards appear before their
@@ -62,6 +73,10 @@ visible thumbnails, which are fetched as one background batch. Each card shows
 a loading symbol until its preview arrives. During catalog or model operations,
 the panel remains visible with its controls disabled and a loading message above
 them. Blender data is only created on its main thread.
+
+Every visited category remains in the disk cache. Opening an already visited
+category or using **Back** restores that cached page immediately without a
+network request, including all pages previously added with **Load More**.
 
 The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store
@@ -114,10 +129,13 @@ mooblender/          # repository root
 
 ## Status and limitations
 
-The current scene builder creates geometry, per-vertex UVs, basic materials,
-and source metadata. Primitive transforms, hierarchy, texture resolution,
-custom normals, smoothing groups, animations, and all `.content`/`.mob`
-behavior remain planned work.
+The current scene builder preserves PMob primitive hierarchy and transforms,
+reuses referenced layer meshes, converts observed units correctly, builds
+Principled materials from embedded textures, reconstructs Mooble aggregates,
+and exposes supported opening and finish choices through Geometry Nodes.
+Unverified PMob animation timing, smoothing-group semantics, some mapping
+modes, alternative non-default aggregate specifications, and all
+`.content`/`.mob` behavior remain planned work.
 
 ## License
 

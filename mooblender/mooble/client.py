@@ -100,7 +100,25 @@ class MoobleClient:
         return urljoin(self.base_url, "explorer/v2") + "?" + urlencode(params)
 
     def browse(self, *, category: str = "Moveis", search: str = "") -> CatalogPage:
-        return self.browse_url(self.root_url(category=category, search=search))
+        url = self.root_url(category=category, search=search)
+        cached = self.load_cached_page(url)
+        live = self.browse_url(url)
+        if (
+            cached is not None
+            and len(cached.items) > len(live.items)
+            and cached.items[: len(live.items)] == live.items
+            and cached.categories == live.categories
+        ):
+            preserved = CatalogPage(
+                categories=live.categories,
+                items=cached.items,
+                next_url=cached.next_url,
+                current_url=url,
+                pin_name=live.pin_name,
+            )
+            self._write_catalog_cache(url, preserved)
+            return preserved
+        return live
 
     def browse_url(self, url: str) -> CatalogPage:
         try:
@@ -138,6 +156,27 @@ class MoobleClient:
             json.JSONDecodeError,
         ):
             return None
+
+    def extend_cached_page(self, base_url: str, page: CatalogPage) -> CatalogPage:
+        """Append a pagination response to its catalog's persistent cache."""
+
+        base = self.load_cached_page(base_url)
+        if base is None:
+            base = CatalogPage(current_url=base_url)
+
+        categories = {
+            category.id: category for category in (*base.categories, *page.categories)
+        }
+        items = {item.id: item for item in (*base.items, *page.items)}
+        merged = CatalogPage(
+            categories=tuple(categories.values()),
+            items=tuple(items.values()),
+            next_url=page.next_url,
+            current_url=base_url,
+            pin_name=base.pin_name or page.pin_name,
+        )
+        self._write_catalog_cache(base_url, merged)
+        return merged
 
     def _catalog_cache_path(self, url: str) -> Path:
         key = hashlib.sha256(url.encode("utf-8")).hexdigest()
@@ -188,6 +227,18 @@ class MoobleClient:
 
     def details(self, item: CatalogItem) -> ItemDetails:
         detail_url = item.detail_url or urljoin(self.base_url, f"explorer/GetSpec/{item.id}")
+        return self._details_url(detail_url, fallback_item=item)
+
+    def specification_details(self, specification_id: str) -> ItemDetails:
+        if not specification_id:
+            raise MoobleError("aggregate specification ID is empty")
+        fallback = CatalogItem(id=specification_id, name=specification_id)
+        return self._details_url(
+            urljoin(self.base_url, f"explorer/GetSpec/{specification_id}"),
+            fallback_item=fallback,
+        )
+
+    def _details_url(self, detail_url: str, *, fallback_item: CatalogItem) -> ItemDetails:
         try:
             payload = self.transport.get_json(detail_url)
         except (TransportError, ValueError) as error:
@@ -199,7 +250,7 @@ class MoobleClient:
         self.transport.validate_url(content_url)
         detailed_item = self._parse_item(payload)
         if not detailed_item.id:
-            detailed_item = item
+            detailed_item = fallback_item
         return ItemDetails(
             item=detailed_item,
             content_url=content_url,
@@ -213,10 +264,32 @@ class MoobleClient:
         max_bytes: int = 256 * 1024 * 1024,
     ) -> Path:
         details = self.details(item)
+        return self._download_details(details, cache_key=item.id, max_bytes=max_bytes)
+
+    def download_specification(
+        self,
+        specification_id: str,
+        *,
+        max_bytes: int = 256 * 1024 * 1024,
+    ) -> Path:
+        details = self.specification_details(specification_id)
+        return self._download_details(
+            details,
+            cache_key=specification_id,
+            max_bytes=max_bytes,
+        )
+
+    def _download_details(
+        self,
+        details: ItemDetails,
+        *,
+        cache_key: str,
+        max_bytes: int,
+    ) -> Path:
         suffix = Path(urlparse(details.content_url).path).suffix.lower() or ".pcontent"
         if suffix not in {".pcontent", ".pmob", ".content", ".mob"}:
             raise MoobleError(f"unsupported downloaded model extension: {suffix}")
-        path = self._cache_path("models", item.id, suffix)
+        path = self._cache_path("models", cache_key, suffix)
         if path.exists() and path.stat().st_size:
             return path
         try:
@@ -225,7 +298,7 @@ class MoobleClient:
             raise MoobleError(f"could not download model: {error}") from error
         self._atomic_write(path, data)
         metadata = {
-            "id": item.id,
+            "id": cache_key,
             "name": details.item.name,
             "content_url": details.content_url,
         }

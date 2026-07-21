@@ -17,6 +17,7 @@ from .background import (
     THUMBNAIL_JOBS,
     fetch_catalog,
     fetch_catalog_url,
+    fetch_file,
     fetch_model,
     fetch_thumbnails,
 )
@@ -45,6 +46,13 @@ def _online_or_report(operator) -> bool:
 
 def _set_page(context, page, *, append: bool = False) -> None:
     state = context.window_manager.promob_browser
+    thumbnails = {
+        item.item_id: (
+            item.thumbnail_path,
+            item.thumbnail_failed,
+        )
+        for item in state.items
+    }
     if not append:
         state.categories.clear()
         state.items.clear()
@@ -66,9 +74,10 @@ def _set_page(context, page, *, append: bool = False) -> None:
         entry.thumbnail_url = item.thumbnail_url
         entry.detail_url = item.detail_url
         entry.item_type = item.item_type
-        entry.thumbnail_path = ""
+        thumbnail_path, thumbnail_failed = thumbnails.get(item.id, ("", False))
+        entry.thumbnail_path = thumbnail_path
         entry.thumbnail_loading = False
-        entry.thumbnail_failed = False
+        entry.thumbnail_failed = thumbnail_failed
     state.current_url = page.current_url
     state.next_url = page.next_url
     state.error = ""
@@ -283,8 +292,6 @@ class PROMOB_OT_catalog_open_category(_AsyncCatalogOperator, bpy.types.Operator)
     url: bpy.props.StringProperty()  # type: ignore
 
     def execute(self, context):
-        if not _online_or_report(self):
-            return {"CANCELLED"}
         state = context.window_manager.promob_browser
         if not self.url:
             self.report({"WARNING"}, "This category has no navigation URL")
@@ -296,14 +303,25 @@ class PROMOB_OT_catalog_open_category(_AsyncCatalogOperator, bpy.types.Operator)
             return {"CANCELLED"}
         if state.current_url:
             history.append(state.current_url)
+        history_json = json.dumps(history[-50:])
+        client = client_from_context(context)
+        cached = client.load_cached_page(self.url)
+        if cached is not None:
+            client.close()
+            self._apply_page(context, cached, history_json=history_json)
+            state.status = f"{len(state.items)} model(s) restored from cache"
+            return {"FINISHED"}
+        if not _online_or_report(self):
+            client.close()
+            return {"CANCELLED"}
         completion = partial(
             self._apply_page,
-            history_json=json.dumps(history[-50:]),
+            history_json=history_json,
         )
         return self._start(
             context,
             fetch_catalog_url,
-            client_from_context(context),
+            client,
             self.url,
             status="Loading Mooble category...",
             task_kwargs=None,
@@ -316,7 +334,7 @@ class PROMOB_OT_catalog_open_category(_AsyncCatalogOperator, bpy.types.Operator)
         context.window_manager.promob_browser.history_json = history_json
 
 
-class PROMOB_OT_catalog_back(_AsyncCatalogOperator, bpy.types.Operator):
+class PROMOB_OT_catalog_back(bpy.types.Operator):
     bl_idname = "promob.catalog_back"
     bl_label = "Back"
 
@@ -326,30 +344,30 @@ class PROMOB_OT_catalog_back(_AsyncCatalogOperator, bpy.types.Operator):
         return not state.is_loading and state.history_json not in {"", "[]"}
 
     def execute(self, context):
-        if not _online_or_report(self):
-            return {"CANCELLED"}
         state = context.window_manager.promob_browser
         try:
             history = json.loads(state.history_json)
-            url = history.pop()
-        except (IndexError, json.JSONDecodeError) as error:
+            if not isinstance(history, list) or not history:
+                raise ValueError("Mooble catalog history is empty")
+            url = history[-1]
+            if not isinstance(url, str) or not url:
+                raise ValueError("Previous Mooble catalog URL is invalid")
+        except (IndexError, TypeError, ValueError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
-        completion = partial(self._apply_page, history_json=json.dumps(history))
-        return self._start(
-            context,
-            fetch_catalog_url,
-            client_from_context(context),
-            url,
-            status="Loading previous Mooble category...",
-            task_kwargs=None,
-            completion=completion,
-        )
-
-    @staticmethod
-    def _apply_page(context, page, *, history_json):
-        _set_page(context, page)
-        context.window_manager.promob_browser.history_json = history_json
+        client = client_from_context(context)
+        try:
+            cached = client.load_cached_page(url)
+        finally:
+            client.close()
+        if cached is None:
+            self.report({"ERROR"}, "Previous Mooble catalog is not available in cache")
+            return {"CANCELLED"}
+        history.pop()
+        _set_page(context, cached)
+        state.history_json = json.dumps(history)
+        state.status = f"{len(state.items)} model(s) restored from cache"
+        return {"FINISHED"}
 
 
 class PROMOB_OT_catalog_load_more(_AsyncCatalogOperator, bpy.types.Operator):
@@ -371,11 +389,12 @@ class PROMOB_OT_catalog_load_more(_AsyncCatalogOperator, bpy.types.Operator):
             client_from_context(context),
             state.next_url,
             status="Loading more Mooble models...",
+            task_kwargs={"extend_cache_url": state.current_url},
         )
 
     @staticmethod
     def _completion(context, page):
-        _set_page(context, page, append=True)
+        _set_page(context, page)
 
 
 def _catalog_item(entry) -> CatalogItem:
@@ -424,11 +443,15 @@ class PROMOB_OT_catalog_import(_AsyncCatalogOperator, bpy.types.Operator):
 
     @staticmethod
     def _apply_model(context, document, *, item_name, item_id):
+        preferences = context.preferences.addons[
+            "bl_ext.user_default.mooblender"
+        ].preferences
         build_document(
             document,
             context,
             collection_name=item_name,
             source_id=item_id,
+            structure_mode=preferences.import_structure,
         )
         context.window_manager.promob_browser.status = f"Imported {item_name}"
 
@@ -448,12 +471,58 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
         path = Path(self.filepath)
         try:
             loaded = load_path(path)
-            document = loaded.document if isinstance(loaded, PContentPackage) else loaded
-            build_document(document, context, collection_name=path.stem)
-        except (UnsupportedPromobFormat, PContentFormatError, PmobFormatError, OSError) as error:
+            needs_remote = isinstance(loaded, PContentPackage) and bool(
+                loaded.properties.get("Aggregates") or loaded.properties.get("Models")
+            )
+            if needs_remote and bpy.app.online_access:
+                state = context.window_manager.promob_browser
+                if state.is_loading:
+                    self.report({"WARNING"}, "Wait for the current Mooble download to finish")
+                    return {"CANCELLED"}
+                state.is_loading = True
+                state.error = ""
+                state.status = f"Resolving {path.name} components..."
+                future = JOBS.submit(fetch_file, client_from_context(context), path)
+                callback = _AsyncCompletion(
+                    future,
+                    partial(self._apply_file, name=path.stem),
+                    "Could not import Promob model",
+                )
+                _ACTIVE_POLLS.add(callback)
+                bpy.app.timers.register(callback, first_interval=0.1)
+                return {"FINISHED"}
+            preferences = context.preferences.addons[
+                "bl_ext.user_default.mooblender"
+            ].preferences
+            build_document(
+                loaded,
+                context,
+                collection_name=path.stem,
+                structure_mode=preferences.import_structure,
+            )
+        except (
+            UnsupportedPromobFormat,
+            PContentFormatError,
+            PmobFormatError,
+            OSError,
+            ValueError,
+        ) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         return {"FINISHED"}
+
+    @staticmethod
+    def _apply_file(context, loaded, *, name):
+        preferences = context.preferences.addons[
+            "bl_ext.user_default.mooblender"
+        ].preferences
+        build_document(
+            loaded,
+            context,
+            collection_name=name,
+            structure_mode=preferences.import_structure,
+        )
+        context.window_manager.promob_browser.status = f"Imported {name}"
 
 
 CLASSES = (
