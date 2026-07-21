@@ -45,6 +45,17 @@ request size, per-category page and cycle limits, and global category, item,
 and membership safety limits. Thumbnails and model PContent are not part of
 catalog synchronization.
 
+The synchronizer uses a bounded four-worker pool for independent department and
+category downloads. A category's continuation pages remain sequential because
+each next URL is supplied by the preceding response. Completed category data is
+returned to the synchronization thread, which alone validates global limits and
+writes SQLite. Therefore parallel HTTP work cannot concurrently mutate the
+database, and any worker failure still discards the temporary snapshot. Progress
+combines all active workers monotonically. In a bounded 2026-07-21 check of the
+41 combined Lareiras/Churrasqueiras and Plantas records, one worker took 4.35 s
+and four configured workers took 2.37 s; this is an observation, not a network
+performance guarantee.
+
 Although observed continuation URLs default to 15 records, their endpoint was
 verified to accept 48 and returns the next skip value accordingly. The indexer
 normalizes that existing `$top` parameter to 48. It also compares each

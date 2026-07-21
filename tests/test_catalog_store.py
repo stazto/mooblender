@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Barrier
 
 from mooblender.mooble.catalog_store import CatalogStore
 from mooblender.mooble.client import MoobleClient
@@ -107,6 +108,20 @@ class _CatalogClient:
         self.closed = True
 
 
+class _ParallelCatalogClient(_CatalogClient):
+    def __init__(self, *, fail_url: str = "") -> None:
+        super().__init__()
+        self.root_barrier = Barrier(2, timeout=2.0)
+        self.fail_url = fail_url
+
+    def browse_url(self, url: str, *, cache: bool) -> CatalogPage:
+        if url in {self.ROOT_URL, self.DECOR_ROOT_URL}:
+            self.root_barrier.wait()
+        if url == self.fail_url:
+            raise ValueError("parallel sync failed")
+        return super().browse_url(url, cache=cache)
+
+
 class CatalogStoreTests(unittest.TestCase):
     def test_sync_persists_items_categories_and_memberships(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -153,14 +168,17 @@ class CatalogStoreTests(unittest.TestCase):
     def test_sync_combines_selected_departments_under_one_local_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = CatalogStore(Path(directory) / "catalog.sqlite3")
-            client = _CatalogClient()
+            client = _ParallelCatalogClient()
+            progress = []
 
             summary = store.sync(
                 client,  # type: ignore[arg-type]
                 categories=("Moveis", "Decoracao", "Moveis"),
+                progress=progress.append,
+                max_download_workers=2,
             )
 
-            self.assertEqual(
+            self.assertCountEqual(
                 client.urls,
                 [
                     client.ROOT_URL,
@@ -171,6 +189,14 @@ class CatalogStoreTests(unittest.TestCase):
             )
             self.assertEqual(summary.item_count, 3)
             self.assertEqual(summary.category_count, 4)
+            self.assertEqual(
+                [entry.pages for entry in progress],
+                sorted(entry.pages for entry in progress),
+            )
+            self.assertEqual(
+                [entry.item_records for entry in progress],
+                sorted(entry.item_records for entry in progress),
+            )
             root = store.page()
             self.assertIsNotNone(root)
             assert root is not None
@@ -195,6 +221,30 @@ class CatalogStoreTests(unittest.TestCase):
             self.assertIsNotNone(root)
             assert root is not None
             self.assertEqual([item.id for item in root.items], ["one", "two"])
+
+    def test_parallel_failure_discards_every_temporary_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = CatalogStore(Path(directory) / "catalog.sqlite3")
+            store.sync(_CatalogClient(), categories=("Moveis",))  # type: ignore[arg-type]
+            failing = _ParallelCatalogClient(
+                fail_url=_CatalogClient.DECOR_ROOT_URL,
+            )
+
+            with self.assertRaisesRegex(ValueError, "parallel sync failed"):
+                store.sync(  # type: ignore[arg-type]
+                    failing,
+                    categories=("Moveis", "Decoracao"),
+                    max_download_workers=2,
+                )
+
+            root = store.page()
+            self.assertIsNotNone(root)
+            assert root is not None
+            self.assertEqual([item.id for item in root.items], ["one", "two"])
+            self.assertEqual(
+                [category.name for category in root.categories],
+                ["Catalog", "Furniture"],
+            )
 
     def test_sync_requires_at_least_one_department(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

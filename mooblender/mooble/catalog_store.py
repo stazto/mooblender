@@ -8,10 +8,12 @@ import sqlite3
 import tempfile
 from collections import deque
 from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import closing, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 
 from .client import MoobleClient
 from .models import CatalogCategory, CatalogItem, CatalogPage
@@ -34,6 +36,77 @@ class CatalogSummary:
     item_count: int
     category_count: int
     synced_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class _CategoryRequest:
+    url: str
+    parent_url: str
+    position: int
+    fallback_id: str
+
+
+class _SyncProgressTracker:
+    def __init__(
+        self,
+        callback: Callable[[CatalogSyncProgress], None] | None,
+    ) -> None:
+        self.callback = callback
+        self.lock = Lock()
+        self.completed_pages = 0
+        self.completed_items = 0
+        self.categories = 0
+        self.outstanding = 0
+        self.active: dict[str, tuple[int, int, str]] = {}
+
+    def set_work(self, *, categories: int, outstanding: int) -> None:
+        with self.lock:
+            self.categories = categories
+            self.outstanding = outstanding
+
+    def category_page(
+        self,
+        key: str,
+        pages: int,
+        items: int,
+        category_name: str,
+    ) -> None:
+        with self.lock:
+            self.active[key] = (pages, items, category_name)
+            snapshot = self._snapshot(category_name)
+            if self.callback is not None:
+                self.callback(snapshot)
+
+    def category_complete(
+        self,
+        key: str,
+        *,
+        pages: int,
+        items: int,
+        category_name: str,
+        categories: int,
+        outstanding: int,
+    ) -> None:
+        with self.lock:
+            self.active.pop(key, None)
+            self.completed_pages += pages
+            self.completed_items += items
+            self.categories = categories
+            self.outstanding = outstanding
+            snapshot = self._snapshot(category_name)
+            if self.callback is not None:
+                self.callback(snapshot)
+
+    def _snapshot(self, category_name: str) -> CatalogSyncProgress:
+        return CatalogSyncProgress(
+            pages=self.completed_pages + sum(value[0] for value in self.active.values()),
+            categories=self.categories,
+            queued_categories=self.outstanding,
+            item_records=(
+                self.completed_items + sum(value[1] for value in self.active.values())
+            ),
+            current_category=category_name,
+        )
 
 
 def _selected_category(page: CatalogPage) -> CatalogCategory | None:
@@ -212,6 +285,7 @@ class CatalogStore:
         *,
         categories: tuple[str, ...],
         progress: Callable[[CatalogSyncProgress], None] | None = None,
+        max_download_workers: int = 4,
         max_pages_per_category: int = 2048,
         max_categories: int = 4096,
         max_unique_items: int = 100_000,
@@ -238,18 +312,18 @@ class CatalogStore:
         )
         os.close(descriptor)
         temporary_path = Path(temporary_name)
-        pages = 0
         memberships = 0
         visited: set[str] = set()
         pending = deque(
-            (url, LOCAL_ROOT_URL, position, category)
+            _CategoryRequest(url, LOCAL_ROOT_URL, position, category)
             for position, (category, url) in enumerate(
                 zip(categories, source_urls, strict=True),
                 1,
             )
         )
-        root_item_ids: list[str] = []
-        root_item_set: set[str] = set()
+        department_item_ids: dict[int, tuple[str, ...]] = {}
+        progress_tracker = _SyncProgressTracker(progress)
+        download_workers = min(max(max_download_workers, 1), 8)
         try:
             with closing(sqlite3.connect(temporary_path)) as connection:
                 self._create_schema(connection)
@@ -266,104 +340,146 @@ class CatalogStore:
                     parent_url="",
                     position=0,
                 )
-                while pending:
-                    url, parent_url, category_position, fallback_category = pending.popleft()
-                    url = client.with_page_size(url, 48)
-                    if url in visited:
-                        continue
-                    if len(visited) >= max_categories:
-                        raise ValueError("Mooble catalog exceeds the category safety limit")
-                    visited.add(url)
-                    completed_pages = pages
-
-                    def report_page(
-                        category_pages: int,
-                        category_items: int,
-                        category_name: str,
-                        completed_pages: int = completed_pages,
-                        completed_memberships: int = memberships,
-                    ) -> None:
-                        if progress is not None:
-                            progress(
-                                CatalogSyncProgress(
-                                    pages=completed_pages + category_pages,
-                                    categories=len(visited),
-                                    queued_categories=len(pending),
-                                    item_records=completed_memberships + category_items,
-                                    current_category=category_name,
+                with ThreadPoolExecutor(
+                    max_workers=download_workers,
+                    thread_name_prefix="mooblender-catalog",
+                ) as executor:
+                    in_flight: dict[
+                        Future[tuple[CatalogPage, int]],
+                        _CategoryRequest,
+                    ] = {}
+                    while pending or in_flight:
+                        while pending and len(in_flight) < download_workers:
+                            request = pending.popleft()
+                            request = _CategoryRequest(
+                                client.with_page_size(request.url, 48),
+                                request.parent_url,
+                                request.position,
+                                request.fallback_id,
+                            )
+                            if request.url in visited:
+                                continue
+                            if len(visited) >= max_categories:
+                                raise ValueError(
+                                    "Mooble catalog exceeds the category safety limit"
                                 )
-                            )
+                            visited.add(request.url)
 
-                    page, downloaded_pages = _complete_page(
-                        client,
-                        url,
-                        max_pages=max_pages_per_category,
-                        progress=report_page,
-                    )
-                    pages += downloaded_pages
-                    current = _selected_category(page)
-                    if current is None:
-                        current = CatalogCategory(
-                            id=fallback_category,
-                            name=fallback_category,
-                            url=url,
-                            item_count=len(page.items),
-                            selected=True,
-                        )
-                    self._write_category(
-                        connection,
-                        CatalogCategory(
-                            id=current.id,
-                            name=current.name,
-                            url=url,
-                            level=current.level,
-                            item_count=current.item_count,
-                            selected=True,
-                        ),
-                        parent_url=parent_url,
-                        position=category_position,
-                    )
-                    for position, child in enumerate(_direct_children(page, current), 1):
-                        child_url = client.with_page_size(child.url, 48)
-                        normalized_child = CatalogCategory(
-                            id=child.id,
-                            name=child.name,
-                            url=child_url,
-                            level=child.level,
-                            item_count=child.item_count,
-                        )
-                        self._write_category(
-                            connection,
-                            normalized_child,
-                            parent_url=url,
-                            position=position,
-                        )
-                        if child_url not in visited:
-                            pending.append((child_url, url, position, child.id))
-                    self._write_items(connection, url, page.items)
-                    for item in page.items:
-                        if item.id not in root_item_set:
-                            root_item_set.add(item.id)
-                            root_item_ids.append(item.id)
-                    memberships += len(page.items)
-                    if memberships > max_memberships:
-                        raise ValueError("Mooble catalog exceeds the membership safety limit")
-                    unique_items = connection.execute(
-                        "SELECT COUNT(*) FROM items"
-                    ).fetchone()[0]
-                    if unique_items > max_unique_items:
-                        raise ValueError("Mooble catalog exceeds the item safety limit")
-                    connection.commit()
-                    if progress is not None:
-                        progress(
-                            CatalogSyncProgress(
-                                pages=pages,
-                                categories=len(visited),
-                                queued_categories=len(pending),
-                                item_records=memberships,
-                                current_category=current.name,
+                            def report_page(
+                                category_pages: int,
+                                category_items: int,
+                                category_name: str,
+                                key: str = request.url,
+                            ) -> None:
+                                progress_tracker.category_page(
+                                    key,
+                                    category_pages,
+                                    category_items,
+                                    category_name,
+                                )
+
+                            future = executor.submit(
+                                _complete_page,
+                                client,
+                                request.url,
+                                max_pages=max_pages_per_category,
+                                progress=report_page,
                             )
+                            in_flight[future] = request
+                            progress_tracker.set_work(
+                                categories=len(visited),
+                                outstanding=len(pending) + len(in_flight),
+                            )
+                        if not in_flight:
+                            continue
+
+                        completed, _unfinished = wait(
+                            tuple(in_flight),
+                            return_when=FIRST_COMPLETED,
                         )
+                        for future in completed:
+                            request = in_flight.pop(future)
+                            page, downloaded_pages = future.result()
+                            current = _selected_category(page)
+                            if current is None:
+                                current = CatalogCategory(
+                                    id=request.fallback_id,
+                                    name=request.fallback_id,
+                                    url=request.url,
+                                    item_count=len(page.items),
+                                    selected=True,
+                                )
+                            self._write_category(
+                                connection,
+                                CatalogCategory(
+                                    id=current.id,
+                                    name=current.name,
+                                    url=request.url,
+                                    level=current.level,
+                                    item_count=current.item_count,
+                                    selected=True,
+                                ),
+                                parent_url=request.parent_url,
+                                position=request.position,
+                            )
+                            for position, child in enumerate(
+                                _direct_children(page, current),
+                                1,
+                            ):
+                                child_url = client.with_page_size(child.url, 48)
+                                normalized_child = CatalogCategory(
+                                    id=child.id,
+                                    name=child.name,
+                                    url=child_url,
+                                    level=child.level,
+                                    item_count=child.item_count,
+                                )
+                                self._write_category(
+                                    connection,
+                                    normalized_child,
+                                    parent_url=request.url,
+                                    position=position,
+                                )
+                                if child_url not in visited:
+                                    pending.append(_CategoryRequest(
+                                        child_url,
+                                        request.url,
+                                        position,
+                                        child.id,
+                                    ))
+                            self._write_items(connection, request.url, page.items)
+                            if request.parent_url == LOCAL_ROOT_URL:
+                                department_item_ids[request.position] = tuple(
+                                    item.id for item in page.items
+                                )
+                            memberships += len(page.items)
+                            if memberships > max_memberships:
+                                raise ValueError(
+                                    "Mooble catalog exceeds the membership safety limit"
+                                )
+                            unique_items = connection.execute(
+                                "SELECT COUNT(*) FROM items"
+                            ).fetchone()[0]
+                            if unique_items > max_unique_items:
+                                raise ValueError(
+                                    "Mooble catalog exceeds the item safety limit"
+                                )
+                            connection.commit()
+                            progress_tracker.category_complete(
+                                request.url,
+                                pages=downloaded_pages,
+                                items=len(page.items),
+                                category_name=current.name,
+                                categories=len(visited),
+                                outstanding=len(pending) + len(in_flight),
+                            )
+                root_item_ids: list[str] = []
+                root_item_set: set[str] = set()
+                for position in sorted(department_item_ids):
+                    for item_id in department_item_ids[position]:
+                        if item_id not in root_item_set:
+                            root_item_set.add(item_id)
+                            root_item_ids.append(item_id)
                 self._write_category(
                     connection,
                     CatalogCategory(

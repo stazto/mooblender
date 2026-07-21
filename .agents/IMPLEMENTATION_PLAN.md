@@ -101,6 +101,10 @@ Implemented follow-up work:
 - A bounded live sync of the two smallest non-furniture departments,
   Lareiras/Churrasqueiras and Plantas, persisted both roots and all 41 reported
   unique items in one snapshot.
+- Independent department and category downloads run in a bounded four-worker
+  pool with serialized progress reporting and a single SQLite writer. The same
+  41-item live sample took 4.35 seconds with one worker and 2.37 seconds with
+  four configured workers; per-category continuation pages remain ordered.
 - Startup, search, manufacturer filtering, category navigation, Back, and Load
   More perform no catalog requests. The previous snapshot remains usable while
   a new sync reports page/category progress in the background.

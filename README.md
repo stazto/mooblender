@@ -102,7 +102,9 @@ enabled section into a temporary SQLite database, then atomically replaces the
 previous on-disk snapshot after every page succeeds. Existing catalog data
 stays fully usable while synchronization runs. A furniture-only sync can take
 several minutes for the currently reported 14,000-plus records and their
-category memberships, but it does not block Blender's main thread.
+category memberships, but it does not block Blender's main thread. Up to four
+department/category branches download concurrently; SQLite writes remain on
+one thread and pagination within each branch remains ordered.
 
 Startup performs no catalog request. It opens the last successful snapshot
 from Blender's user data directory. Search, category navigation, manufacturer

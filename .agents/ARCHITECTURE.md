@@ -91,6 +91,9 @@ downloads remain lazy, independent caches. The sync scope is a hardcoded set of
 observed top-level department identifiers exposed as sidebar checkboxes. Each
 enabled department is crawled as a separate root, then attached below one
 synthetic local root whose deduplicated item membership supports global search.
+Catalog HTTP uses a bounded four-worker category pool backed by the transport's
+thread-local HTTPS connections. Pagination stays sequential inside each
+category, while the synchronization worker remains the only SQLite writer.
 
 ## Design rules
 
