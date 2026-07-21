@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import threading
 import unittest
+from pathlib import Path
 
-from mooblender.blender.background import BackgroundJobs, fetch_catalog
+from mooblender.blender.background import BackgroundJobs, fetch_catalog, fetch_thumbnails
 from mooblender.mooble.models import CatalogItem, CatalogPage
 
 
 class _CatalogClient:
     def __init__(self, page: CatalogPage) -> None:
         self.page = page
+        self.thumbnail_downloads = 0
+        self.closed = False
 
     def browse(self, *, category: str, search: str) -> CatalogPage:
         self.arguments = (category, search)
         return self.page
+
+    def download_thumbnail(self, item: CatalogItem) -> Path:
+        self.thumbnail_downloads += 1
+        return Path("/cache") / f"{item.id}.png"
+
+    def close(self) -> None:
+        self.closed = True
 
 class BackgroundJobsTests(unittest.TestCase):
     def test_runs_work_outside_the_calling_thread(self) -> None:
@@ -48,6 +58,15 @@ class BackgroundJobsTests(unittest.TestCase):
 
         self.assertEqual(client.arguments, ("Moveis", "chair"))
         self.assertEqual(downloaded, page)
+        self.assertEqual(client.thumbnail_downloads, 0)
+        self.assertTrue(client.closed)
+
+        client.closed = False
+        thumbnails = fetch_thumbnails(client, (item,))  # type: ignore[arg-type]
+
+        self.assertEqual(thumbnails, {"chair-1": Path("/cache/chair-1.png")})
+        self.assertEqual(client.thumbnail_downloads, 1)
+        self.assertTrue(client.closed)
 
 
 if __name__ == "__main__":

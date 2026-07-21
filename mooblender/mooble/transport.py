@@ -1,12 +1,12 @@
-"""Minimal HTTPS transport with bounded responses and injectable behavior."""
+"""Minimal HTTPS transport with bounded responses and reusable connections."""
 
 from __future__ import annotations
 
 import json
+from http.client import HTTPException, HTTPResponse, HTTPSConnection
+from threading import Lock, get_ident
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.parse import urljoin, urlparse
 
 
 class TransportError(RuntimeError):
@@ -24,6 +24,11 @@ class HttpTransport:
         self.timeout = timeout
         self.user_agent = user_agent
         self.allowed_hosts = allowed_hosts
+        self._connection_lock = Lock()
+        self._thread_connections: dict[
+            int,
+            dict[tuple[str, int], HTTPSConnection],
+        ] = {}
 
     def validate_url(self, url: str) -> None:
         parsed = urlparse(url)
@@ -35,23 +40,98 @@ class HttpTransport:
         if parsed.username or parsed.password:
             raise TransportError("credentials in resource URLs are not allowed")
 
-    def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
+    def _connections(self) -> dict[tuple[str, int], HTTPSConnection]:
+        thread_id = get_ident()
+        with self._connection_lock:
+            return self._thread_connections.setdefault(thread_id, {})
+
+    def _connection(self, hostname: str, port: int) -> HTTPSConnection:
+        key = (hostname, port)
+        connections = self._connections()
+        connection = connections.get(key)
+        if connection is None:
+            connection = HTTPSConnection(hostname, port=port, timeout=self.timeout)
+            connections[key] = connection
+        return connection
+
+    def _drop_connection(self, hostname: str, port: int) -> None:
+        connection = self._connections().pop((hostname, port), None)
+        if connection is not None:
+            connection.close()
+
+    def close(self) -> None:
+        with self._connection_lock:
+            connection_groups = tuple(self._thread_connections.values())
+            self._thread_connections.clear()
+        for connections in connection_groups:
+            for connection in connections.values():
+                connection.close()
+
+    def _open(
+        self,
+        url: str,
+        *,
+        redirects_left: int = 3,
+        retry_stale: bool = True,
+    ) -> tuple[HTTPResponse, str, int]:
         self.validate_url(url)
-        request = Request(
-            url,
-            headers={"Accept": "*/*", "User-Agent": self.user_agent},
-            method="GET",
-        )
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        port = parsed.port or 443
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        connection = self._connection(hostname, port)
         try:
-            with urlopen(request, timeout=self.timeout) as response:
-                length = response.headers.get("Content-Length")
-                if length is not None and int(length) > max_bytes:
-                    raise TransportError("response exceeds configured size limit")
-                data = response.read(max_bytes + 1)
-        except HTTPError as error:
-            raise TransportError(f"Mooble returned HTTP {error.code}") from error
-        except (URLError, TimeoutError, OSError) as error:
+            connection.request(
+                "GET",
+                target,
+                headers={"Accept": "*/*", "User-Agent": self.user_agent},
+            )
+            response = connection.getresponse()
+        except (HTTPException, TimeoutError, OSError) as error:
+            self._drop_connection(hostname, port)
+            if retry_stale:
+                return self._open(
+                    url,
+                    redirects_left=redirects_left,
+                    retry_stale=False,
+                )
             raise TransportError(f"could not reach Mooble: {error}") from error
+
+        if response.status in {301, 302, 303, 307, 308}:
+            location = response.getheader("Location")
+            response.read()
+            if response.will_close:
+                self._drop_connection(hostname, port)
+            if not location:
+                raise TransportError("Mooble returned a redirect without a location")
+            if redirects_left <= 0:
+                raise TransportError("too many Mooble redirects")
+            return self._open(
+                urljoin(url, location),
+                redirects_left=redirects_left - 1,
+            )
+        return response, hostname, port
+
+    def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
+        response, hostname, port = self._open(url)
+        try:
+            if response.status < 200 or response.status >= 300:
+                raise TransportError(f"Mooble returned HTTP {response.status}")
+            length = response.getheader("Content-Length")
+            if length is not None and int(length) > max_bytes:
+                raise TransportError("response exceeds configured size limit")
+            data = response.read(max_bytes + 1)
+        except TransportError:
+            self._drop_connection(hostname, port)
+            raise
+        except (HTTPException, TimeoutError, OSError, ValueError) as error:
+            self._drop_connection(hostname, port)
+            raise TransportError(f"could not read Mooble response: {error}") from error
+        finally:
+            if response.will_close:
+                self._drop_connection(hostname, port)
         if len(data) > max_bytes:
             raise TransportError("response exceeds configured size limit")
         return data

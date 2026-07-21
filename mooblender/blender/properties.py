@@ -20,6 +20,8 @@ class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
     collection_name: bpy.props.StringProperty()  # type: ignore
     thumbnail_url: bpy.props.StringProperty()  # type: ignore
     thumbnail_path: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
+    thumbnail_loading: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
+    thumbnail_failed: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     detail_url: bpy.props.StringProperty()  # type: ignore
     item_type: bpy.props.StringProperty()  # type: ignore
 
@@ -32,6 +34,7 @@ class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
     current_url: bpy.props.StringProperty()  # type: ignore
     next_url: bpy.props.StringProperty()  # type: ignore
     history_json: bpy.props.StringProperty(default="[]", options={"HIDDEN"})  # type: ignore
+    page_signature: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
     categories: bpy.props.CollectionProperty(type=PROMOB_PG_catalog_category)  # type: ignore
     items: bpy.props.CollectionProperty(type=PROMOB_PG_catalog_item)  # type: ignore
 
@@ -43,6 +46,7 @@ def _reset_browser(_self, _context) -> None:
             state.current_url = ""
             state.next_url = ""
             state.history_json = "[]"
+            state.page_signature = ""
             state.categories.clear()
             state.items.clear()
             state.is_loading = False

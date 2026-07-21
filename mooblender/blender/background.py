@@ -18,21 +18,41 @@ def fetch_catalog(
     category: str,
     search: str,
 ) -> CatalogPage:
-    return client.browse(category=category, search=search)
+    try:
+        return client.browse(category=category, search=search)
+    finally:
+        client.close()
 
 
 def fetch_catalog_url(client: MoobleClient, url: str) -> CatalogPage:
-    return client.browse_url(url)
+    try:
+        return client.browse_url(url)
+    finally:
+        client.close()
 
 
-def fetch_thumbnail(client: MoobleClient, item: CatalogItem):
-    return client.download_thumbnail(item)
+def fetch_thumbnails(
+    client: MoobleClient,
+    items: tuple[CatalogItem, ...],
+) -> dict[str, Any]:
+    if not items:
+        return {}
+    workers = min(4, len(items))
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            paths = executor.map(client.download_thumbnail, items)
+            return {item.id: path for item, path in zip(items, paths, strict=True)}
+    finally:
+        client.close()
 
 
 def fetch_model(client: MoobleClient, item: CatalogItem):
-    path = client.download_model(item)
-    loaded = load_path(path)
-    return loaded.document if isinstance(loaded, PContentPackage) else loaded
+    try:
+        path = client.download_model(item)
+        loaded = load_path(path)
+        return loaded.document if isinstance(loaded, PContentPackage) else loaded
+    finally:
+        client.close()
 
 
 class BackgroundJobs:
@@ -63,3 +83,4 @@ class BackgroundJobs:
 
 
 JOBS = BackgroundJobs()
+THUMBNAIL_JOBS = BackgroundJobs(max_workers=1)

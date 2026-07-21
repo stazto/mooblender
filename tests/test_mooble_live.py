@@ -11,7 +11,8 @@ LIVE_TESTS_ENABLED = os.environ.get("MOOBLENDER_LIVE_TESTS") == "1"
 @unittest.skipUnless(LIVE_TESTS_ENABLED, "set MOOBLENDER_LIVE_TESTS=1 to call Mooble")
 class MoobleLiveTests(unittest.TestCase):
     def test_public_catalog_explorer_is_available(self) -> None:
-        page = MoobleClient(page_size=1).browse(category="Moveis")
+        with MoobleClient(page_size=1) as client:
+            page = client.browse(category="Moveis")
 
         self.assertEqual(page.pin_name, "Departamento")
         self.assertTrue(page.categories)

@@ -21,6 +21,25 @@ navigation URLs and counts. Specification summaries expose IDs, names,
 descriptions, brands, collections, thumbnail links, dimensions, and detail URLs.
 Pagination is supplied as a server-generated `Links.Next` URL.
 
+## Category loading strategy
+
+Category pages are loaded lazily. The observed root furniture category reports
+more than 14,000 models and exposes its immediate children, while selecting a
+child makes another Explorer request that can expose an additional category
+level. Recursively fetching the entire tree on startup would therefore add many
+requests to the catalog API without improving the first visible result.
+
+Mooblender parses the complete category metadata returned by each requested
+page, creates its cards immediately, and then fetches the card thumbnails as a
+separate background batch. Category branches are requested only when opened.
+
+Requested catalog pages are cached on disk. On add-on startup, the initial page
+is restored from that cache before a background revalidation request. The
+observed service does not return `ETag` or `Last-Modified` validators and marks
+responses `no-cache`, so Mooblender compares a fingerprint of the parsed live
+page with the displayed cached page. Existing cards and previews are replaced
+only when that fingerprint changes.
+
 Fetching a specification detail URL can add `Links.Content`. Publicly visible
 shape records observed during development linked to HTTPS CDN `.pcontent`
 resources. The add-on downloads only after the user selects **Import**, validates

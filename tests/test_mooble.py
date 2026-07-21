@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from tempfile import TemporaryDirectory
 
 from mooblender.mooble.client import MoobleClient
 
@@ -73,6 +74,29 @@ class MoobleClientTests(unittest.TestCase):
         self.assertEqual(page.items[0].brand, "Brand")
         self.assertEqual(page.items[0].collection, "Kitchen")
         self.assertTrue(page.next_url.endswith("/next"))
+
+    def test_caches_and_restores_catalog_page(self):
+        payload = {
+            "Output": {
+                "Pin": {"Name": "Departamento", "AvailableTags": {"Data": []}},
+                "Specifications": {
+                    "Links": {},
+                    "Data": [
+                        {
+                            "Id": "cached-1",
+                            "Name": "Cached chair",
+                            "Links": {},
+                        }
+                    ],
+                },
+            }
+        }
+        with TemporaryDirectory() as directory:
+            client = MoobleClient(cache_dir=directory, transport=FakeTransport(payload))
+            page = client.browse(category="Moveis")
+            restored = client.load_cached_page(page.current_url)
+
+        self.assertEqual(restored, page)
 
 
 if __name__ == "__main__":

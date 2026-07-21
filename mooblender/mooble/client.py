@@ -74,6 +74,17 @@ class MoobleClient:
         )
         self.transport = transport or HttpTransport(allowed_hosts=allowed)
 
+    def close(self) -> None:
+        close = getattr(self.transport, "close", None)
+        if close is not None:
+            close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exception_type, _exception, _traceback) -> None:
+        self.close()
+
     def root_url(self, *, category: str = "Moveis", search: str = "") -> str:
         params: dict[str, str | int] = {
             "client": self.client_name,
@@ -95,9 +106,85 @@ class MoobleClient:
         try:
             self.transport.validate_url(url)
             payload = self.transport.get_json(url)
-            return self._parse_page(payload, current_url=url)
+            page = self._parse_page(payload, current_url=url)
+            self._write_catalog_cache(url, page)
+            return page
         except (TransportError, KeyError, TypeError, ValueError) as error:
             raise MoobleError(f"could not browse Mooble catalog: {error}") from error
+
+    def load_cached_page(self, url: str) -> CatalogPage | None:
+        if self.cache_dir is None:
+            return None
+        path = self._catalog_cache_path(url)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("version") != 1 or payload.get("url") != url:
+                return None
+            return CatalogPage(
+                categories=tuple(
+                    CatalogCategory(**category) for category in payload["categories"]
+                ),
+                items=tuple(CatalogItem(**item) for item in payload["items"]),
+                next_url=payload["next_url"],
+                current_url=url,
+                pin_name=payload["pin_name"],
+            )
+        except (
+            AttributeError,
+            KeyError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            return None
+
+    def _catalog_cache_path(self, url: str) -> Path:
+        key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+        return (self.cache_dir or Path(tempfile.gettempdir()) / "mooblender") / (
+            f"catalog/{key}.json"
+        )
+
+    def _write_catalog_cache(self, url: str, page: CatalogPage) -> None:
+        if self.cache_dir is None:
+            return
+        payload = {
+            "version": 1,
+            "url": url,
+            "categories": [
+                {
+                    "id": category.id,
+                    "name": category.name,
+                    "url": category.url,
+                    "level": category.level,
+                    "item_count": category.item_count,
+                    "selected": category.selected,
+                }
+                for category in page.categories
+            ],
+            "items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "description": item.description,
+                    "brand": item.brand,
+                    "collection": item.collection,
+                    "thumbnail_url": item.thumbnail_url,
+                    "detail_url": item.detail_url,
+                    "item_type": item.item_type,
+                }
+                for item in page.items
+            ],
+            "next_url": page.next_url,
+            "pin_name": page.pin_name,
+        }
+        with suppress(OSError):
+            self._atomic_write(
+                self._catalog_cache_path(url),
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
+                    "utf-8"
+                ),
+            )
 
     def details(self, item: CatalogItem) -> ItemDetails:
         detail_url = item.detail_url or urljoin(self.base_url, f"explorer/GetSpec/{item.id}")

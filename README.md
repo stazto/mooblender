@@ -51,13 +51,17 @@ After enabling it:
 
 1. Open the **Mooble** tab in the 3D View sidebar.
 2. Enable Blender's **Online Access** setting when using Mooble.
-3. Select **Refresh**, browse a collection or search, then select **Import**.
+3. The catalog loads automatically; browse a collection or search, then select
+   **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
-Catalog pages and models download in background workers. Thumbnails are fetched
-only when **Load Preview** is selected for a model. The Mooble panel displays
-the current loading operation while Blender remains available for other work;
-Blender data is only created on its main thread.
+Catalog pages are cached on disk and restored immediately at startup. A
+background request then compares the live response with the cached fingerprint,
+replacing the cards only when catalog data changed. Cards appear before their
+visible thumbnails, which are fetched as one background batch. Each card shows
+a loading symbol until its preview arrives. During catalog or model operations,
+the panel remains visible with its controls disabled and a loading message above
+them. Blender data is only created on its main thread.
 
 The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store
