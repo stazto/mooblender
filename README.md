@@ -78,10 +78,10 @@ are scoped to their source package so same-named cabinet and door layers do not
 overwrite one another. PMob RGBA colors retain their source channel order, and
 exactly equal, unmodified materials are reused across imports.
 When a resizable panel contains fixed hardware, Mooblender preserves the
-hardware boundary while stretching the remaining panel span. Meshes without
-source UV coordinates receive a size-aware cube projection, and observed
-physical Promob texture dimensions keep their material scale consistent after
-resizing.
+hardware boundary while stretching the remaining panel span. Cubic-mapped
+meshes receive a size-aware physical UV projection after all static transforms,
+so the same material retains the same texel density on resized and unresized
+components. Observed Promob texture dimensions control that common scale.
 Aggregate visibility expressions, attachment normals, and current drawing
 dimensions are respected when placing nested components.
 The source meshes and transform helpers are retained in a private collection

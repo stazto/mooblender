@@ -64,11 +64,13 @@ UI controls enabled while their values drive source-hierarchy transforms.
 For flattened geometry, explicitly non-editable component layers that occupy
 less than half of a resized axis retain their size on that axis. The adjacent
 panel stretches from the preserved hardware boundary to the resized outer
-edge, rather than reserving a scaled copy of the hardware span. Meshes without
-serialized UVs receive a target-size-aware cube projection; physical Promob
-texture dimensions then drive the material's UV scale. Generated materials
-carry both a source/resource fingerprint and a current node-state fingerprint;
-reuse requires both to match, so edited materials are preserved.
+edge, rather than reserving a scaled copy of the hardware span. Every
+cubic-mapped mesh receives a projection from its final physical geometry,
+including PMob primitive transforms and aggregate redimensioning; physical
+Promob texture dimensions then drive the material's UV scale. This standardizes
+texel density between resized and unresized users of one material. Generated
+materials carry both a source/resource fingerprint and a current node-state
+fingerprint; reuse requires both to match, so edited materials are preserved.
 
 Aggregate formulas use current `DrawingDimension` axes before logical
 `Dimension` axes; measured geometry is reserved for redimension scaling.

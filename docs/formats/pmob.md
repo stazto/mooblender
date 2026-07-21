@@ -59,14 +59,17 @@ creates each mesh datablock once and instances it at every primitive reference.
 - Texture coordinates are interpreted as one UV per vertex.
 
 Some observed meshes, including the 728 door panels, contain no serialized UV
-coordinates. Their material metadata still identifies cubic mapping and gives
-a physical texture width and height in millimetres. Mooblender cube-projects
-those meshes after target-size correction, stores the projected coordinates in
+coordinates. Other cubic-mapped meshes contain UVs for their original size but
+are redimensioned by their parent aggregate. Their material metadata identifies
+cubic mapping and gives a physical texture width and height in millimetres.
+Mooblender therefore cube-projects every cubic-mapped mesh after its primitive
+transforms and target-size correction, stores final physical coordinates in
 metres as a Blender UV map, and converts the physical texture dimensions to UV
-scale. This keeps texture density stable when a panel stretches while retaining
-ordinary serialized UVs when the source provides them. The numeric mapping
-types are supported from observed files and the decompiled mapping conversion:
-`0` fixed, `1` cubic, and `2` planar; spherical variants remain unverified.
+scale. This gives every use of the same material the same texel density even
+when one component was resized. Serialized UVs remain authoritative for
+non-cubic mappings. The numeric mapping types are supported from observed files
+and the decompiled mapping conversion: `0` fixed, `1` cubic, and `2` planar;
+spherical variants remain unverified.
 
 Observed PContent packages embed the diffuse, metallic, and transparency image
 members named by or derived from PMob materials. `SPECULAR_TEXTURE` points to

@@ -171,9 +171,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
   Preserve partial-axis fixed hardware size when a non-editable component layer
   is flattened into resized panel geometry, and stretch the panel from the
   preserved hardware boundary to the target edge.
-- Generate target-size-aware cube-projected UVs for meshes with no serialized
-  coordinates, and convert observed physical material mapping dimensions from
-  millimetres to Blender UV scale.
+- Generate target-size-aware physical UVs for every cubic-mapped mesh after its
+  PMob primitive transforms and aggregate redimensioning. Convert observed
+  material mapping dimensions from millimetres to Blender UV scale so one
+  material retains one texel density across components.
 - Interpret PMob colors as RGBA and reuse an existing generated material only
   when its source resources and current Blender node state are exactly equal.
 
@@ -205,6 +206,9 @@ height with one condition-selected drawer body per front, positions the
 44950/007 tool-cart drawers from its 570 mm drawing depth rather than its 645 mm
 mesh envelope, and orients the 10122 bed's handles inside their 149 mm drawer
 fronts.
+Cached 4220A/0079K validation gives the internal body and both drawers a
+UV-to-world edge ratio of 1.0 before their shared 150 mm material mapping, so
+all three use the same 6.6667 texture repetitions per metre.
 
 ## Milestone 4 — Identify and implement `.content`
 

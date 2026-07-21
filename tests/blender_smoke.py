@@ -432,6 +432,7 @@ def main() -> None:
                                 (10.0, 90.0, 0.0),
                             ],
                             indices=source.indices,
+                            texture_coordinates=source.texture_coordinates,
                             material_id=-1,
                         )
                     ],
@@ -469,13 +470,27 @@ def main() -> None:
         child_a = PContentPackage(
             document=PmobDocument(
                 name="Child A",
-                materials=[Material(name="Child A", color=(255, 0, 0, 255))],
+                materials=[
+                    Material(
+                        name="Child A",
+                        color=(255, 0, 0, 255),
+                        mapping_type=1,
+                        mapping_scale=(1000.0, 1000.0),
+                    )
+                ],
             )
         )
         child_b = PContentPackage(
             document=PmobDocument(
                 name="Child B",
-                materials=[Material(name="Child B", color=(0, 0, 255, 255))],
+                materials=[
+                    Material(
+                        name="Child B",
+                        color=(0, 0, 255, 255),
+                        mapping_type=1,
+                        mapping_scale=(1000.0, 1000.0),
+                    )
+                ],
             )
         )
         nested = PContentPackage(
@@ -701,6 +716,17 @@ def main() -> None:
             raise AssertionError("scene builder produced invalid triangle geometry")
         if len(obj.data.uv_layers) != 1 or len(obj.data.materials) != 1:
             raise AssertionError("scene builder did not preserve UVs and material assignment")
+        static_uvs = obj.data.uv_layers.active.data
+        static_uv_extents = tuple(
+            max(loop.uv[axis] for loop in static_uvs)
+            - min(loop.uv[axis] for loop in static_uvs)
+            for axis in range(2)
+        )
+        if tuple(round(value, 3) for value in static_uv_extents) != (1.0, 1.2):
+            raise AssertionError(
+                "cubic UVs do not represent final physical dimensions: "
+                f"{static_uv_extents}"
+            )
         world_vertex = obj.matrix_world @ obj.data.vertices[1].co
         if tuple(round(value, 5) for value in world_vertex) != (2.0, 0.0, 0.0):
             raise AssertionError("scene builder did not apply PMob units and root transform")
@@ -795,7 +821,10 @@ def main() -> None:
             loop.uv.x for loop in panel_uvs
         )
         if round(panel_u_extent, 3) != 0.19:
-            raise AssertionError("generated panel UVs do not follow its resized dimensions")
+            raise AssertionError(
+                "generated panel UVs do not follow its resized dimensions: "
+                f"{panel_u_extent}"
+            )
         interface_items = modifier.node_group.interface.items_tree
         interface_names = [item.name for item in interface_items]
         if len(interface_names) != len(set(interface_names)):

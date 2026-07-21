@@ -224,6 +224,7 @@ def _create_material(
         None,
     )
     if existing is not None:
+        existing["promob_mapping_type"] = source.mapping_type or 0
         return existing
 
     name = _unique_name(source.name, f"Promob Material {index}")
@@ -300,6 +301,7 @@ def _create_material(
         material["promob_specular_texture"] = source.specular_texture
     if source.normal_texture:
         material["promob_normal_texture"] = source.normal_texture
+    material["promob_mapping_type"] = source.mapping_type or 0
     material["mooblender_material_state_sha256"] = _material_state_digest(material)
     return material
 
@@ -368,21 +370,16 @@ def _create_meshes(
 def _box_project_uv(
     mesh,
     *,
-    geometry_scale: tuple[float, float, float],
-    correction_scale: tuple[float, float, float],
-    correction_location: tuple[float, float, float],
+    final_transform: Matrix,
 ) -> None:
+    while mesh.uv_layers:
+        mesh.uv_layers.remove(mesh.uv_layers[0])
     uv_layer = mesh.uv_layers.new(name="UVMap")
-    positions = [
-        tuple(
-            geometry_scale[axis]
-            * (vertex.co[axis] * correction_scale[axis] + correction_location[axis])
-            for axis in range(3)
-        )
-        for vertex in mesh.vertices
-    ]
+    positions = [final_transform @ vertex.co for vertex in mesh.vertices]
+    normal_transform = final_transform.to_3x3().inverted_safe().transposed()
     for polygon in mesh.polygons:
-        dominant_axis = max(range(3), key=lambda axis: abs(polygon.normal[axis]))
+        normal = normal_transform @ polygon.normal
+        dominant_axis = max(range(3), key=lambda axis: abs(normal[axis]))
         uv_axes = ((1, 2), (0, 2), (0, 1))[dominant_axis]
         for loop_index in polygon.loop_indices:
             point = positions[mesh.loops[loop_index].vertex_index]
@@ -406,15 +403,18 @@ def _instantiate_primitive(
         tuple[tuple[float, float, float], tuple[float, float, float]],
     ],
     geometry_scale: tuple[float, float, float],
+    document_transform: Matrix | None = None,
 ):
     name = _unique_name(primitive.name, f"Primitive {fallback_index}")
     node = bpy.data.objects.new(name, None)
     node.empty_display_type = "PLAIN_AXES"
     collection.objects.link(node)
     node.parent = parent
-    node.matrix_local = Matrix(
+    local_transform = Matrix(
         blender_matrix_rows(primitive.matrix, unit_scale=unit_scale)
     )
+    node.matrix_local = local_transform
+    document_transform = (document_transform or Matrix.Identity(4)) @ local_transform
     node["promob_primitive_type"] = (
         primitive.kind.name if primitive.kind is not None else "UNKNOWN"
     )
@@ -434,13 +434,21 @@ def _instantiate_primitive(
             ((1.0, 1.0, 1.0), (0.0, 0.0, 0.0)),
         )
         object_mesh = mesh
-        if not mesh.uv_layers:
+        material = mesh.materials[0] if mesh.materials else None
+        cubic_mapping = (
+            material is not None and material.get("promob_mapping_type") == 1
+        )
+        if cubic_mapping or not mesh.uv_layers:
             object_mesh = mesh.copy()
+            correction_transform = Matrix.Translation(correction_location) @ Matrix.Diagonal(
+                (*correction_scale, 1.0)
+            )
+            scale_transform = Matrix.Diagonal((*geometry_scale, 1.0))
             _box_project_uv(
                 object_mesh,
-                geometry_scale=geometry_scale,
-                correction_scale=correction_scale,
-                correction_location=correction_location,
+                final_transform=(
+                    scale_transform @ document_transform @ correction_transform
+                ),
             )
         obj = bpy.data.objects.new(f"{name}_{mesh_index}", object_mesh)
         obj.parent = node
@@ -463,6 +471,7 @@ def _instantiate_primitive(
             fallback_index=child_index,
             layer_corrections=layer_corrections,
             geometry_scale=geometry_scale,
+            document_transform=document_transform,
         )
     return node
 
