@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import tempfile
 import tomllib
 import zipfile
@@ -18,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_SOURCE = PROJECT_ROOT / "mooblender"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "dist"
 _ID_PATTERN = re.compile(r"[a-z][a-z0-9_]*\Z")
-_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:-dev\d{3})?\Z")
+_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+\Z")
 _MANIFEST_VERSION_PATTERN = re.compile(r'^version\s*=\s*"[^"]+"\s*$', re.MULTILINE)
 _SKIPPED_DIRECTORY_NAMES = {"__pycache__"}
 _SKIPPED_SUFFIXES = {".pyc", ".pyo", ".zip"}
@@ -50,7 +51,7 @@ def read_metadata(source: Path) -> ExtensionMetadata:
     if not isinstance(extension_id, str) or not _ID_PATTERN.fullmatch(extension_id):
         raise BuildError("manifest id must use lowercase letters, digits, and underscores")
     if not isinstance(version, str) or not _VERSION_PATTERN.fullmatch(version):
-        raise BuildError("manifest version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-devNNN")
+        raise BuildError("manifest version must be MAJOR.MINOR.PATCH")
     return ExtensionMetadata(extension_id=extension_id, version=version)
 
 
@@ -60,8 +61,47 @@ def version_from_git_tag(tag: str) -> str:
         raise BuildError("release tag must start with 'v'")
     version = tag[1:]
     if not _VERSION_PATTERN.fullmatch(version):
-        raise BuildError("release tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-devNNN")
+        raise BuildError("release tag must be vMAJOR.MINOR.PATCH")
     return version
+
+
+def development_version(version: str, build_number: int) -> str:
+    """Append the normalized development sequence used by Blender packages."""
+    if not _VERSION_PATTERN.fullmatch(version):
+        raise BuildError("development version base must be MAJOR.MINOR.PATCH")
+    if build_number < 1:
+        raise BuildError("development build number must be positive")
+    return f"{version}-dev{build_number:03d}"
+
+
+def detect_dev_build() -> int:
+    """Derive the development sequence from CI or the local Git history."""
+    configured = os.environ.get("MOOBLENDER_DEV_BUILD")
+    if configured:
+        try:
+            build_number = int(configured)
+        except ValueError as error:
+            raise BuildError("MOOBLENDER_DEV_BUILD must be a positive integer") from error
+        if build_number < 1:
+            raise BuildError("MOOBLENDER_DEV_BUILD must be a positive integer")
+        return build_number
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=PROJECT_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        build_number = int(result.stdout.strip())
+    except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as error:
+        raise BuildError(
+            "could not derive development build number; set MOOBLENDER_DEV_BUILD"
+        ) from error
+    if build_number < 1:
+        raise BuildError("Git history must contain at least one commit")
+    return build_number
 
 
 def _manifest_bytes(path: Path, version: str) -> bytes:
@@ -116,10 +156,13 @@ def build_addon(
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     *,
     git_tag: str | None = None,
+    dev_build: int | None = None,
 ) -> Path:
     source = source.resolve()
     metadata = read_metadata(source)
-    version = version_from_git_tag(git_tag) if git_tag else metadata.version
+    base_version = version_from_git_tag(git_tag) if git_tag else metadata.version
+    build_number = dev_build if dev_build is not None else detect_dev_build()
+    version = development_version(base_version, build_number)
     files = collect_source_files(source)
     if not files:
         raise BuildError("extension source contains no packageable files")
@@ -159,11 +202,22 @@ def main() -> int:
     parser.add_argument(
         "--git-tag",
         default=os.environ.get("MOOBLENDER_GIT_TAG") or None,
-        help="release tag such as v0.1.0-dev001; overrides the manifest version in the ZIP",
+        help="target tag such as v0.1.0; overrides the manifest base version in the ZIP",
+    )
+    parser.add_argument(
+        "--dev-build",
+        type=int,
+        default=None,
+        help="development sequence; defaults to MOOBLENDER_DEV_BUILD or Git commit count",
     )
     arguments = parser.parse_args()
     try:
-        archive = build_addon(arguments.source, arguments.output_dir, git_tag=arguments.git_tag)
+        archive = build_addon(
+            arguments.source,
+            arguments.output_dir,
+            git_tag=arguments.git_tag,
+            dev_build=arguments.dev_build,
+        )
     except BuildError as error:
         parser.error(str(error))
     print(archive)

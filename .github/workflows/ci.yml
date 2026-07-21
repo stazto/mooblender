@@ -79,6 +79,7 @@ jobs:
       - name: Build deterministic extension archive
         env:
           MOOBLENDER_GIT_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          MOOBLENDER_DEV_BUILD: ${{ github.run_number }}
         run: python build_blender_addon.py
       - name: Upload Blender add-on
         uses: actions/upload-artifact@v7
@@ -104,14 +105,9 @@ jobs:
       - name: Rebuild verified tag archive
         env:
           MOOBLENDER_GIT_TAG: ${{ github.ref_name }}
+          MOOBLENDER_DEV_BUILD: ${{ github.run_number }}
         run: python build_blender_addon.py
       - name: Create development prerelease
-        if: ${{ contains(github.ref_name, '-dev') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/mooblender-*.zip --verify-tag --generate-notes --prerelease
-      - name: Create stable release
-        if: ${{ !contains(github.ref_name, '-dev') }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/mooblender-*.zip --verify-tag --generate-notes

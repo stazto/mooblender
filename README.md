@@ -31,19 +31,20 @@ expects.
 
 ## Versioning and releases
 
-Development versions use `MAJOR.MINOR.PATCH-devNNN`, where `NNN` is a
-zero-padded sequence number. Release tags add a `v` prefix, for example
-`v0.1.0-dev001`.
+Git tags contain only the target version, using `vMAJOR.MINOR.PATCH`, for
+example `v0.1.0`. A `-devNNN` suffix is never placed in a tag or the source
+manifest. The build script adds it automatically, using the zero-padded GitHub
+Actions run number in CI or the Git commit count locally.
 
-Git tags are authoritative for release builds. Pushing a matching `v*` tag runs
-the complete CI suite, injects the tag version into the packaged Blender
-manifest, and creates a GitHub Release with the ZIP attached. `-devNNN` tags
-create prereleases; plain `vMAJOR.MINOR.PATCH` tags create stable releases.
+Git tags are authoritative for the target version. Pushing a matching `v*` tag
+runs the complete CI suite, builds `MAJOR.MINOR.PATCH-devNNN`, injects that
+generated version into the packaged Blender manifest, and creates a GitHub
+prerelease with the ZIP attached.
 
 To reproduce a tagged build locally:
 
 ```bash
-python3 build_blender_addon.py --git-tag v0.1.0-dev001
+python3 build_blender_addon.py --git-tag v0.1.0 --dev-build 1
 ```
 
 After enabling it:

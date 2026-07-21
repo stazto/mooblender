@@ -1,7 +1,7 @@
 # Implementation plan
 
 This plan turns the product goals into independently verifiable milestones.
-The status labels describe the repository at version 0.1.0-dev001.
+The status labels describe the first `v0.1.0` development target.
 
 ## Architecture and delivery principles
 
@@ -145,10 +145,10 @@ Implemented foundation:
 - `build_blender_addon.py` validates manifest identity/version, rejects
   symlinks, normalizes archive metadata, and packages the inner extension at
   the ZIP root; CI publishes that ZIP without adding a second archive layer.
-- Git tags are authoritative for release builds. Development versions follow
-  `vMAJOR.MINOR.PATCH-devNNN`; tag CI injects that version into the packaged
-  manifest and publishes a GitHub prerelease. Tags without the development
-  suffix publish stable releases.
+- Git target tags follow `vMAJOR.MINOR.PATCH` without development suffixes.
+  The builder automatically produces `MAJOR.MINOR.PATCH-devNNN`, using the CI
+  run number or local Git commit count, injects it into the packaged manifest,
+  and publishes tag builds as GitHub prereleases.
 
 Remaining work:
 
