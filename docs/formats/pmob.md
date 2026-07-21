@@ -26,6 +26,12 @@ animation times/transforms, layers, mesh lists, vertices, triangle indices,
 normals, UV coordinates, line indices, smoothing groups, material IDs, and the
 known material properties from type IDs `0x1a` through `0x38`.
 
+The smoothing-group payload is a sequence of little-endian lists. Each list is
+encoded as a signed 32-bit vertex count followed by that many signed 32-bit
+vertex indices. A negative count, truncated list, or index outside the mesh's
+vertex array is invalid. The decompiled PMob writer confirms that these are
+vertex-index groups rather than conventional per-face smoothing-group numbers.
+
 Material color payloads are four bytes in RGBA order. This matches the
 decompiled serializer (`Color.FromArgb(buffer[3], buffer[0], buffer[1],
 buffer[2])`) and observed near-black handle payloads such as `(5, 5, 5, 255)`.
@@ -58,6 +64,24 @@ creates each mesh datablock once and instances it at every primitive reference.
 - Mesh indices are interpreted as consecutive triangles.
 - Texture coordinates are interpreted as one UV per vertex.
 
+The observed PMob producer duplicates a position when two face corners require
+different UV coordinates, then places the duplicate indices in one smoothing
+group. Its mesh conversion also uses a 45-degree maximum angle when deciding
+whether coincident vertices belong to one smooth surface. Normal generation
+accumulates triangle normals at each vertex and averages the members of each
+smoothing group. These behaviors are confirmed by the decompiled serializer
+and mesh implementation; a cached 212-package corpus confirms that the files
+commonly omit serialized normals and rely on these topology rules.
+
+Blender stores UV coordinates and custom normals on face corners, so Mooblender
+can weld coincident smooth vertices without discarding UV seams. It groups
+positions within the producer's `1e-5` source-unit tolerance, joins normal fans
+within the observed 45-degree threshold, honors explicit smoothing groups, and
+keeps incompatible fans split as hard edges. It then writes the generated
+normal to every face corner and enables smooth polygon shading. On the sampled
+corpus this reduced 611,468 source vertices to 319,119 Blender vertices while
+retaining all triangle corners and their UV coordinates.
+
 Some observed meshes, including the 728 door panels, contain no serialized UV
 coordinates. Other cubic-mapped meshes contain UVs for their original size but
 are redimensioned by their parent aggregate. Their material metadata identifies
@@ -84,7 +108,6 @@ before being promoted to confirmed format guarantees.
 ## Unknown or incomplete
 
 - meaning and topology rules for every mesh source type;
-- smoothing-group encoding;
 - line-index semantics;
 - texture resolution rules outside PContent;
 - animation time units/interpolation; and

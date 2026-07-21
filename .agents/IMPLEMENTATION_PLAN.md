@@ -127,8 +127,11 @@ Work packages:
 3. **Materials (implemented baseline):** color, opacity, metallic, roughness,
    embedded diffuse/metallic/normal/transparency textures, UV repetitions, and
    rotation are mapped to Principled nodes.
-4. **Geometry:** validate all mesh source types; apply normals, smoothing,
-   line-index behavior, culling metadata, and degenerate-face policy.
+4. **Geometry (implemented baseline):** decode nested smoothing groups,
+   reconstruct absent normals with the observed 45-degree smooth threshold,
+   compact UV-seam vertices onto Blender's corner domain, and preserve hard
+   normal fans. Remaining work is to validate all mesh source types, line-index
+   behavior, culling metadata, and degenerate-face policy.
 5. **Animation:** validate time units and transform interpolation, then create
    Blender actions and keyframes.
 6. **Diagnostics:** produce an import summary listing dropped or approximated
@@ -209,6 +212,12 @@ fronts.
 Cached 4220A/0079K validation gives the internal body and both drawers a
 UV-to-world edge ratio of 1.0 before their shared 150 mm material mapping, so
 all three use the same 6.6667 texture repetitions per metre.
+A 212-package cached topology corpus contains 611,468 PMob vertices and no
+serialized mesh normals. Nested smoothing groups plus inferred 45-degree
+normal fans compact this to 319,119 Blender vertices while preserving triangle
+corners, UV seams, and incompatible hard-edge fans. Synthetic unit and Blender
+smoke fixtures independently verify smooth-group decoding, seam UV retention,
+custom corner normals, and hard-edge separation.
 
 ## Milestone 4 — Identify and implement `.content`
 

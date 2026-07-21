@@ -36,6 +36,26 @@ def _ints(payload: bytes) -> list[int]:
     return list(struct.unpack(f"<{len(payload) // 4}i", payload))
 
 
+def _int_lists(payload: bytes) -> list[list[int]]:
+    """Decode PMob's repeated ``count, count × int32`` list encoding."""
+
+    groups = []
+    offset = 0
+    while offset < len(payload):
+        if len(payload) - offset < 4:
+            raise PmobFormatError("smoothing group is missing its vertex count")
+        count = struct.unpack_from("<i", payload, offset)[0]
+        offset += 4
+        if count < 0:
+            raise PmobFormatError("smoothing group has a negative vertex count")
+        byte_count = count * 4
+        if byte_count > len(payload) - offset:
+            raise PmobFormatError("smoothing group extends past the end of its payload")
+        groups.append(list(struct.unpack_from(f"<{count}i", payload, offset)))
+        offset += byte_count
+    return groups
+
+
 def _floats(payload: bytes) -> list[float]:
     _require_size(payload, 4, "float list")
     return list(struct.unpack(f"<{len(payload) // 4}f", payload))
@@ -140,7 +160,7 @@ def _parse_mesh(record: Record) -> Mesh:
         elif kind == ContentType.TEXT_COORDS:
             mesh.texture_coordinates = _vectors(child.payload, 2)  # type: ignore[assignment]
         elif kind == ContentType.SMOOTH_GROUPS:
-            mesh.smooth_groups = _ints(child.payload)
+            mesh.smooth_groups = _int_lists(child.payload)
         elif kind == ContentType.LINE_INDICES:
             mesh.line_indices = _ints(child.payload)
         elif kind == ContentType.MESH_SOURCE_TYPE:
@@ -152,6 +172,14 @@ def _parse_mesh(record: Record) -> Mesh:
         raise PmobFormatError("mesh contains an out-of-range vertex index")
     if mesh.texture_coordinates and len(mesh.texture_coordinates) != len(mesh.vertices):
         raise PmobFormatError("per-vertex UV count does not match vertex count")
+    if mesh.normals and len(mesh.normals) != len(mesh.vertices):
+        raise PmobFormatError("per-vertex normal count does not match vertex count")
+    if any(
+        index < 0 or index >= len(mesh.vertices)
+        for group in mesh.smooth_groups
+        for index in group
+    ):
+        raise PmobFormatError("smoothing group contains an out-of-range vertex index")
     return mesh
 
 

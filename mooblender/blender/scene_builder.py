@@ -29,6 +29,7 @@ from ..model.dimensions import (
 from ..model.expressions import evaluate_expression
 from ..model.openings import control_name, door_motion
 from ..model.scene import Material, PmobDocument, Primitive, PrimitiveType
+from ..model.topology import prepare_mesh
 from ..model.transforms import blender_matrix_rows
 
 
@@ -327,11 +328,12 @@ def _create_meshes(
         meshes = []
         for mesh_index, source in enumerate(layer.meshes):
             mesh_name = f"{layer_name}_{mesh_index}"
+            topology = prepare_mesh(source)
             vertices = [
-                tuple(component * scale for component in point) for point in source.vertices
+                tuple(component * scale for component in point) for point in topology.vertices
             ]
             mesh = bpy.data.meshes.new(mesh_name)
-            mesh.from_pydata(vertices, [], source.triangle_faces())
+            mesh.from_pydata(vertices, [], topology.faces)
             mesh.update()
             layer_attribute = mesh.attributes.new(
                 name="mooblender_layer",
@@ -348,13 +350,15 @@ def _create_meshes(
             )
             for value in entity_attribute.data:
                 value.value = entity_code
-            if source.texture_coordinates:
+            if topology.loop_uvs:
                 uv_layer = mesh.uv_layers.new(name="UVMap")
-                for loop in mesh.loops:
-                    u, v = source.texture_coordinates[loop.vertex_index]
+                for loop, (u, v) in zip(mesh.loops, topology.loop_uvs, strict=True):
                     uv_layer.data[loop.index].uv = (u, v)
-            if source.normals and len(source.normals) == len(source.vertices):
-                mesh.normals_split_custom_set_from_vertices(source.normals)
+            if topology.loop_normals:
+                for polygon in mesh.polygons:
+                    polygon.use_smooth = True
+                mesh.normals_split_custom_set(topology.loop_normals)
+                mesh.update()
             override = material_overrides.get(layer.name.casefold())
             if override is not None:
                 mesh.materials.append(override)
@@ -362,6 +366,8 @@ def _create_meshes(
                 mesh.materials.append(materials[source.material_id])
             mesh["promob_layer"] = layer_name
             mesh["promob_material_id"] = source.material_id
+            mesh["promob_source_vertex_count"] = len(source.vertices)
+            mesh["mooblender_welded_vertex_count"] = topology.removed_vertex_count
             meshes.append(mesh)
         result[layer.name.casefold()] = meshes
     return result

@@ -53,6 +53,7 @@ def make_document() -> bytes:
     vertices = record(struct.pack("<9f", 0, 0, 0, 1000, 0, 0, 0, 1000, 0))
     indices = record(struct.pack("<3i", 0, 1, 2))
     uvs = record(struct.pack("<6f", 0, 0, 1, 0, 0, 1))
+    smooth_groups = record(struct.pack("<3i", 2, 0, 1))
     material_id = record(struct.pack("<i", 0))
     mesh = record(
         children=(
@@ -60,6 +61,7 @@ def make_document() -> bytes:
             (ContentType.VERTICES, vertices),
             (ContentType.INDICES, indices),
             (ContentType.TEXT_COORDS, uvs),
+            (ContentType.SMOOTH_GROUPS, smooth_groups),
         )
     )
     mesh_list = record(children=((ContentType.MESH, mesh),))
@@ -92,6 +94,7 @@ class PmobReaderTests(unittest.TestCase):
         self.assertEqual(document.version, 2)
         self.assertEqual(document.layers[0].name, "Top")
         self.assertEqual(document.layers[0].meshes[0].triangle_faces(), [(0, 1, 2)])
+        self.assertEqual(document.layers[0].meshes[0].smooth_groups, [[0, 1]])
         self.assertEqual(document.materials[0].name, "White")
         self.assertEqual(document.primitive.children[0].layer_ref, "Top")
 
@@ -111,6 +114,40 @@ class PmobReaderTests(unittest.TestCase):
         layers = record(children=((ContentType.LAYER, layer),))
         root = encode_record(record(children=((ContentType.LAYER_LIST, layers),)))
         with self.assertRaisesRegex(PmobFormatError, "not divisible by three"):
+            read_pmob(root)
+
+    def test_rejects_truncated_smoothing_group(self):
+        vertices = record(struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0))
+        indices = record(struct.pack("<3i", 0, 1, 2))
+        groups = record(struct.pack("<2i", 2, 0))
+        mesh = record(children=(
+            (ContentType.VERTICES, vertices),
+            (ContentType.INDICES, indices),
+            (ContentType.SMOOTH_GROUPS, groups),
+        ))
+        meshes = record(children=((ContentType.MESH, mesh),))
+        layer = record(children=((ContentType.MESH_LIST, meshes),))
+        layers = record(children=((ContentType.LAYER, layer),))
+        root = encode_record(record(children=((ContentType.LAYER_LIST, layers),)))
+
+        with self.assertRaisesRegex(PmobFormatError, "extends past"):
+            read_pmob(root)
+
+    def test_rejects_out_of_range_smoothing_group_index(self):
+        vertices = record(struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0))
+        indices = record(struct.pack("<3i", 0, 1, 2))
+        groups = record(struct.pack("<2i", 1, 3))
+        mesh = record(children=(
+            (ContentType.VERTICES, vertices),
+            (ContentType.INDICES, indices),
+            (ContentType.SMOOTH_GROUPS, groups),
+        ))
+        meshes = record(children=((ContentType.MESH, mesh),))
+        layer = record(children=((ContentType.MESH_LIST, meshes),))
+        layers = record(children=((ContentType.LAYER, layer),))
+        root = encode_record(record(children=((ContentType.LAYER_LIST, layers),)))
+
+        with self.assertRaisesRegex(PmobFormatError, "out-of-range"):
             read_pmob(root)
 
 

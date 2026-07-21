@@ -45,7 +45,7 @@ class Mesh:
     indices: list[int] = field(default_factory=list)
     normals: list[Vector3] = field(default_factory=list)
     texture_coordinates: list[Vector2] = field(default_factory=list)
-    smooth_groups: list[int] = field(default_factory=list)
+    smooth_groups: list[list[int]] = field(default_factory=list)
     material_id: int = 0
     line_indices: list[int] = field(default_factory=list)
     source_type: int | None = None

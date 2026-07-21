@@ -88,6 +88,11 @@ The source meshes and transform helpers are retained in a private collection
 referenced by the Geometry Nodes graph, but that collection is not linked to
 the scene. The controller is linked directly to the active Blender collection,
 so importing does not create a visible wrapper collection in the Outliner.
+PMob UV-seam duplicates are compacted because Blender keeps UVs per face
+corner. Explicit smoothing groups and the producer's observed 45-degree smooth
+angle reconstruct continuous custom normals, while incompatible normal fans
+remain split as hard edges. The original and welded vertex counts are retained
+on each generated mesh for diagnostics.
 
 **Sync Catalog** is the only catalog-network action. It downloads the complete
 model index and category tree into a temporary SQLite database, then atomically
@@ -173,9 +178,11 @@ Principled materials from embedded textures, reconstructs Mooble aggregates,
 and exposes supported opening and finish choices through Geometry Nodes.
 Observed `InsertDimension` ranges are also exposed as axis-specific Geometry
 Nodes controls. Fixed hardware embedded in resizable panels and missing panel
-UVs are handled for the observed 728 packaging pattern.
-Unverified PMob animation timing, smoothing-group semantics, some mapping
-modes, alternative non-default aggregate specifications, and all
+UVs are handled for the observed 728 packaging pattern. PMob smoothing groups,
+UV-seam compaction, generated corner normals, and hard-edge preservation are
+implemented from the observed producer behavior.
+Unverified PMob animation timing, some mapping modes, alternative non-default
+aggregate specifications, and all
 `.content`/`.mob` behavior remain planned work.
 
 ## License

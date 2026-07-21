@@ -60,6 +60,13 @@ only because source geometry enters through its Collection Info node.
 Float inputs also feed hidden zero-effect sink nodes, keeping Blender's modifier
 UI controls enabled while their values drive source-hierarchy transforms.
 
+Before Blender datablock creation, the neutral topology adapter reconstructs
+normal fans for PMob meshes that omit normals. It honors nested smoothing
+groups and the producer's observed 45-degree smooth-angle threshold, then welds
+only coincident vertices in the same normal fan. UVs and normals remain on the
+face-corner domain, so UV seams do not require duplicate Blender vertices and
+hard edges remain split.
+
 `Constant` aggregate edges suppress the resolved child's insertion controls.
 For flattened geometry, explicitly non-editable component layers that occupy
 less than half of a resized axis retain their size on that axis. The adjacent

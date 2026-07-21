@@ -222,6 +222,56 @@ def main() -> None:
         finally:
             operators._catalog_store = original_store_factory
 
+        seam_source = Mesh(
+            vertices=[
+                (0.0, 0.0, 0.0),
+                (100.0, 0.0, 0.0),
+                (100.0, 100.0, 0.0),
+                (0.0, 0.0, 0.0),
+                (100.0, 100.0, 0.0),
+                (0.0, 100.0, 0.0),
+            ],
+            indices=[0, 1, 2, 3, 4, 5],
+            normals=[(0.0, 0.0, 1.0)] * 6,
+            texture_coordinates=[
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (1.0, 1.0),
+                (0.25, 0.0),
+                (0.75, 1.0),
+                (0.0, 1.0),
+            ],
+            smooth_groups=[[0, 3], [2, 4]],
+        )
+        seam_document = PmobDocument(
+            name="UV seam topology",
+            primitive=Primitive(
+                name="UV seam",
+                kind=PrimitiveType.LAYER,
+                layer_ref="Seam",
+            ),
+            layers=[SceneLayer(name="Seam", meshes=[seam_source])],
+        )
+        seam_controller = build_document(
+            seam_document,
+            bpy.context,
+            collection_name="UV seam topology",
+        )
+        seam_collection = _geometry_source_collection(seam_controller)
+        seam_mesh = next(obj.data for obj in seam_collection.all_objects if obj.type == "MESH")
+        if len(seam_mesh.vertices) != 4:
+            raise AssertionError("UV-seam vertices were not compacted")
+        if seam_mesh.get("mooblender_welded_vertex_count") != 2:
+            raise AssertionError("mesh does not report its compacted vertex count")
+        if not seam_mesh.has_custom_normals or not all(
+            polygon.use_smooth for polygon in seam_mesh.polygons
+        ):
+            raise AssertionError("PMob normals were not applied as smooth corner normals")
+        seam_uvs = seam_mesh.uv_layers[0].data
+        if tuple(seam_uvs[0].uv) != (0.0, 0.0) or tuple(seam_uvs[3].uv) != (0.25, 0.0):
+            raise AssertionError("welding discarded distinct UV coordinates at a seam")
+        _remove_import(seam_controller)
+
         source = Mesh(
             vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 120.0, 0.0)],
             indices=[0, 1, 2],
