@@ -98,6 +98,9 @@ Implemented follow-up work:
 - Cached thumbnail paths are restored before scheduling work; only materialized
   uncached cards are requested, queued stale batches are cancelled when
   possible, and newly visible work is not trapped behind one old batch.
+- Geometry Nodes imports link only their controller object to the scene. Source
+  meshes and helper empties remain in a node-referenced, scene-unlinked
+  collection, preserving procedural behavior without polluting the Outliner.
 
 Remaining exit work:
 

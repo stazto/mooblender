@@ -42,24 +42,62 @@ def _set_modifier_input(modifier, socket, value) -> None:
 
 
 def _remove_collection(collection) -> None:
+    source_collections = set()
+    node_groups = set()
+    for obj in collection.all_objects:
+        for modifier in obj.modifiers:
+            if modifier.type != "NODES" or modifier.node_group is None:
+                continue
+            node_groups.add(modifier.node_group)
+            source_collections.update(
+                node.inputs["Collection"].default_value
+                for node in modifier.node_group.nodes
+                if node.bl_idname == "GeometryNodeCollectionInfo"
+                and node.inputs["Collection"].default_value is not None
+            )
+    objects = set(collection.all_objects)
+    for source_collection in source_collections:
+        objects.update(source_collection.all_objects)
+    meshes = {obj.data for obj in objects if obj.type == "MESH"}
     materials = {
         material
-        for obj in collection.all_objects
-        if obj.type == "MESH"
-        for material in obj.data.materials
+        for mesh in meshes
+        for material in mesh.materials
         if material is not None
     }
-    for obj in list(collection.all_objects):
-        mesh = obj.data
+    for obj in objects:
         bpy.data.objects.remove(obj, do_unlink=True)
-        if mesh is not None and mesh.users == 0:
+    for mesh in meshes:
+        if mesh.users == 0:
             bpy.data.meshes.remove(mesh)
     for child_collection in list(collection.children):
         bpy.data.collections.remove(child_collection)
+    for source_collection in source_collections:
+        bpy.data.collections.remove(source_collection)
     bpy.data.collections.remove(collection)
+    for node_group in node_groups:
+        if node_group.users == 0:
+            bpy.data.node_groups.remove(node_group)
     for material in materials:
         if material.users == 0:
             bpy.data.materials.remove(material)
+
+
+def _geometry_source_collection(controller):
+    modifier = controller.modifiers.get("Mooblender")
+    if modifier is None or modifier.node_group is None:
+        raise AssertionError("Geometry Nodes controller has no Mooblender node group")
+    source = next(
+        (
+            node.inputs["Collection"].default_value
+            for node in modifier.node_group.nodes
+            if node.bl_idname == "GeometryNodeCollectionInfo"
+        ),
+        None,
+    )
+    if source is None:
+        raise AssertionError("Mooblender node group has no source collection")
+    return source
 
 
 def main() -> None:
@@ -201,6 +239,11 @@ def main() -> None:
             structure_mode="GEOMETRY_NODES",
         )
         static_controller = bpy.data.objects[static_collection["promob_root_object"]]
+        static_source = _geometry_source_collection(static_controller)
+        if tuple(static_collection.all_objects) != (static_controller,):
+            raise AssertionError("Geometry Nodes import linked helper objects to the scene")
+        if static_source.name in static_collection.children:
+            raise AssertionError("Geometry Nodes source collection is visible in the scene")
         static_modifier = static_controller.modifiers["Mooblender"]
         if any(
             item.socket_type == "NodeSocketFloat"
@@ -395,10 +438,20 @@ def main() -> None:
         )
         bpy.context.view_layer.update()
         controller = bpy.data.objects[collection["promob_root_object"]]
+        source_collection = _geometry_source_collection(controller)
+        if tuple(collection.all_objects) != (controller,):
+            raise AssertionError("Geometry Nodes import did not create one scene object")
+        if source_collection.name in collection.children:
+            raise AssertionError("Geometry Nodes helpers are still linked to the scene")
+        if any(
+            tuple(obj.users_collection) != (source_collection,)
+            for obj in source_collection.all_objects
+        ):
+            raise AssertionError("Geometry Nodes helper is linked outside its node source")
         obj = next(
             obj
-            for obj in collection.all_objects
-            if obj.type == "MESH" and obj != controller
+            for obj in source_collection.all_objects
+            if obj.type == "MESH"
         )
         if len(obj.data.vertices) != 3 or len(obj.data.polygons) != 1:
             raise AssertionError("scene builder produced invalid triangle geometry")
@@ -457,7 +510,7 @@ def main() -> None:
                 raise AssertionError(f"dimension range is invalid for {name}: {observed}")
         motions = {
             obj.get("mooblender_open_service"): obj
-            for obj in collection.all_objects
+            for obj in source_collection.all_objects
             if obj.get("mooblender_open_service")
         }
         _set_modifier_input(modifier, control_sockets["Gaveta externa"], 1.0)

@@ -1013,7 +1013,6 @@ def build_document(
     geometry_nodes = structure_mode == "GEOMETRY_NODES"
     if geometry_nodes:
         source_collection = bpy.data.collections.new(f"{name} Source")
-        collection.children.link(source_collection)
         (
             root,
             geometry_modifier,
@@ -1130,10 +1129,7 @@ def build_document(
             material_cache=material_cache,
         )
     if geometry_nodes:
-        source_collection.hide_render = True
-        for obj in tuple(source_collection.all_objects):
-            obj.hide_render = True
-            obj.hide_set(True)
+        source_collection["mooblender_node_source"] = True
     collection["promob_root_object"] = root.name
     collection["promob_version"] = document.version if document is not None else 0
     if source_id:

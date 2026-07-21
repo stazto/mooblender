@@ -41,6 +41,13 @@ model. The Blender adapter owns coordinate conversion and datablock creation.
 The Mooble client owns HTTP behavior and passes downloaded bytes through the
 same format readers as local files.
 
+Geometry Nodes imports expose exactly one scene-linked controller object. The
+source mesh and transform hierarchy lives in an unlinked collection referenced
+by the controller's Collection Info node. This keeps helper empties out of the
+scene Outliner while preserving their datablocks, parenting, drivers, and
+procedural controls. Collection-hierarchy mode remains the explicit editable
+alternative.
+
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite
 snapshot or report that synchronization is required. Thumbnail and model

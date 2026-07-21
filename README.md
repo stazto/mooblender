@@ -68,6 +68,10 @@ Nested editable components receive scoped labels such as
 Default remote finishes are applied before any selection, and finish controls
 are scoped to their source package so same-named cabinet and door layers do not
 overwrite one another.
+The source meshes and transform helpers are retained in a private collection
+referenced by the Geometry Nodes graph, but that collection is not linked to
+the scene. Consequently, the imported collection and normal Outliner contain
+only the single controller object.
 Choose **Collection hierarchy** in the extension preferences when individual
 Promob primitives and aggregates are more useful than a single object.
 
