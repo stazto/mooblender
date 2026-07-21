@@ -127,7 +127,8 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Reconstruct doors and drawers with independent, lazily created controls named
   from their Mooble component localization.
 - Map observed variable `InsertDimension` axes to bounded Geometry Nodes
-  distance controls such as Largura and Profundidade.
+  distance controls such as Largura and Profundidade, scoped per package
+  instance so nested/repeated configurable components remain independent.
 - Default to one visible Geometry Nodes object; retain an editable collection
   hierarchy preference.
 - Convert multi-option model finish groups into named Geometry Nodes menu inputs
@@ -151,7 +152,8 @@ sample exposes bounded Largura and Profundidade controls and resizes each axis
 independently. Closed/open bounds, parameter resizing, and finish switching
 were checked in Blender 4.5 and 5.2 LTS. The general smoke fixture passes both
 releases and covers independent openings, optional controls, configurable
-dimensions, default remote materials, and same-layer-name finish isolation.
+root and nested-instance dimensions, default remote materials, and
+same-layer-name finish isolation.
 
 ## Milestone 4 — Identify and implement `.content`
 

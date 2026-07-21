@@ -50,6 +50,22 @@ class DimensionTests(unittest.TestCase):
             [("Largura", 100.0, 1200.0)],
         )
 
+    def test_configurable_dimension_can_use_instance_defaults(self):
+        properties = {
+            "Dimension": {"Width": 600, "Depth": 150, "Height": 15},
+            "InsertDimension": {
+                "Min": {"X": 100, "Y": 100, "Z": 0},
+                "Max": {"X": 2000, "Y": 1000, "Z": 0},
+            },
+        }
+
+        dimensions = configurable_dimensions(
+            properties,
+            defaults=(800.0, 300.0, 15.0),
+        )
+
+        self.assertEqual([value.default for value in dimensions], [800.0, 300.0])
+
     def test_drawing_dimension_describes_serialized_geometry(self):
         properties = {
             "Dimension": {"Width": "100", "Depth": "15", "Height": "100"},

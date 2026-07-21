@@ -62,6 +62,10 @@ values Width/Depth/Height. An editable 15 mm shelf observed on 2026-07-21 had a
 fixed Z. Mooblender consequently exposes **Largura** and **Profundidade** as
 meter-based Blender distance inputs and scales only their corresponding axes;
 an axis with no variable range gets no control.
+Controls belong to the concrete package instance. A root entity uses the plain
+dimension name, while nested entities use a component-qualified name such as
+`Prateleira: Largura`; changing one nested control scales that entity subtree
+without changing a sibling instance.
 
 `Models` groups map layer IDs to material specification UUIDs. Multi-option
 groups become named **Finish** menu inputs whose entries use the source style

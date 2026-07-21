@@ -63,6 +63,8 @@ Mooble component metadata; models without movable components get no opening
 inputs. Editable insertion dimensions become distance inputs such as
 **Largura** and **Profundidade**, with the source limits preserved. Named
 **Finish** menus select the styles exposed by the source model.
+Nested editable components receive scoped labels such as
+**Prateleira: Largura**, so repeated package instances remain independent.
 Default remote finishes are applied before any selection, and finish controls
 are scoped to their source package so same-named cabinet and door layers do not
 overwrite one another.

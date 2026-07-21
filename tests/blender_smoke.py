@@ -237,6 +237,10 @@ def main() -> None:
             properties={
                 "Dimension": {"Width": 10, "Depth": 10, "Height": 1},
                 "DrawingDimension": {"Width": 10, "Depth": 10, "Height": 1},
+                "InsertDimension": {
+                    "Min": {"X": 5, "Y": 10, "Z": 0},
+                    "Max": {"X": 30, "Y": 10, "Z": 0},
+                },
             },
         )
         child = PContentPackage(
@@ -291,11 +295,11 @@ def main() -> None:
         package = PContentPackage(
             document=document,
             properties={
-                "Dimension": {"Width": 200, "Depth": 100, "Height": 1},
-                "DrawingDimension": {"Width": 200, "Depth": 100, "Height": 1},
+                "Dimension": {"Width": 1000, "Depth": 1000, "Height": 1},
+                "DrawingDimension": {"Width": 1000, "Depth": 1000, "Height": 1},
                 "InsertDimension": {
                     "Min": {"X": 100, "Y": 50, "Z": 0},
-                    "Max": {"X": 2000, "Y": 1000, "Z": 0},
+                    "Max": {"X": 2000, "Y": 2000, "Z": 0},
                 },
                 "Models": [
                     {
@@ -374,6 +378,7 @@ def main() -> None:
             "Gaveta interna",
             "Largura",
             "Profundidade",
+            "Nested: Largura",
         }
         if set(control_sockets) != expected_controls:
             raise AssertionError(
@@ -384,8 +389,9 @@ def main() -> None:
             if socket.min_value != 0.0 or socket.max_value != 1.0:
                 raise AssertionError(f"opening range is invalid for {name}")
         dimension_ranges = {
-            "Largura": (0.2, 0.1, 2.0),
-            "Profundidade": (0.1, 0.05, 1.0),
+            "Largura": (1.0, 0.1, 2.0),
+            "Profundidade": (1.0, 0.05, 2.0),
+            "Nested: Largura": (0.01, 0.005, 0.03),
         }
         for name, expected in dimension_ranges.items():
             socket = control_sockets[name]
@@ -430,7 +436,7 @@ def main() -> None:
         base_y = max(vertex.co.y for vertex in baseline_mesh.vertices) - min(
             vertex.co.y for vertex in baseline_mesh.vertices
         )
-        _set_modifier_input(modifier, control_sockets["Largura"], 0.4)
+        _set_modifier_input(modifier, control_sockets["Largura"], 2.0)
         resized = controller.evaluated_get(
             bpy.context.evaluated_depsgraph_get()
         ).to_mesh()
@@ -442,8 +448,8 @@ def main() -> None:
         )
         if round(resized_x / base_x, 3) != 2.0 or round(resized_y / base_y, 3) != 1.0:
             raise AssertionError("Largura did not resize only the X axis")
-        _set_modifier_input(modifier, control_sockets["Largura"], 0.2)
-        _set_modifier_input(modifier, control_sockets["Profundidade"], 0.2)
+        _set_modifier_input(modifier, control_sockets["Largura"], 1.0)
+        _set_modifier_input(modifier, control_sockets["Profundidade"], 2.0)
         resized = controller.evaluated_get(
             bpy.context.evaluated_depsgraph_get()
         ).to_mesh()
@@ -455,7 +461,7 @@ def main() -> None:
         )
         if round(resized_x / base_x, 3) != 1.0 or round(resized_y / base_y, 3) != 2.0:
             raise AssertionError("Profundidade did not resize only the Y axis")
-        _set_modifier_input(modifier, control_sockets["Profundidade"], 0.1)
+        _set_modifier_input(modifier, control_sockets["Profundidade"], 1.0)
         evaluated_mesh = controller.evaluated_get(
             bpy.context.evaluated_depsgraph_get()
         ).to_mesh()
@@ -485,6 +491,35 @@ def main() -> None:
                 "nested aggregate position inherited geometry redimension scale: "
                 f"{nested_center_x}"
             )
+        nested_width = max(
+            evaluated_mesh.vertices[index].co.x for index in nested_polygon.vertices
+        ) - min(
+            evaluated_mesh.vertices[index].co.x for index in nested_polygon.vertices
+        )
+        _set_modifier_input(modifier, control_sockets["Nested: Largura"], 0.02)
+        resized_nested_mesh = controller.evaluated_get(
+            bpy.context.evaluated_depsgraph_get()
+        ).to_mesh()
+        nested_index = next(
+            index
+            for index, material in enumerate(resized_nested_mesh.materials)
+            if material.name == "Nested"
+        )
+        resized_nested_polygon = next(
+            polygon
+            for polygon in resized_nested_mesh.polygons
+            if polygon.material_index == nested_index
+        )
+        resized_nested_width = max(
+            resized_nested_mesh.vertices[index].co.x
+            for index in resized_nested_polygon.vertices
+        ) - min(
+            resized_nested_mesh.vertices[index].co.x
+            for index in resized_nested_polygon.vertices
+        )
+        if round(resized_nested_width / nested_width, 3) != 2.0:
+            raise AssertionError("nested Largura did not resize its own package instance")
+        _set_modifier_input(modifier, control_sockets["Nested: Largura"], 0.01)
         finish_socket = next(
             item
             for item in modifier.node_group.interface.items_tree

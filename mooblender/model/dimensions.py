@@ -39,6 +39,8 @@ def _dimension_value(value: object, coordinate: str, field: str) -> float:
 
 def configurable_dimensions(
     properties: Mapping[str, object],
+    *,
+    defaults: Dimension3 | None = None,
 ) -> tuple[ConfigurableDimension, ...]:
     """Return axes whose observed ``InsertDimension`` range is editable.
 
@@ -53,12 +55,12 @@ def configurable_dimensions(
         return ()
     minimum = insertion.get("Min")
     maximum = insertion.get("Max")
-    defaults = property_dimensions(properties)
+    current = defaults or property_dimensions(properties)
     result = []
     for axis, (coordinate, field, name) in enumerate(_CONFIGURABLE_AXES):
         lower = _dimension_value(minimum, coordinate, field)
         upper = _dimension_value(maximum, coordinate, field)
-        default = defaults[axis]
+        default = current[axis]
         if default > 0.0 and upper > lower:
             result.append(
                 ConfigurableDimension(

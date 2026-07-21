@@ -431,6 +431,23 @@ def _add_open_driver(
     variable.targets[0].data_path = controller_data_path
 
 
+def _add_dimension_driver(
+    target,
+    axis: int,
+    controller,
+    controller_data_path: str,
+    default_value: float,
+) -> None:
+    driver = target.driver_add("scale", axis).driver
+    driver.type = "SCRIPTED"
+    driver.expression = f"dimension/{default_value:.17g}"
+    variable = driver.variables.new()
+    variable.name = "dimension"
+    variable.type = "SINGLE_PROP"
+    variable.targets[0].id = controller
+    variable.targets[0].data_path = controller_data_path
+
+
 def _apply_open_services(
     package: PContentPackage,
     *,
@@ -529,16 +546,49 @@ def _build_package_tree(
     cache: dict[int, dict[str, list[bpy.types.Mesh]]],
     material_cache: dict[tuple[int, int], bpy.types.Material],
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
+    dimension_nodes: list[dict[str, Any]] | None,
     prefix: tuple[int, ...] = (),
     current_dimensions: tuple[float, float, float] | None = None,
     document_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    control_label: str = "",
 ):
+    logical_dimensions = property_dimensions(package.properties)
+    parent_dimensions = current_dimensions or serialized_geometry_dimensions(
+        package.properties,
+        document=package.document,
+        fallback=logical_dimensions,
+    )
+    package_parent = parent
+    dimensions = tuple(
+        dimension
+        for dimension in configurable_dimensions(
+            package.properties,
+            defaults=parent_dimensions,
+        )
+        if dimension.minimum <= dimension.default <= dimension.maximum
+    )
+    if dimension_nodes is not None and dimensions:
+        label = _unique_name(
+            control_label or (package.document.name if package.document else ""),
+            "Entity",
+        )
+        package_parent = bpy.data.objects.new(f"{label} Parameters", None)
+        package_parent.parent = parent
+        package_parent["mooblender_configurable_dimensions"] = len(dimensions)
+        collection.objects.link(package_parent)
+        dimension_nodes.append(
+            {
+                "label": control_label,
+                "object": package_parent,
+                "dimensions": dimensions,
+            }
+        )
     if package.document is not None:
-        document_parent = parent
+        document_parent = package_parent
         if document_scale != (1.0, 1.0, 1.0):
             document_name = _unique_name(package.document.name, "Aggregate")
             document_parent = bpy.data.objects.new(f"{document_name} Geometry Scale", None)
-            document_parent.parent = parent
+            document_parent.parent = package_parent
             document_parent.scale = document_scale
             document_parent["mooblender_geometry_scale"] = document_scale
             collection.objects.link(document_parent)
@@ -551,12 +601,6 @@ def _build_package_tree(
             cache=cache,
             material_cache=material_cache,
         )
-    logical_dimensions = property_dimensions(package.properties)
-    parent_dimensions = current_dimensions or serialized_geometry_dimensions(
-        package.properties,
-        document=package.document,
-        fallback=logical_dimensions,
-    )
     for resolved in package.resolved_aggregates:
         raw = _raw_aggregate(package, resolved.index)
         child = resolved.package
@@ -604,7 +648,7 @@ def _build_package_tree(
         name = _unique_name(str(raw.get("Description") or raw.get("Id") or ""), fallback)
         placement = bpy.data.objects.new(name, None)
         placement.empty_display_type = "CUBE"
-        placement.parent = parent
+        placement.parent = package_parent
         placement.location = location
         placement.rotation_euler[2] = rotation
         placement.scale.x = -1.0 if inverted else 1.0
@@ -634,9 +678,11 @@ def _build_package_tree(
             cache=cache,
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
+            dimension_nodes=dimension_nodes,
             prefix=path,
             current_dimensions=target_dimensions,
             document_scale=tuple(scale),
+            control_label=name,
         )
 
 
@@ -682,64 +728,52 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
 
 
 def _add_dimension_controls(
-    package: PContentPackage,
+    dimension_nodes: list[dict[str, Any]],
     *,
     controller,
     modifier,
-    group_input,
-    output,
 ) -> int:
-    dimensions = configurable_dimensions(package.properties)
-    if not dimensions:
+    if not dimension_nodes:
         return 0
 
     node_group = modifier.node_group
-    output_geometry = output.inputs.get("Geometry")
-    geometry_link = next(iter(output_geometry.links), None)
-    if geometry_link is None:
-        return 0
-    geometry = geometry_link.from_socket
-    node_group.links.remove(geometry_link)
-
-    combine = node_group.nodes.new("ShaderNodeCombineXYZ")
-    combine.inputs["X"].default_value = 1.0
-    combine.inputs["Y"].default_value = 1.0
-    combine.inputs["Z"].default_value = 1.0
-    transform = node_group.nodes.new("GeometryNodeTransform")
-    node_group.links.new(geometry, transform.inputs["Geometry"])
-    node_group.links.new(combine.outputs["Vector"], transform.inputs["Scale"])
-    node_group.links.new(transform.outputs["Geometry"], output_geometry)
-
+    used_names = {item.name for item in node_group.interface.items_tree}
     defaults = []
-    for dimension in dimensions:
-        socket = node_group.interface.new_socket(
-            name=dimension.name,
-            in_out="INPUT",
-            socket_type="NodeSocketFloat",
-        )
-        socket.subtype = "DISTANCE"
-        socket.default_value = dimension.default * 0.001
-        socket.min_value = dimension.minimum * 0.001
-        socket.max_value = dimension.maximum * 0.001
-        socket.description = (
-            f"Mooble range: {dimension.minimum:g}–{dimension.maximum:g} mm"
-        )
-        divide = node_group.nodes.new("ShaderNodeMath")
-        divide.operation = "DIVIDE"
-        divide.inputs[1].default_value = dimension.default * 0.001
-        node_group.links.new(group_input.outputs[socket.name], divide.inputs[0])
-        node_group.links.new(
-            divide.outputs[0],
-            combine.inputs[dimension.axis],
-        )
-        defaults.append((socket, dimension.default * 0.001))
+    controls = 0
+    for data in dimension_nodes:
+        label = str(data["label"])
+        target = data["object"]
+        for dimension in data["dimensions"]:
+            base = f"{label}: {dimension.name}" if label else dimension.name
+            name = base
+            suffix = 2
+            while name in used_names:
+                name = f"{base} ({suffix})"
+                suffix += 1
+            used_names.add(name)
+            socket = node_group.interface.new_socket(
+                name=name,
+                in_out="INPUT",
+                socket_type="NodeSocketFloat",
+            )
+            socket.subtype = "DISTANCE"
+            socket.default_value = dimension.default * 0.001
+            socket.min_value = dimension.minimum * 0.001
+            socket.max_value = dimension.maximum * 0.001
+            socket.description = (
+                f"Mooble range: {dimension.minimum:g}–{dimension.maximum:g} mm"
+            )
+            defaults.append((socket, dimension.default * 0.001, target, dimension.axis))
+            controls += 1
 
     node_group.interface_update(bpy.context)
-    for socket, value in defaults:
-        _modifier_socket_value(modifier, socket, value)
+    for socket, value, target, axis in defaults:
+        data_path = _modifier_socket_value(modifier, socket, value)
+        _add_dimension_driver(target, axis, controller, data_path, value)
     node_group.interface_update(bpy.context)
-    controller["mooblender_dimension_control_count"] = len(dimensions)
-    return len(dimensions)
+    if controls:
+        controller["mooblender_dimension_control_count"] = controls
+    return controls
 
 
 def _model_groups(package: PContentPackage):
@@ -1034,6 +1068,7 @@ def build_document(
         return f"[{json.dumps(name, ensure_ascii=False)}]", name
 
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]] = {}
+    dimension_nodes: list[dict[str, Any]] | None = [] if geometry_nodes else None
     cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
     if package is not None:
@@ -1045,6 +1080,7 @@ def build_document(
             cache=cache,
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
+            dimension_nodes=dimension_nodes,
         )
         open_services = 0
         stack = [(package, ())]
@@ -1079,11 +1115,9 @@ def build_document(
                 material_cache=material_cache,
             )
             _add_dimension_controls(
-                package,
+                dimension_nodes,
                 controller=root,
                 modifier=geometry_modifier,
-                group_input=group_input,
-                output=group_output,
             )
     elif document is not None:
         _document_root(
