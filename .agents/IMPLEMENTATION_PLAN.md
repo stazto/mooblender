@@ -89,6 +89,9 @@ Implemented follow-up work:
   item count before the index can replace its previous cache.
 - Indexed `Brand.Name` values populate a local manufacturer menu that combines
   with text search and requires no catalog request.
+- Manufacturer filtering retains the active category. A dependent Brand
+  Collection menu exposes only `Collection.Name` values available for the
+  selected manufacturer in that category, and composes with the text query.
 - Catalog access is now explicit and local-first: **Sync Catalog** crawls the
   complete category tree and writes deduplicated items plus category membership
   into a temporary SQLite snapshot, atomically publishing it only on success.

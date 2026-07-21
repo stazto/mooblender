@@ -23,15 +23,18 @@ from .background import (
     fetch_model,
     fetch_thumbnails,
 )
-from .properties import ALL_MANUFACTURERS, set_manufacturer_items
+from .properties import (
+    ALL_COLLECTIONS,
+    ALL_MANUFACTURERS,
+    set_collection_items,
+    set_manufacturer_items,
+)
 from .runtime import cache_directory, client_from_context
 from .scene_builder import build_document
 
 _ACTIVE_POLLS = set()
 _ACTIVE_THUMBNAILS = {}
 _CATALOG_INDEXES: dict[str, CatalogPage] = {}
-_CATALOG_ROOT_URL = ""
-_CATALOG_MANUFACTURERS: tuple[str, ...] = ()
 
 
 def _catalog_store() -> CatalogStore:
@@ -50,7 +53,6 @@ def _browser_preferences(context):
 
 
 def shutdown_async_operators() -> None:
-    global _CATALOG_MANUFACTURERS, _CATALOG_ROOT_URL
     callbacks = tuple(_ACTIVE_POLLS) + tuple(_ACTIVE_THUMBNAILS.values())
     for callback in callbacks:
         if bpy.app.timers.is_registered(callback):
@@ -58,8 +60,6 @@ def shutdown_async_operators() -> None:
     _ACTIVE_POLLS.clear()
     _ACTIVE_THUMBNAILS.clear()
     _CATALOG_INDEXES.clear()
-    _CATALOG_ROOT_URL = ""
-    _CATALOG_MANUFACTURERS = ()
 
 
 def _online_or_report(operator) -> bool:
@@ -116,26 +116,40 @@ def _set_page(context, page) -> None:
     state.local_result_limit = 0
 
 def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) -> None:
-    global _CATALOG_MANUFACTURERS
-
     state = context.window_manager.promob_browser
     preferences = _browser_preferences(context)
     _CATALOG_INDEXES[page.current_url] = page
-    if page.current_url == _CATALOG_ROOT_URL or not _CATALOG_MANUFACTURERS:
-        _CATALOG_MANUFACTURERS = tuple(
-            sorted({item.brand for item in page.items if item.brand}, key=str.casefold)
-        )
-    set_manufacturer_items(_CATALOG_MANUFACTURERS)
-    if (
-        state.manufacturer != ALL_MANUFACTURERS
-        and state.manufacturer not in _CATALOG_MANUFACTURERS
-    ):
+    manufacturers = tuple(
+        sorted({item.brand for item in page.items if item.brand}, key=str.casefold)
+    )
+    set_manufacturer_items(manufacturers)
+    if state.manufacturer != ALL_MANUFACTURERS and state.manufacturer not in manufacturers:
         state.manufacturer = ALL_MANUFACTURERS
     manufacturer = "" if state.manufacturer == ALL_MANUFACTURERS else state.manufacturer
+    collections = tuple(
+        sorted(
+            {
+                item.collection
+                for item in page.items
+                if item.collection and (not manufacturer or item.brand == manufacturer)
+            },
+            key=str.casefold,
+        )
+    )
+    set_collection_items(collections)
+    if (
+        state.collection_filter != ALL_COLLECTIONS
+        and state.collection_filter not in collections
+    ):
+        state.collection_filter = ALL_COLLECTIONS
+    collection_filter = (
+        "" if state.collection_filter == ALL_COLLECTIONS else state.collection_filter
+    )
     matches = filter_catalog_items(
         page.items,
         state.query,
         manufacturer=manufacturer,
+        collection=collection_filter,
     )
     visible_limit = min(
         len(matches),
@@ -144,7 +158,9 @@ def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) 
     visible = CatalogPage(
         categories=(
             page.categories
-            if not state.query.strip() and state.manufacturer == ALL_MANUFACTURERS
+            if not state.query.strip()
+            and state.manufacturer == ALL_MANUFACTURERS
+            and state.collection_filter == ALL_COLLECTIONS
             else ()
         ),
         items=matches[:visible_limit],
@@ -160,8 +176,6 @@ def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) 
 
 
 def _load_local_index(context, url: str = "") -> CatalogPage | None:
-    global _CATALOG_ROOT_URL
-
     state = context.window_manager.promob_browser
     target = url or state.current_url
     if target:
@@ -186,7 +200,6 @@ def _load_local_index(context, url: str = "") -> CatalogPage | None:
         if stored_root != configured_root:
             return None
         target = stored_root
-    _CATALOG_ROOT_URL = stored_root
     page = store.page(target)
     if page is not None:
         _CATALOG_INDEXES[page.current_url] = page
@@ -417,20 +430,15 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
 class PROMOB_OT_catalog_search(bpy.types.Operator):
     bl_idname = "promob.catalog_search"
     bl_label = "Search cached Mooble catalog"
-    bl_description = "Filter the complete cached catalog without an API request"
+    bl_description = "Filter the current cached category without an API request"
 
     def execute(self, context):
         state = context.window_manager.promob_browser
         if state.is_loading:
             return {"CANCELLED"}
-        store = _catalog_store()
-        page = _load_local_index(
-            context,
-            store.root_url() if state.has_catalog and store.exists() else "",
-        )
+        page = _load_local_index(context)
         if page is not None:
             _apply_local_index(context, page)
-            state.history_json = "[]"
             return {"FINISHED"}
         state.error = "No local catalog is available; select Sync Catalog first"
         state.status = "Catalog has not been synced"

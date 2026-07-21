@@ -55,14 +55,15 @@ The old snapshot remains interactive while a new one synchronizes, with page,
 model, and category progress displayed separately from model-import activity.
 
 Search never sends the query to the Explorer API. It matches all whitespace-
-separated terms, case- and accent-insensitively, against the complete cached
-root catalog's name, description, brand, collection, and ID fields. Empty
-search restores the root catalog. A local manufacturer dropdown is derived
-from the non-empty `Brand.Name` values in that complete index. Manufacturer
-equality is case- and accent-insensitive
-and combines with every text term. The sidebar materializes only a preference-
-sized window of results; **Load More** expands that local window, and only
-visible cards request thumbnails.
+separated terms, case- and accent-insensitively, against the current cached
+category's name, description, brand, collection, and ID fields. Empty search
+restores that category. A manufacturer dropdown is derived from the category's
+non-empty `Brand.Name` values. A second dropdown exposes `Collection.Name`
+values available for the selected manufacturer in that same category.
+Manufacturer and collection equality are case- and accent-insensitive and
+combine with every text term. The sidebar materializes only a preference-sized
+window of results; **Load More** expands that local window, and only visible
+cards request thumbnails.
 
 Category branches and item memberships are all captured by synchronization.
 Opening a category for the first time is therefore the same local database read

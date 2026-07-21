@@ -65,6 +65,31 @@ class CatalogSearchTests(unittest.TestCase):
             ["cabinet"],
         )
 
+    def test_collection_filter_combines_with_manufacturer_and_text(self):
+        self.assertEqual(
+            [
+                item.id
+                for item in filter_catalog_items(
+                    self.items,
+                    "armario",
+                    manufacturer="chf moveis",
+                    collection="onix",
+                )
+            ],
+            ["cabinet"],
+        )
+
+    def test_collection_filter_rejects_another_collection(self):
+        self.assertEqual(
+            filter_catalog_items(
+                self.items,
+                "",
+                manufacturer="CHF Móveis",
+                collection="Cozinha",
+            ),
+            (),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

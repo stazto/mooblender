@@ -125,6 +125,7 @@ def main() -> None:
                             id="onix",
                             name="Armário Ônix",
                             brand="CHF Móveis",
+                            collection="Ônix",
                         ),
                         *tuple(
                             CatalogItem(id=f"item-{index}", name=f"Item {index}")
@@ -132,6 +133,17 @@ def main() -> None:
                         ),
                     ),
                     current_url="https://catalog.mooble.com/index",
+                )
+                self.kitchen = CatalogPage(
+                    items=(
+                        CatalogItem(
+                            id="onix",
+                            name="Armário Ônix",
+                            brand="CHF Móveis",
+                            collection="Ônix",
+                        ),
+                    ),
+                    current_url="https://catalog.mooble.com/kitchen",
                 )
                 self.cached = CatalogPage(
                     items=(CatalogItem(id="cached", name="Cached model"),),
@@ -149,6 +161,7 @@ def main() -> None:
                 target = url or self.root.current_url
                 return {
                     self.root.current_url: self.root,
+                    self.kitchen.current_url: self.kitchen,
                     self.cached.current_url: self.cached,
                 }.get(target)
 
@@ -184,18 +197,31 @@ def main() -> None:
                 raise AssertionError("empty local catalog search did not finish")
             if len(state.items) != 12 or state.local_result_total != 13:
                 raise AssertionError("empty local search did not restore a bounded index")
+            state.current_url = local_store.kitchen.current_url
+            state.history_json = json.dumps([local_store.root.current_url])
             state.manufacturer = "CHF Móveis"
             if bpy.ops.promob.catalog_search() != {"FINISHED"}:
                 raise AssertionError("manufacturer filter did not finish")
             if [item.item_id for item in state.items] != ["onix"]:
                 raise AssertionError("manufacturer filter did not show only its brand")
+            if (
+                state.current_url != local_store.kitchen.current_url
+                or json.loads(state.history_json) != [local_store.root.current_url]
+            ):
+                raise AssertionError("manufacturer filter discarded the active category")
+            state.collection_filter = "Ônix"
+            if bpy.ops.promob.catalog_search() != {"FINISHED"}:
+                raise AssertionError("brand collection filter did not finish")
+            if [item.item_id for item in state.items] != ["onix"]:
+                raise AssertionError("brand collection filter did not show its models")
             state.query = "item"
             if bpy.ops.promob.catalog_search() != {"FINISHED"} or state.items:
                 raise AssertionError("manufacturer and text filters were not combined")
             state.query = ""
             state.manufacturer = "__ALL_MANUFACTURERS__"
-            if bpy.ops.promob.catalog_search() != {"FINISHED"}:
-                raise AssertionError("manufacturer reset did not finish")
+            state.collection_filter = "__ALL_COLLECTIONS__"
+            if bpy.ops.promob.catalog_back() != {"FINISHED"}:
+                raise AssertionError("category Back did not restore the cached root")
             if bpy.ops.promob.catalog_load_more() != {"FINISHED"}:
                 raise AssertionError("local catalog Load More did not finish")
             if len(state.items) != 13:

@@ -4,8 +4,12 @@ import bpy
 
 _SEARCH_REVISION = 0
 ALL_MANUFACTURERS = "__ALL_MANUFACTURERS__"
+ALL_COLLECTIONS = "__ALL_COLLECTIONS__"
 _MANUFACTURER_ITEMS = [
     (ALL_MANUFACTURERS, "All manufacturers", "Do not filter by manufacturer")
+]
+_COLLECTION_ITEMS = [
+    (ALL_COLLECTIONS, "All collections", "Do not filter by brand collection")
 ]
 
 
@@ -13,10 +17,21 @@ def _manufacturer_items(_self, _context):
     return _MANUFACTURER_ITEMS
 
 
+def _collection_items(_self, _context):
+    return _COLLECTION_ITEMS
+
+
 def set_manufacturer_items(brands) -> None:
     _MANUFACTURER_ITEMS[:] = [
         (ALL_MANUFACTURERS, "All manufacturers", "Do not filter by manufacturer"),
         *((brand, brand, f"Show only models by {brand}") for brand in brands),
+    ]
+
+
+def set_collection_items(collections) -> None:
+    _COLLECTION_ITEMS[:] = [
+        (ALL_COLLECTIONS, "All collections", "Do not filter by brand collection"),
+        *((name, name, f"Show only models in {name}") for name in collections),
     ]
 
 
@@ -72,6 +87,11 @@ class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
         items=_manufacturer_items,
         update=_search_changed,
     )
+    collection_filter: bpy.props.EnumProperty(  # type: ignore
+        name="Collection",
+        items=_collection_items,
+        update=_search_changed,
+    )
     status: bpy.props.StringProperty(default="Select Sync Catalog to load Mooble")  # type: ignore
     is_loading: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     is_syncing: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
@@ -100,7 +120,9 @@ def _reset_browser(_self, _context) -> None:
             state.local_result_total = 0
             state.local_result_limit = 0
             state.manufacturer = ALL_MANUFACTURERS
+            state.collection_filter = ALL_COLLECTIONS
             set_manufacturer_items(())
+            set_collection_items(())
             state.categories.clear()
             state.items.clear()
             state.has_catalog = False

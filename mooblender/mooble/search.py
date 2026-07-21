@@ -18,6 +18,7 @@ def filter_catalog_items(
     query: str,
     *,
     manufacturer: str = "",
+    collection: str = "",
 ) -> tuple[CatalogItem, ...]:
     """Return items matching every whitespace-delimited query term.
 
@@ -27,12 +28,15 @@ def filter_catalog_items(
 
     terms = tuple(_search_text(term) for term in query.split() if term.strip())
     normalized_manufacturer = _search_text(manufacturer.strip())
+    normalized_collection = _search_text(collection.strip())
     matches = []
     for item in items:
         if (
             normalized_manufacturer
             and _search_text(item.brand) != normalized_manufacturer
         ):
+            continue
+        if normalized_collection and _search_text(item.collection) != normalized_collection:
             continue
         searchable = _search_text(
             " ".join(

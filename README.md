@@ -88,18 +88,19 @@ filtering, Back, and Load More query only that snapshot and therefore work
 offline without requesting catalog pages.
 
 Search is case- and accent-insensitive and runs entirely against that local
-index. Committing the search field or selecting its magnifier updates the cards;
-committing an empty field restores the unfiltered catalog. Only one bounded
-result batch becomes UI cards at a time. A manufacturer menu is populated from
-the indexed brands and combines with the text query; **All manufacturers**
-clears that filter. **Load More** expands the local matches without contacting
-Mooble. Thumbnails are fetched only for materialized cards that do not already
-have a cached preview. Cached paths are restored immediately, queued work from
-an old view is cancelled when possible, and newly visible cards can proceed
-past a stale in-flight batch. Each uncached card shows a loading symbol until
-its preview arrives. Catalog synchronization never disables browsing; model
-import remains isolated from it. Blender data is only created on its main
-thread.
+index. Filters remain scoped to the currently browsed category. Committing the
+search field or selecting its magnifier updates the cards; committing an empty
+field restores the unfiltered category. Only one bounded result batch becomes
+UI cards at a time. A manufacturer menu contains the brands available in that
+category, and a Brand Collection menu narrows itself to collections from the
+selected manufacturer. Both combine with the text query. **Load More** expands
+the local matches without contacting Mooble. Thumbnails are fetched only for
+materialized cards that do not already have a cached preview. Cached paths are
+restored immediately, queued work from an old view is cancelled when possible,
+and newly visible cards can proceed past a stale in-flight batch. Each uncached
+card shows a loading symbol until its preview arrives. Catalog synchronization
+never disables browsing; model import remains isolated from it. Blender data is
+only created on its main thread.
 
 The browser talks only to configured HTTPS Mooble hosts and caches selected
 models and thumbnails in Blender's user data directory. It does not store
