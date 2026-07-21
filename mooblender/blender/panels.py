@@ -34,6 +34,7 @@ class PROMOB_PT_browser(bpy.types.Panel):
         search.prop(state, "query", text="", icon="VIEWZOOM")
         search.operator("promob.catalog_search", text="", icon="VIEWZOOM")
         search.operator("promob.catalog_refresh", text="", icon="FILE_REFRESH")
+        content.prop(state, "manufacturer", text="Manufacturer")
 
         navigation = content.row(align=True)
         navigation.operator("promob.catalog_back", text="Back", icon="BACK")

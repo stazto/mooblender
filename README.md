@@ -81,9 +81,11 @@ The first complete build can take several minutes for the currently reported
 Search is case- and accent-insensitive and runs entirely against that local
 index. Committing the search field or selecting its magnifier updates the cards;
 committing an empty field restores the unfiltered catalog. Only one bounded
-result batch becomes UI cards at a time, and **Load More** expands the local
-matches without contacting Mooble. Thumbnails are fetched only for those
-visible cards. Each card shows a loading symbol until its preview arrives.
+result batch becomes UI cards at a time. A manufacturer menu is populated from
+the indexed brands and combines with the text query; **All manufacturers**
+clears that filter. **Load More** expands the local matches without contacting
+Mooble. Thumbnails are fetched only for those visible cards. Each card shows a
+loading symbol until its preview arrives.
 During catalog or model operations, the panel remains visible with its controls
 disabled and a loading message above it. Blender data is only created on its
 main thread.

@@ -23,6 +23,7 @@ from .background import (
     fetch_model,
     fetch_thumbnails,
 )
+from .properties import ALL_MANUFACTURERS, set_manufacturer_items
 from .runtime import client_from_context
 from .scene_builder import build_document
 
@@ -111,13 +112,28 @@ def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) 
     state = context.window_manager.promob_browser
     preferences = _browser_preferences(context)
     _CATALOG_INDEXES[page.current_url] = page
-    matches = filter_catalog_items(page.items, state.query)
+    brands = tuple(
+        sorted({item.brand for item in page.items if item.brand}, key=str.casefold)
+    )
+    set_manufacturer_items(brands)
+    if state.manufacturer != ALL_MANUFACTURERS and state.manufacturer not in brands:
+        state.manufacturer = ALL_MANUFACTURERS
+    manufacturer = "" if state.manufacturer == ALL_MANUFACTURERS else state.manufacturer
+    matches = filter_catalog_items(
+        page.items,
+        state.query,
+        manufacturer=manufacturer,
+    )
     visible_limit = min(
         len(matches),
         limit if limit is not None else preferences.page_size,
     )
     visible = CatalogPage(
-        categories=page.categories if not state.query.strip() else (),
+        categories=(
+            page.categories
+            if not state.query.strip() and state.manufacturer == ALL_MANUFACTURERS
+            else ()
+        ),
         items=matches[:visible_limit],
         current_url=page.current_url,
         pin_name=page.pin_name,

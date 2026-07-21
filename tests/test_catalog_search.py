@@ -39,6 +39,32 @@ class CatalogSearchTests(unittest.TestCase):
             ["cabinet"],
         )
 
+    def test_manufacturer_filter_combines_with_text_search(self):
+        self.assertEqual(
+            [
+                item.id
+                for item in filter_catalog_items(
+                    self.items,
+                    "cozinha",
+                    manufacturer="moveis arte cas",
+                )
+            ],
+            ["shelf"],
+        )
+
+    def test_empty_query_can_filter_only_by_manufacturer(self):
+        self.assertEqual(
+            [
+                item.id
+                for item in filter_catalog_items(
+                    self.items,
+                    "",
+                    manufacturer="CHF Móveis",
+                )
+            ],
+            ["cabinet"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

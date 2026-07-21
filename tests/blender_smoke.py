@@ -153,6 +153,18 @@ def main() -> None:
                 raise AssertionError("empty local catalog search did not finish")
             if len(state.items) != 12 or state.local_result_total != 13:
                 raise AssertionError("empty local search did not restore a bounded index")
+            state.manufacturer = "CHF Móveis"
+            if bpy.ops.promob.catalog_search() != {"FINISHED"}:
+                raise AssertionError("manufacturer filter did not finish")
+            if [item.item_id for item in state.items] != ["onix"]:
+                raise AssertionError("manufacturer filter did not show only its brand")
+            state.query = "item"
+            if bpy.ops.promob.catalog_search() != {"FINISHED"} or state.items:
+                raise AssertionError("manufacturer and text filters were not combined")
+            state.query = ""
+            state.manufacturer = "__ALL_MANUFACTURERS__"
+            if bpy.ops.promob.catalog_search() != {"FINISHED"}:
+                raise AssertionError("manufacturer reset did not finish")
             if bpy.ops.promob.catalog_load_more() != {"FINISHED"}:
                 raise AssertionError("local catalog Load More did not finish")
             if len(state.items) != 13:

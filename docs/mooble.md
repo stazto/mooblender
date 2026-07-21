@@ -52,9 +52,11 @@ marks responses `no-cache`.
 Search never sends the query to the Explorer API. It matches all whitespace-
 separated terms, case- and accent-insensitively, against cached name,
 description, brand, collection, and ID fields. Empty search restores the full
-index. The sidebar materializes only a preference-sized window of results;
-**Load More** expands that local window, and only visible cards request
-thumbnails.
+index. A local manufacturer dropdown is derived from the non-empty `Brand.Name`
+values in that same index. Manufacturer equality is case- and accent-insensitive
+and combines with every text term. The sidebar materializes only a preference-
+sized window of results; **Load More** expands that local window, and only
+visible cards request thumbnails.
 
 Category branches remain available for navigation and are requested only when
 opened. Category and Back navigation are cache-first after the initial visit.

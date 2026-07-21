@@ -3,6 +3,21 @@ from __future__ import annotations
 import bpy
 
 _SEARCH_REVISION = 0
+ALL_MANUFACTURERS = "__ALL_MANUFACTURERS__"
+_MANUFACTURER_ITEMS = [
+    (ALL_MANUFACTURERS, "All manufacturers", "Do not filter by manufacturer")
+]
+
+
+def _manufacturer_items(_self, _context):
+    return _MANUFACTURER_ITEMS
+
+
+def set_manufacturer_items(brands) -> None:
+    _MANUFACTURER_ITEMS[:] = [
+        (ALL_MANUFACTURERS, "All manufacturers", "Do not filter by manufacturer"),
+        *((brand, brand, f"Show only models by {brand}") for brand in brands),
+    ]
 
 
 def _search_changed(_self, _context) -> None:
@@ -52,6 +67,11 @@ class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
 
 class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
     query: bpy.props.StringProperty(name="Search", update=_search_changed)  # type: ignore
+    manufacturer: bpy.props.EnumProperty(  # type: ignore
+        name="Manufacturer",
+        items=_manufacturer_items,
+        update=_search_changed,
+    )
     status: bpy.props.StringProperty(default="Select Refresh to load Mooble")  # type: ignore
     is_loading: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     error: bpy.props.StringProperty()  # type: ignore
@@ -77,6 +97,8 @@ def _reset_browser(_self, _context) -> None:
             state.using_local_index = False
             state.local_result_total = 0
             state.local_result_limit = 0
+            state.manufacturer = ALL_MANUFACTURERS
+            set_manufacturer_items(())
             state.categories.clear()
             state.items.clear()
             state.is_loading = False

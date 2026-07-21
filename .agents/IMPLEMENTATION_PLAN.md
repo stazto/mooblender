@@ -90,6 +90,8 @@ Implemented follow-up work:
 - Explorer first-page and root-level continuation response shapes are parsed
   independently; completion must reach the selected category's reported unique
   item count before the index can replace its previous cache.
+- Indexed `Brand.Name` values populate a local manufacturer menu that combines
+  with text search and requires no catalog request.
 
 Remaining exit work:
 
