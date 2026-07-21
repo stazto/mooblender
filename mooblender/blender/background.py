@@ -5,11 +5,39 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..formats import PContentPackage, load_path, resolve_aggregates
 from ..mooble import CatalogItem
 from ..mooble.client import MoobleClient
 from ..mooble.models import CatalogPage
+
+
+def _continuation_page_size(url: str, page_size: int) -> str:
+    """Raise an observed continuation URL's existing page size safely."""
+
+    parts = urlsplit(url)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    if not any(key == "$top" for key, _value in query):
+        return url
+    resized = [
+        (key, str(page_size) if key == "$top" else value)
+        for key, value in query
+    ]
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(resized), parts.fragment)
+    )
+
+
+def _reported_item_count(page: CatalogPage) -> int | None:
+    return next(
+        (
+            category.item_count
+            for category in page.categories
+            if category.selected and category.item_count is not None
+        ),
+        None,
+    )
 
 
 def fetch_catalog(
@@ -38,17 +66,19 @@ def fetch_catalog_index(
     try:
         cached = client.load_cached_page(root_url)
         page = client.browse_url(root_url, cache=False)
+        expected_items = _reported_item_count(page)
         if (
             cached is not None
             and not cached.next_url
             and cached.categories == page.categories
             and len(cached.items) >= len(page.items)
             and cached.items[: len(page.items)] == page.items
+            and (expected_items is None or len(cached.items) >= expected_items)
         ):
             return cached
         categories = {value.id: value for value in page.categories}
         items = {value.id: value for value in page.items}
-        next_url = page.next_url
+        next_url = _continuation_page_size(page.next_url, 48)
         pin_name = page.pin_name
         pages = 1
         while next_url:
@@ -60,11 +90,15 @@ def fetch_catalog_index(
             page = client.browse_url(next_url, cache=False)
             categories.update((value.id, value) for value in page.categories)
             items.update((value.id, value) for value in page.items)
-            next_url = page.next_url
+            next_url = _continuation_page_size(page.next_url, 48)
             pin_name = pin_name or page.pin_name
             pages += 1
             if len(items) > max_items:
                 raise ValueError("Mooble catalog exceeds the item safety limit")
+        if expected_items is not None and len(items) < expected_items:
+            raise ValueError(
+                f"Mooble catalog ended after {len(items)} of {expected_items} items"
+            )
         merged = CatalogPage(
             categories=tuple(categories.values()),
             items=tuple(items.values()),

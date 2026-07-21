@@ -75,6 +75,8 @@ The complete catalog metadata index is downloaded through the Explorer pages
 and cached on disk; model binaries remain on-demand. At startup, the cached
 index appears immediately and one background first-page check compares its
 items and category counts. A detected change rebuilds the index atomically.
+The first complete build can take several minutes for the currently reported
+14,000-plus records, but it does not block Blender's main thread.
 
 Search is case- and accent-insensitive and runs entirely against that local
 index. Committing the search field or selecting its magnifier updates the cards;

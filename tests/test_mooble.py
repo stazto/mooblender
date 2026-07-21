@@ -82,6 +82,27 @@ class MoobleClientTests(unittest.TestCase):
         self.assertEqual(page.items[0].collection, "Kitchen")
         self.assertTrue(page.next_url.endswith("/next"))
 
+    def test_maps_get_next_root_data_and_links(self):
+        payload = {
+            "HasMore": True,
+            "Links": {"Next": "https://catalog.mooble.com/api/next-page"},
+            "Data": [
+                {
+                    "Id": "continued-1",
+                    "Name": "Continued cabinet",
+                    "Brand": {"Name": "Kappesberg"},
+                    "Links": {},
+                }
+            ],
+        }
+        client = MoobleClient(transport=FakeTransport(payload))
+
+        page = client.browse_url("https://catalog.mooble.com/api/continuation")
+
+        self.assertEqual(page.items[0].id, "continued-1")
+        self.assertEqual(page.items[0].brand, "Kappesberg")
+        self.assertEqual(page.next_url, "https://catalog.mooble.com/api/next-page")
+
     def test_caches_and_restores_catalog_page(self):
         payload = {
             "Output": {

@@ -87,6 +87,9 @@ Implemented follow-up work:
 - The complete root catalog metadata is assembled from bounded pagination into
   one atomic disk index. Search and empty-query reset run locally with bounded
   result cards and local **Load More**; thumbnails and models remain on-demand.
+- Explorer first-page and root-level continuation response shapes are parsed
+  independently; completion must reach the selected category's reported unique
+  item count before the index can replace its previous cache.
 
 Remaining exit work:
 

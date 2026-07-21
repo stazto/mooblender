@@ -374,7 +374,10 @@ class MoobleClient:
             for raw in _sequence(available.get("Data"))
             if (category := cls._parse_category(_mapping(raw))).id
         )
-        specifications = _mapping(output.get("Specifications"))
+        # Initial Explorer responses nest records under Output.Specifications.
+        # GetNext/Specs continuation responses expose the same Data/Links pair
+        # directly at the JSON root.
+        specifications = _mapping(output.get("Specifications")) or payload
         items = tuple(
             item
             for raw in _sequence(specifications.get("Data"))

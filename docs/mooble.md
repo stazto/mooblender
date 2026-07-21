@@ -20,6 +20,10 @@ navigation and `Output.Specifications.Data` for product cards. Tag records expos
 navigation URLs and counts. Specification summaries expose IDs, names,
 descriptions, brands, collections, thumbnail links, dimensions, and detail URLs.
 Pagination is supplied as a server-generated `Links.Next` URL.
+Initial Explorer responses place product records under
+`Output.Specifications.Data`; observed `GetNext/Specs` responses instead place
+`Data`, `Links`, and `HasMore` directly at the response root. Both shapes must
+be parsed or pagination silently appears empty.
 
 ## Catalog indexing and category strategy
 
@@ -28,6 +32,14 @@ follows its server-provided pagination links in a background worker with a
 48-item request size, 2,048-page limit, 100,000-item limit, and pagination-cycle
 check. It stores summary metadata only; thumbnails and model PContent are not
 part of this full index download.
+
+Although observed continuation URLs default to 15 records, their endpoint was
+verified to accept 48 and returns the next skip value accordingly. The indexer
+normalizes that existing `$top` parameter to 48. It also compares the final
+unique-item count with the selected root category's `SpecCount`; an early or
+misparsed end aborts the refresh instead of publishing a partial index. On
+2026-07-21 this check reported 14,310 root furniture items, and a bounded live
+`kappesberg` verification returned all 310 reported matches in seven pages.
 
 The complete root index replaces the previous cache atomically only after every
 page succeeds. On startup, the old index is displayed immediately. A background
