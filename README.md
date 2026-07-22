@@ -57,6 +57,12 @@ After enabling it:
    collection or search the local snapshot and select **Import**.
 4. For local files, use **File → Import → Promob Model**.
 
+Enable **Convert triangles to quads** under **Import options** when you want
+compatible planar triangle pairs reconstructed as quads. The same option is
+available in the local-file import dialog. It is disabled by default and does
+not join across UV seams, sharp edges, material boundaries, or non-planar
+surface changes.
+
 Each import creates one visible object with a Geometry Nodes modifier. Each
 recognized door or drawer gets its own 0–1 input, named from its
 Mooble component metadata; models without movable components get no opening
@@ -92,7 +98,9 @@ PMob UV-seam duplicates are compacted because Blender keeps UVs per face
 corner. Explicit smoothing groups and the producer's observed 45-degree smooth
 angle reconstruct continuous custom normals, while incompatible normal fans
 remain split as hard edges. The original and welded vertex counts are retained
-on each generated mesh for diagnostics.
+on each generated mesh for diagnostics. Optional triangle-to-quad conversion
+runs after that topology preparation and records its converted quad count on
+the generated mesh.
 
 **Sync Catalog** is the only catalog-network action. Checkboxes in the sidebar
 select Móveis, Decor, Construção, Eletros, Lareiras/Churrasqueiras, Layout,

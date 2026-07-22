@@ -140,7 +140,9 @@ Work packages:
 4. **Geometry (implemented baseline):** decode nested smoothing groups,
    reconstruct absent normals with the observed 45-degree smooth threshold,
    compact UV-seam vertices onto Blender's corner domain, and preserve hard
-   normal fans. Remaining work is to validate all mesh source types, line-index
+   normal fans. An opt-in Blender import setting reconstructs compatible planar
+   triangle pairs as quads without crossing UV seams, sharp edges, or material
+   boundaries. Remaining work is to validate all mesh source types, line-index
    behavior, culling metadata, and degenerate-face policy.
 5. **Animation:** validate time units and transform interpolation, then create
    Blender actions and keyframes.

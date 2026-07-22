@@ -229,6 +229,14 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         default=False,
         update=_catalog_scope_changed,
     )
+    convert_tris_to_quads: bpy.props.BoolProperty(  # type: ignore
+        name="Convert triangles to quads",
+        description=(
+            "Join compatible planar triangle pairs while preserving UV seams "
+            "and hard edges"
+        ),
+        default=False,
+    )
     partnership: bpy.props.StringProperty(  # type: ignore
         name="Partnership",
         description="Optional Mooble partnership identifier",
@@ -248,6 +256,7 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         layout.prop(self, "region")
         layout.prop(self, "partnership")
         layout.prop(self, "page_size")
+        layout.prop(self, "convert_tris_to_quads")
         layout.label(text="Credentials are never stored by this add-on.", icon="INFO")
 
 

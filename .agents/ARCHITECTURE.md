@@ -67,6 +67,11 @@ only coincident vertices in the same normal fan. UVs and normals remain on the
 face-corner domain, so UV seams do not require duplicate Blender vertices and
 hard edges remain split.
 
+The Blender adapter may then perform an opt-in triangle-to-quad pass before
+face attributes and custom normals are finalized. It joins only nearly planar,
+shape-compatible pairs and compares seams, sharp edges, UVs, colors, and
+materials. The neutral format model remains triangulated and Blender-neutral.
+
 `Constant` aggregate edges suppress the resolved child's insertion controls.
 For flattened geometry, explicitly non-editable component layers that occupy
 less than half of a resized axis retain their size on that axis. The adjacent

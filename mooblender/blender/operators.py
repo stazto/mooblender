@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 from functools import partial
 from pathlib import Path
@@ -582,6 +580,9 @@ class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
             self._apply_model,
             item_name=entry.name,
             item_id=entry.item_id,
+            convert_tris_to_quads=bool(
+                getattr(_browser_preferences(context), "convert_tris_to_quads", False)
+            ),
         )
         return self._start(
             context,
@@ -594,12 +595,20 @@ class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
         )
 
     @staticmethod
-    def _apply_model(context, document, *, item_name, item_id):
+    def _apply_model(
+        context,
+        document,
+        *,
+        item_name,
+        item_id,
+        convert_tris_to_quads,
+    ):
         build_document(
             document,
             context,
             collection_name=item_name,
             source_id=item_id,
+            convert_tris_to_quads=convert_tris_to_quads,
         )
         context.window_manager.promob_browser.status = f"Imported {item_name}"
 
@@ -614,6 +623,20 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
         default="*.pmob;*.pcontent;*.content;*.mob",
         options={"HIDDEN"},
     )
+    convert_tris_to_quads: bpy.props.BoolProperty(  # type: ignore
+        name="Convert triangles to quads",
+        description=(
+            "Join compatible planar triangle pairs while preserving UV seams "
+            "and hard edges"
+        ),
+        default=False,
+    )
+
+    def invoke(self, context, event):
+        self.convert_tris_to_quads = bool(
+            getattr(_browser_preferences(context), "convert_tris_to_quads", False)
+        )
+        return ImportHelper.invoke(self, context, event)
 
     def execute(self, context):
         path = Path(self.filepath)
@@ -633,7 +656,11 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
                 future = JOBS.submit(fetch_file, client_from_context(context), path)
                 callback = _AsyncCompletion(
                     future,
-                    partial(self._apply_file, name=path.stem),
+                    partial(
+                        self._apply_file,
+                        name=path.stem,
+                        convert_tris_to_quads=self.convert_tris_to_quads,
+                    ),
                     "Could not import Promob model",
                 )
                 _ACTIVE_POLLS.add(callback)
@@ -643,6 +670,7 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
                 loaded,
                 context,
                 collection_name=path.stem,
+                convert_tris_to_quads=self.convert_tris_to_quads,
             )
         except (
             UnsupportedPromobFormat,
@@ -656,11 +684,12 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
         return {"FINISHED"}
 
     @staticmethod
-    def _apply_file(context, loaded, *, name):
+    def _apply_file(context, loaded, *, name, convert_tris_to_quads):
         build_document(
             loaded,
             context,
             collection_name=name,
+            convert_tris_to_quads=convert_tris_to_quads,
         )
         context.window_manager.promob_browser.status = f"Imported {name}"
 

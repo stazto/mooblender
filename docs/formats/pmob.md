@@ -82,6 +82,12 @@ normal to every face corner and enables smooth polygon shading. On the sampled
 corpus this reduced 611,468 source vertices to 319,119 Blender vertices while
 retaining all triangle corners and their UV coordinates.
 
+PMob still stores mesh faces as triangles. As an optional Blender-side import
+step, Mooblender can reconstruct nearly coplanar triangle pairs as quads. The
+join compares UVs, sharp/seam flags, vertex colors, and materials, and uses a
+one-degree face-angle limit plus a 45-degree shape limit. This is an editable
+topology convenience, not a PMob format semantic, so it is disabled by default.
+
 Some observed meshes, including the 728 door panels, contain no serialized UV
 coordinates. Other cubic-mapped meshes contain UVs for their original size but
 are redimensioned by their parent aggregate. Their material metadata identifies

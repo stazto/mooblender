@@ -133,6 +133,12 @@ def main() -> None:
         })
         if selected_catalog_departments(preference_defaults) != ("Moveis",):
             raise AssertionError("only Móveis should be synchronized by default")
+        if PROMOB_AP_preferences.bl_rna.properties["convert_tris_to_quads"].default:
+            raise AssertionError("triangle-to-quad conversion should be opt-in")
+        if bpy.ops.import_scene.promob.get_rna_type().properties[
+            "convert_tris_to_quads"
+        ].default:
+            raise AssertionError("local triangle-to-quad conversion should be opt-in")
 
         class LocalStore:
             def __init__(self):
@@ -281,6 +287,7 @@ def main() -> None:
             seam_document,
             bpy.context,
             collection_name="UV seam topology",
+            convert_tris_to_quads=True,
         )
         seam_collection = _geometry_source_collection(seam_controller)
         seam_mesh = next(obj.data for obj in seam_collection.all_objects if obj.type == "MESH")
@@ -295,7 +302,50 @@ def main() -> None:
         seam_uvs = seam_mesh.uv_layers[0].data
         if tuple(seam_uvs[0].uv) != (0.0, 0.0) or tuple(seam_uvs[3].uv) != (0.25, 0.0):
             raise AssertionError("welding discarded distinct UV coordinates at a seam")
+        if any(len(polygon.vertices) == 4 for polygon in seam_mesh.polygons):
+            raise AssertionError("triangle conversion crossed a UV seam")
         _remove_import(seam_controller)
+
+        quad_source = Mesh(
+            vertices=seam_source.vertices,
+            indices=seam_source.indices,
+            normals=seam_source.normals,
+            texture_coordinates=[
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (1.0, 1.0),
+                (0.0, 0.0),
+                (1.0, 1.0),
+                (0.0, 1.0),
+            ],
+            smooth_groups=seam_source.smooth_groups,
+        )
+        quad_document = PmobDocument(
+            name="Quad topology",
+            primitive=Primitive(
+                name="Quad",
+                kind=PrimitiveType.LAYER,
+                layer_ref="Quad",
+            ),
+            layers=[SceneLayer(name="Quad", meshes=[quad_source])],
+        )
+        quad_controller = build_document(
+            quad_document,
+            bpy.context,
+            collection_name="Quad topology",
+            convert_tris_to_quads=True,
+        )
+        quad_collection = _geometry_source_collection(quad_controller)
+        quad_mesh = next(obj.data for obj in quad_collection.all_objects if obj.type == "MESH")
+        if len(quad_mesh.polygons) != 1 or len(quad_mesh.polygons[0].vertices) != 4:
+            raise AssertionError("compatible planar triangles were not converted to a quad")
+        if quad_mesh.get("mooblender_converted_quad_count") != 1:
+            raise AssertionError("converted quad count was not recorded")
+        if not quad_mesh.has_custom_normals or not quad_mesh.uv_layers:
+            raise AssertionError("quad conversion discarded normals or UVs")
+        if not quad_controller.get("mooblender_convert_tris_to_quads"):
+            raise AssertionError("controller did not record triangle conversion")
+        _remove_import(quad_controller)
 
         source = Mesh(
             vertices=[(0.0, 0.0, 0.0), (100.0, 0.0, 0.0), (0.0, 120.0, 0.0)],

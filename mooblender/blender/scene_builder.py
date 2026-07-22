@@ -14,6 +14,7 @@ from dataclasses import asdict
 from pathlib import PurePosixPath
 from typing import Any
 
+import bmesh
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
@@ -311,12 +312,39 @@ def _entity_code(source: object) -> int:
     return id(source) & 0x7FFFFFFF
 
 
+def _join_planar_triangles(mesh) -> int:
+    """Join compatible triangle pairs while retaining seams and UV boundaries."""
+
+    editable = bmesh.new()
+    try:
+        editable.from_mesh(mesh)
+        candidates = [face for face in editable.faces if len(face.verts) == 3]
+        if candidates:
+            bmesh.ops.join_triangles(
+                editable,
+                faces=candidates,
+                cmp_seam=True,
+                cmp_sharp=True,
+                cmp_uvs=True,
+                cmp_vcols=True,
+                cmp_materials=True,
+                angle_face_threshold=math.radians(1.0),
+                angle_shape_threshold=math.radians(45.0),
+            )
+            editable.to_mesh(mesh)
+    finally:
+        editable.free()
+    mesh.update()
+    return sum(len(polygon.vertices) == 4 for polygon in mesh.polygons)
+
+
 def _create_meshes(
     document: PmobDocument,
     materials,
     *,
     material_overrides: dict[str, bpy.types.Material] | None = None,
     entity_code: int,
+    convert_tris_to_quads: bool,
 ):
     scale = document.unit_scale_to_meters
     material_overrides = {
@@ -354,10 +382,14 @@ def _create_meshes(
                 uv_layer = mesh.uv_layers.new(name="UVMap")
                 for loop, (u, v) in zip(mesh.loops, topology.loop_uvs, strict=True):
                     uv_layer.data[loop.index].uv = (u, v)
+            quad_count = _join_planar_triangles(mesh) if convert_tris_to_quads else 0
             if topology.loop_normals:
                 for polygon in mesh.polygons:
                     polygon.use_smooth = True
-                mesh.normals_split_custom_set(topology.loop_normals)
+                if convert_tris_to_quads:
+                    mesh.normals_split_custom_set_from_vertices(topology.vertex_normals)
+                else:
+                    mesh.normals_split_custom_set(topology.loop_normals)
                 mesh.update()
             override = material_overrides.get(layer.name.casefold())
             if override is not None:
@@ -368,6 +400,7 @@ def _create_meshes(
             mesh["promob_material_id"] = source.material_id
             mesh["promob_source_vertex_count"] = len(source.vertices)
             mesh["mooblender_welded_vertex_count"] = topology.removed_vertex_count
+            mesh["mooblender_converted_quad_count"] = quad_count
             meshes.append(mesh)
         result[layer.name.casefold()] = meshes
     return result
@@ -656,6 +689,7 @@ def _document_root(
     source_id: str,
     cache: dict[int, dict[str, list[bpy.types.Mesh]]],
     material_cache: dict[tuple[int, int], bpy.types.Material],
+    convert_tris_to_quads: bool,
     geometry_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ):
     cache_key = id(package) if package is not None else id(document)
@@ -684,6 +718,7 @@ def _document_root(
             materials,
             material_overrides=overrides,
             entity_code=_entity_code(material_owner),
+            convert_tris_to_quads=convert_tris_to_quads,
         )
         cache[cache_key] = meshes_by_layer
     primitive = document.primitive
@@ -856,6 +891,7 @@ def _build_package_tree(
     material_cache: dict[tuple[int, int], bpy.types.Material],
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
     dimension_nodes: list[dict[str, Any]] | None,
+    convert_tris_to_quads: bool,
     prefix: tuple[int, ...] = (),
     current_dimensions: tuple[float, float, float] | None = None,
     document_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -931,6 +967,7 @@ def _build_package_tree(
             source_id=source_id,
             cache=cache,
             material_cache=material_cache,
+            convert_tris_to_quads=convert_tris_to_quads,
             geometry_scale=document_scale,
         )
     for resolved in package.resolved_aggregates:
@@ -1031,6 +1068,7 @@ def _build_package_tree(
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
+            convert_tris_to_quads=convert_tris_to_quads,
             prefix=path,
             current_dimensions=target_dimensions,
             document_scale=tuple(scale),
@@ -1391,6 +1429,7 @@ def build_document(
     *,
     collection_name: str = "",
     source_id: str = "",
+    convert_tris_to_quads: bool = False,
 ) -> bpy.types.Object:
     package = source if isinstance(source, PContentPackage) else None
     document = package.document if package is not None else source
@@ -1458,6 +1497,7 @@ def build_document(
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
+            convert_tris_to_quads=convert_tris_to_quads,
         )
         open_services = 0
         controlled_paths: set[tuple[int, ...]] = set()
@@ -1507,9 +1547,11 @@ def build_document(
             source_id=source_id,
             cache=cache,
             material_cache=material_cache,
+            convert_tris_to_quads=convert_tris_to_quads,
         )
     source_collection["mooblender_node_source"] = True
     root["promob_version"] = document.version if document is not None else 0
     if source_id:
         root["mooble_item_id"] = source_id
+    root["mooblender_convert_tris_to_quads"] = convert_tris_to_quads
     return root

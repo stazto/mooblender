@@ -17,6 +17,7 @@ class PreparedMesh:
     """Compact topology plus source data retained for every face corner."""
 
     vertices: list[Vector3]
+    vertex_normals: list[Vector3]
     faces: list[tuple[int, int, int]]
     loop_normals: list[Vector3]
     loop_uvs: list[Vector2]
@@ -172,6 +173,7 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     }
 
     compact_vertices: list[Vector3] = []
+    compact_normals: list[Vector3] = []
     compact_by_root: dict[int, int] = {}
     original_to_compact: dict[int, int] = {}
     for source_index in used_indices:
@@ -179,6 +181,7 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
         if root not in compact_by_root:
             compact_by_root[root] = len(compact_vertices)
             compact_vertices.append(source.vertices[source_index])
+            compact_normals.append(normal_by_root[root])
         original_to_compact[source_index] = compact_by_root[root]
 
     compact_indices = [original_to_compact[index] for index in source.indices]
@@ -192,6 +195,7 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     ]
     return PreparedMesh(
         vertices=compact_vertices,
+        vertex_normals=compact_normals,
         faces=faces,
         loop_normals=[normal_by_root[find(index)] for index in source.indices],
         loop_uvs=[source.texture_coordinates[index] for index in source.indices]

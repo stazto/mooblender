@@ -56,6 +56,13 @@ class PROMOB_PT_browser(bpy.types.Panel):
         sync = content.row()
         sync.enabled = not state.is_syncing and bpy.app.online_access
         sync.operator("promob.catalog_refresh", text="Sync Catalog", icon="FILE_REFRESH")
+
+        import_options = content.box()
+        import_options.label(text="Import options", icon="MODIFIER")
+        if hasattr(preferences, "bl_rna"):
+            import_options.prop(preferences, "convert_tris_to_quads")
+        else:
+            import_options.label(text="Keep triangulated meshes")
         if state.has_catalog and state.catalog_synced_at:
             content.label(
                 text=(
