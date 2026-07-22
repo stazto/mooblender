@@ -114,6 +114,9 @@ Implemented follow-up work:
 - Active catalog synchronization can be cancelled cooperatively from its local
   status block. Workers stop at bounded request boundaries, discard the
   temporary database, and retain the previously published snapshot.
+- The HTTPS transport honors `Retry-After` on HTTP 429 and 503 responses using
+  at most two retries. Delta-seconds and HTTP-date values are accepted, waits
+  are capped, and connections with unread error bodies are never reused.
 - Geometry Nodes imports link only their controller object to the scene. Source
   meshes remain in a scene-unlinked collection and are referenced by Object
   Info nodes. Static and controlled transforms are compiled into Transform
@@ -127,7 +130,7 @@ Implemented follow-up work:
 
 Remaining exit work:
 
-- Add retry-after support, cache size controls, and a clear-cache operator.
+- Add cache size controls and a clear-cache operator.
 - Add a selected-product details panel with dimensions and source URL.
 - Preserve category state independently for every Blender window.
 - Add schema-change diagnostics that retain a redacted response shape.
@@ -281,5 +284,6 @@ supported fixtures with documented results.
    observed mesh source types.
 2. Add structured import diagnostics for unsupported expressions and semantics.
 3. Obtain `.content` and `.mob` samples and begin independent identification.
-4. Add cancellation, progress, bounded cache management, and conditional HTTP
-   validation where the service supports it.
+4. Complete bounded cache management and conditional HTTP validation where the
+   service supports it; cancellation, progress, and bounded `Retry-After`
+   handling are implemented.

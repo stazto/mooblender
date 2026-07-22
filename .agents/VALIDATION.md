@@ -57,6 +57,9 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
   category can be persisted. The temporary SQLite file is removed, the prior
   snapshot remains byte-for-byte usable, and Blender returns to idle without
   blocking its main thread.
+- Synthetic HTTP 429/503 responses verify bounded `Retry-After` handling for
+  both delta-seconds and HTTP dates. Tests inject the sleeper, make no real
+  delay, cap hostile values, and confirm retry limits and fresh connections.
 
 Live measurements document observations, not service guarantees. CI assertions
 use fake transports and Python-built fixtures; the optional live job checks

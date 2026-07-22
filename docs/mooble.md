@@ -133,6 +133,10 @@ download.
 - API URL and regional values are preferences because deployments may differ.
 - Returned URLs are treated as untrusted input and restricted to known HTTPS
   hosts.
+- HTTP 429 and 503 responses with a valid `Retry-After` value are retried at
+  most twice. Server delays are capped at 30 seconds by default, invalid values
+  are rejected, and an unread error response is never returned to the reusable
+  connection pool.
 - No credentials or browser cookies are copied or stored.
 - Authorization failures are reported; the add-on does not attempt to bypass
   them.

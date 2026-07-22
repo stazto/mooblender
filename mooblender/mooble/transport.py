@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from http.client import HTTPException, HTTPResponse, HTTPSConnection
 from threading import Lock, get_ident
 from typing import Any
@@ -11,6 +16,30 @@ from urllib.parse import urljoin, urlparse
 
 class TransportError(RuntimeError):
     """Raised for rejected URLs, HTTP failures, and bounded-read violations."""
+
+
+def _retry_after_delay(
+    value: str | None,
+    *,
+    maximum: float,
+    now: datetime | None = None,
+) -> float | None:
+    """Parse Retry-After seconds or an HTTP date and cap the blocking delay."""
+    if not value:
+        return None
+    try:
+        delay = float(value.strip())
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+        delay = (retry_at - (now or datetime.now(UTC))).total_seconds()
+    if not math.isfinite(delay) or delay < 0.0:
+        return None
+    return min(delay, maximum)
 
 
 class HttpTransport:
@@ -22,11 +51,20 @@ class HttpTransport:
         timeout: float = 20.0,
         user_agent: str = "Mooblender/0.1 (+https://github.com/dantedex/mooblender)",
         allowed_hosts: tuple[str, ...] = ("catalog.mooble.com", "cdn.mooble.com"),
+        max_retries: int = 2,
+        max_retry_after: float = 30.0,
+        sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         """Configure request bounds, trusted hosts, and thread-local connections."""
         self.timeout = timeout
         self.user_agent = user_agent
         self.allowed_hosts = allowed_hosts
+        self.max_retries = min(max(max_retries, 0), 5)
+        # Never let a server-provided value block a background worker for more
+        # than one minute. The default is deliberately shorter so cancellation
+        # and shutdown remain responsive during service throttling.
+        self.max_retry_after = min(max(max_retry_after, 0.0), 60.0)
+        self.sleeper = sleeper
         self._connection_lock = Lock()
         self._thread_connections: dict[
             int,
@@ -124,27 +162,44 @@ class HttpTransport:
         return response, hostname, port
 
     def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
-        """Read a successful response without exceeding its byte limit."""
-        response, hostname, port = self._open(url)
-        try:
-            if response.status < 200 or response.status >= 300:
-                raise TransportError(f"Mooble returned HTTP {response.status}")
-            length = response.getheader("Content-Length")
-            if length is not None and int(length) > max_bytes:
-                raise TransportError("response exceeds configured size limit")
-            data = response.read(max_bytes + 1)
-        except TransportError:
-            self._drop_connection(hostname, port)
-            raise
-        except (HTTPException, TimeoutError, OSError, ValueError) as error:
-            self._drop_connection(hostname, port)
-            raise TransportError(f"could not read Mooble response: {error}") from error
-        finally:
-            if response.will_close:
+        """Read a bounded response and honor limited server retry instructions."""
+        retry_count = 0
+        while True:
+            response, hostname, port = self._open(url)
+            try:
+                if response.status < 200 or response.status >= 300:
+                    retry_delay = (
+                        _retry_after_delay(
+                            response.getheader("Retry-After"),
+                            maximum=self.max_retry_after,
+                        )
+                        if response.status in {429, 503}
+                        else None
+                    )
+                    if retry_delay is not None and retry_count < self.max_retries:
+                        # Do not reuse a connection whose error body was not
+                        # consumed. A fresh request starts after the bounded wait.
+                        self._drop_connection(hostname, port)
+                        self.sleeper(retry_delay)
+                        retry_count += 1
+                        continue
+                    raise TransportError(f"Mooble returned HTTP {response.status}")
+                length = response.getheader("Content-Length")
+                if length is not None and int(length) > max_bytes:
+                    raise TransportError("response exceeds configured size limit")
+                data = response.read(max_bytes + 1)
+            except TransportError:
                 self._drop_connection(hostname, port)
-        if len(data) > max_bytes:
-            raise TransportError("response exceeds configured size limit")
-        return data
+                raise
+            except (HTTPException, TimeoutError, OSError, ValueError) as error:
+                self._drop_connection(hostname, port)
+                raise TransportError(f"could not read Mooble response: {error}") from error
+            finally:
+                if response.will_close:
+                    self._drop_connection(hostname, port)
+            if len(data) > max_bytes:
+                raise TransportError("response exceeds configured size limit")
+            return data
 
     def get_json(self, url: str, *, max_bytes: int = 16 * 1024 * 1024) -> dict[str, Any]:
         """Decode a bounded UTF-8 JSON response whose root must be an object."""
