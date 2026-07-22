@@ -104,9 +104,10 @@ spherical variants remain unverified.
 Observed PContent packages embed the diffuse, metallic, and transparency image
 members named by or derived from PMob materials. `SPECULAR_TEXTURE` points to
 the sampled `_METALLIC` image, so the adapter connects it to Principled
-Metallic. `_TRANSPARENT` is derived from a `_DIFFUSE` name and connected to
-Principled Alpha. These channel-name rules remain an observed Mooble packaging
-convention rather than a guarantee for every PMob producer.
+Metallic. The diffuse image's own Alpha is multiplied by serialized material
+opacity. When present, `_TRANSPARENT` is derived from a `_DIFFUSE` name and
+multiplied as an additional mask. These channel-name rules remain an observed
+Mooble packaging convention rather than a guarantee for every PMob producer.
 
 The `REFRACTION_FACTOR` material record is retained as a first-class neutral
 field. In the sampled catalog, ordinary materials use `1.0`, while glass and
@@ -115,6 +116,12 @@ are therefore interpreted as optical IOR and enable Principled transmission;
 this is necessary because valid glass records may still store opacity `1.0`.
 Values at or below `1.0` do not enable transmission because the corpus also
 contains non-glass finishes with a factor of `0.5`.
+
+`SPECULAR_POWER` is a normalized reflection level rather than a conventional
+unbounded shininess exponent. This is confirmed by the version-zero reader,
+which derives it from the average serialized specular RGB value. It maps to
+Principled Specular IOR Level; preserving a glass value of `0.0` avoids the
+strong dielectric reflection produced by Blender's default `0.5`.
 
 These interpretations need broader fixtures, especially asymmetric geometry,
 before being promoted to confirmed format guarantees.

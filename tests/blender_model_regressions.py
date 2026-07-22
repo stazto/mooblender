@@ -32,6 +32,13 @@ from tests.blender_smoke import (  # noqa: E402
     _source_transform_labels,
 )
 
+_ALPHA_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+    b"\x00\x00\x00\x01\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02"
+    b"\x00\x00\x00\x0bIDATx\xdac\xfc\xff\x1f\x00\x02\xeb\x01"
+    b"\xf5\x8fY\xe0h\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 
 def _part_package(name: str = "Part") -> PContentPackage:
     return PContentPackage(
@@ -161,8 +168,39 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             principled.inputs["Transmission Weight"].default_value,
             1.0,
         )
+        self.assertEqual(principled.inputs["Specular IOR Level"].default_value, 0.0)
         self.assertEqual(principled.inputs["Alpha"].default_value, 1.0)
         self.assertAlmostEqual(material["promob_refraction_factor"], 1.4)
+        self.assertEqual(material["mooblender_material_schema"], 1)
+
+    def test_diffuse_image_alpha_multiplies_serialized_opacity(self):
+        package = _part_package("Image alpha")
+        package.document.materials[0] = Material(
+            name="RGBA finish",
+            opacity=0.25,
+            diffuse_texture="rgba.png",
+        )
+        package.resources["rgba.png"] = _ALPHA_PNG
+
+        controller = self._build(package, "Image alpha regression")
+        source = _geometry_source_collection(controller)
+        source_object = next(obj for obj in source.all_objects if obj.type == "MESH")
+        material = source_object.data.materials[0]
+        principled = next(
+            node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"
+        )
+        diffuse = next(
+            node for node in material.node_tree.nodes if node.label == "Promob Diffuse"
+        )
+        alpha_link = principled.inputs["Alpha"].links[0]
+        multiply = alpha_link.from_node
+
+        self.assertEqual(multiply.bl_idname, "ShaderNodeMath")
+        self.assertEqual(multiply.operation, "MULTIPLY")
+        self.assertEqual(multiply.inputs[0].default_value, 0.25)
+        alpha_source = multiply.inputs[1].links[0].from_socket
+        self.assertEqual(alpha_source.node.name, diffuse.name)
+        self.assertEqual(alpha_source.identifier, diffuse.outputs["Alpha"].identifier)
 
     def test_r678_constant_door_only_exposes_opening_and_keeps_black_handle(self):
         child = _part_package("R678 Handle")
