@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import sys
 from pathlib import Path
@@ -528,9 +527,11 @@ def main() -> None:
                 ],
             ),
             resources={
-                "compatibility.png": base64.b64decode(
-                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4"
-                    "2mP8/x8AAusB9Y9Z4GgAAAAASUVORK5CYII="
+                "compatibility.png": (
+                    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+                    b"\x00\x00\x00\x01\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02"
+                    b"\x00\x00\x00\x0bIDATx\xdac\xfc\xff\x1f\x00\x02\xeb\x01"
+                    b"\xf5\x8fY\xe0h\x00\x00\x00\x00IEND\xaeB`\x82"
                 )
             },
         )

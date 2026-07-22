@@ -269,6 +269,11 @@ Implemented foundation:
 - Ruff and offline unit tests run on Python 3.11, 3.12, and 3.13 in CI.
 - Network-dependent tests are skipped by default and run once in a dedicated
   Mooble API health-check job.
+- Named, redistributable synthetic regressions cover every model-specific issue
+  observed so far. Blender-only cases run on both supported LTS releases, while
+  neutral metadata, expression, transform, and topology cases run across the
+  CPython matrix. Binary fixtures are forbidden; byte-level samples and the
+  embedded image are constructed as Python `bytes` in test source.
 - `build_blender_addon.py` validates manifest identity/version, rejects
   symlinks, normalizes archive metadata, and packages the inner extension at
   the ZIP root; CI publishes that ZIP without adding a second archive layer.
@@ -293,11 +298,9 @@ supported fixtures with documented results.
 
 ## Immediate next implementation sequence
 
-1. Add redistributable aggregate/opening/material fixtures matching the live
-   observations without copying catalog assets.
-2. Validate PMob animation timing and interpolation, smoothing groups, and all
+1. Validate PMob animation timing and interpolation, smoothing groups, and all
    observed mesh source types.
-3. Add structured import diagnostics for unsupported expressions and semantics.
-4. Obtain `.content` and `.mob` samples and begin independent identification.
-5. Add cancellation, progress, bounded cache management, and conditional HTTP
+2. Add structured import diagnostics for unsupported expressions and semantics.
+3. Obtain `.content` and `.mob` samples and begin independent identification.
+4. Add cancellation, progress, bounded cache management, and conditional HTTP
    validation where the service supports it.

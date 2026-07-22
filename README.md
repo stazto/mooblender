@@ -157,11 +157,16 @@ python3 -m unittest discover -s tests -v
 ```
 
 CI additionally launches the add-on in official Blender 4.5.0 and 5.2.0
-binaries. Each smoke test registers the add-on and builds disposable
-geometry, UVs, and material datablocks through the real Blender Python API.
+binaries. The smoke and named model-regression suites register the add-on and
+build disposable geometry, UVs, materials, modifiers, and aggregate transforms
+through the real Blender Python API.
 Each exact Blender installation is cached separately by operating system,
 architecture, version, and cache-layout revision, so later runs skip the large
 download and extraction.
+
+All format and image fixtures are generated from Python `bytes` values or
+standard-library builders. No binary test assets are committed. The full
+regression-to-test map is in [`tests/README.md`](tests/README.md).
 
 The normal suite is entirely offline. An opt-in live check verifies the
 observed Mooble catalog endpoint:
