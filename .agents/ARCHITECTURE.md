@@ -88,6 +88,9 @@ Aggregate formulas use current `DrawingDimension` axes before logical
 `Dimension` axes; measured geometry is reserved for redimension scaling.
 `VisibleCondition` filters the resolved tree, while `Normal` maps local positive
 Z to the aggregate attachment normal before its axial `Rotation` is applied.
+The remaining roll is fixed by projecting global negative Z into the attachment
+plane, rather than using an ambiguous shortest-arc quaternion; opposing side
+normals therefore preserve a consistent vertical direction.
 
 Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite

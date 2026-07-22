@@ -181,7 +181,9 @@ geometry, hierarchy, transforms, materials, and animation independently.
   aggregate representation so paired doors retain separate symmetric hinges
   and open outward.
 - Orient aggregate local Z from its `Normal` vector, then apply `Rotation`
-  around that attachment axis.
+  around that attachment axis. Resolve the normal's otherwise ambiguous roll
+  from a stable global vertical reference so opposing side attachments remain
+  symmetric.
 - Measure serialized PMob geometry after primitive transforms, redimension only
   that geometry, and leave nested aggregate placement in target coordinates.
   Preserve partial-axis fixed hardware size when a non-editable component layer
@@ -229,6 +231,9 @@ Cached door validation reconstructs the 800 × 2099 mm leaf and correctly placed
 handle inside `Porta de Giro 31`, and distributes all three 330.67 × 2195 mm
 panels across the 980 mm frame of `Porta de Correr 21`. These packages use the
 long-form parent dimension variables that previously collapsed their panels.
+Cached ELA-2 validation places both opposing lift carriages within the same
+depth range and from 12 mm to about 739 mm above the base; shortest-arc normal
+alignment previously rolled the left carriage 715 mm below it.
 A 212-package cached topology corpus contains 611,468 PMob vertices and no
 serialized mesh normals. Nested smoothing groups plus inferred 45-degree
 normal fans compact this to 319,119 Blender vertices while preserving triangle

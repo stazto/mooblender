@@ -436,9 +436,10 @@ def main() -> None:
                                 vertices=[
                                     (0.0, 0.0, 0.0),
                                     (0.0, 10.0, 0.0),
-                                    (0.0, 0.0, 100.0),
+                                    (10.0, 0.0, 100.0),
+                                    (10.0, 10.0, 100.0),
                                 ],
-                                indices=[0, 1, 2],
+                                indices=[0, 1, 2, 1, 3, 2],
                             )
                         ],
                     )
@@ -505,8 +506,10 @@ def main() -> None:
             - min(point[axis] for point in orientation_points)
             for axis in range(3)
         )
-        if tuple(round(value, 3) for value in orientation_extents) != (0.1, 0.01, 0.0):
+        if tuple(round(value, 3) for value in orientation_extents) != (0.1, 0.01, 0.01):
             raise AssertionError("aggregate Normal did not orient the child geometry")
+        if min(point.z for point in orientation_points) < -1e-6:
+            raise AssertionError("aggregate normal frame rolled child geometry below its anchor")
         _remove_import(orientation_controller)
 
         root_material = PContentPackage(

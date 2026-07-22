@@ -40,6 +40,26 @@ def _unique_name(value: str, fallback: str) -> str:
     return value or fallback
 
 
+def _aggregate_orientation(normal: Vector, rotation: float) -> Quaternion:
+    """Build Promob's normal frame without an ambiguous shortest-arc roll."""
+
+    vertical_reference = Vector((0.0, 0.0, -1.0))
+    local_x = vertical_reference - normal * vertical_reference.dot(normal)
+    if local_x.length_squared <= 1e-12:
+        local_x = Vector((1.0, 0.0, 0.0))
+    else:
+        local_x.normalize()
+    local_y = normal.cross(local_x).normalized()
+    orientation = Matrix(
+        (
+            tuple(local_x),
+            tuple(local_y),
+            tuple(normal),
+        )
+    ).transposed().to_quaternion()
+    return orientation @ Quaternion((0.0, 0.0, 1.0), rotation)
+
+
 def _embedded_image(package: PContentPackage | None, source_name: str | None):
     if package is None:
         return None
@@ -1008,8 +1028,7 @@ def _build_package_tree(
             normal = Vector((0.0, 0.0, 1.0))
         else:
             normal.normalize()
-        orientation = Vector((0.0, 0.0, 1.0)).rotation_difference(normal)
-        spin = Quaternion((0.0, 0.0, 1.0), rotation)
+        orientation = _aggregate_orientation(normal, rotation)
         inverted = raw.get("Inverted") is True
         geometry_dimensions = serialized_geometry_dimensions(
             child.properties,
@@ -1031,7 +1050,7 @@ def _build_package_tree(
         placement.parent = package_parent
         placement.location = location
         placement.rotation_mode = "QUATERNION"
-        placement.rotation_quaternion = orientation @ spin
+        placement.rotation_quaternion = orientation
         placement.scale.x = -1.0 if inverted else 1.0
         placement["mooble_specification_id"] = resolved.specification_id
         placement["promob_aggregate_index"] = resolved.index

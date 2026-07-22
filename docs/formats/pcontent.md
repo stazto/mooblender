@@ -51,10 +51,14 @@ Redimension scale applies only to the child package's own PMob geometry. Nested
 aggregate positions are already expressed in the redimensioned child's target
 coordinate system and must not inherit that scale a second time. Inversion is
 kept on the aggregate placement so it mirrors both geometry and nested parts.
-An aggregate `Normal` vector orients its local positive Z axis, and `Rotation`
-then spins the child around that normal. Ignoring `Normal` leaves components on
-the wrong plane; the observed 10122 bed uses `(-1, 0, 0)` to lay its long drawer
-handles horizontally.
+An aggregate `Normal` vector orients its local positive Z axis. Because a normal
+alone does not determine roll, Mooblender projects global negative Z into the
+attachment plane as the zero-rotation local X reference, then applies
+`Rotation` around the normal. This keeps side-mounted pairs with `(-1, 0, 0)`
+and `(1, 0, 0)` symmetric instead of giving them opposite vertical roll.
+Ignoring `Normal` leaves components on the wrong plane; the observed 10122 bed
+uses `(-1, 0, 0)` to lay its long drawer handles horizontally, while ELA-2 uses
+opposing X normals for its two lifting carriages.
 
 `OpenServices.AggregatePath` alternates aggregate-container and selected-option
 indices. Doors supply a pivot and maximum angle; drawers supply maximum travel.
