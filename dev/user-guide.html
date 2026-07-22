@@ -1,0 +1,550 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="author" title="About these documents" href="about.html"><link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Troubleshooting" href="troubleshooting.html"><link rel="prev" title="Installation" href="installation.html">
+
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
+        <title>User guide - Mooblender 0.5.1</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=d9e8d9b6" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">Mooblender 0.5.1</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">Mooblender 0.5.1</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">User documentation</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="about.html">About Mooblender</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Mooble, Promob, and credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">User guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="development.html">Development guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mooble.html">Mooble catalog integration</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="formats/index.html">Supported format references</a><input aria-label="Toggle navigation of Supported format references" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="formats/pmob.html">PMob format reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="formats/pcontent.html">PContent format reference</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="https://github.com/dantedex/mooblender/blob/main/docs/user-guide.md?plain=true" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/dantedex/mooblender/edit/main/docs/user-guide.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="user-guide">
+<h1>User guide<a class="headerlink" href="#user-guide" title="Link to this heading">¶</a></h1>
+<section id="open-the-mooble-browser">
+<h2>Open the Mooble browser<a class="headerlink" href="#open-the-mooble-browser" title="Link to this heading">¶</a></h2>
+<p>The browser uses catalog information from the official
+<a class="reference external" href="https://www.mooble.com/br/">Mooble</a> platform.</p>
+<ol class="arabic simple">
+<li><p>Switch to the <strong>3D View</strong>.</p></li>
+<li><p>Press <kbd class="kbd docutils literal notranslate">N</kbd> or use <strong>View → Sidebar</strong>.</p></li>
+<li><p>Select the <strong>Mooble</strong> tab.</p></li>
+</ol>
+<!-- SCREENSHOT: Add _static/screenshots/mooble-sidebar-overview.png here.
+Capture the full Mooble tab after a successful sync. Annotate Catalog content,
+Sync Catalog, search/filters, one result card, Import, and the info icon. Use a
+catalog item that is safe to show publicly. -->
+<p>The panel is arranged from catalog setup at the top to result cards at the
+bottom. Messages are shown beside the operation they describe: catalog status
+below <strong>Sync Catalog</strong>, and selected-model download status above search.</p>
+</section>
+<section id="choose-what-the-catalog-contains">
+<h2>Choose what the catalog contains<a class="headerlink" href="#choose-what-the-catalog-contains" title="Link to this heading">¶</a></h2>
+<p>Before the first synchronization, configure the <strong>Catalog content</strong> box:</p>
+<dl class="simple myst">
+<dt><strong>Source country</strong></dt><dd><p>Chooses the regional Mooble catalog. Brazil, United States, Canada, Spain,
+Argentina, China, and France are supported. It changes model availability,
+not only labels.</p>
+</dd>
+<dt><strong>Category names</strong></dt><dd><p><strong>Source language</strong> keeps names returned by the selected catalog. <strong>English</strong>
+stores a consistent translated category tree while preserving the same items.</p>
+</dd>
+<dt><strong>Department checkboxes</strong></dt><dd><p>Choose Furniture, Decor, Openings, Appliances, Fireplaces / Grills, Layout,
+Lights, Materials, and Plants. Furniture is the only default selection.</p>
+</dd>
+</dl>
+<p>These options define the next complete local snapshot. Changing country,
+language, or department selection requires another synchronization.</p>
+</section>
+<section id="synchronize-the-catalog">
+<h2>Synchronize the catalog<a class="headerlink" href="#synchronize-the-catalog" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>Enable Blender Online Access.</p></li>
+<li><p>Select at least one department.</p></li>
+<li><p>Select <strong>Sync Catalog</strong>.</p></li>
+<li><p>Follow progress directly below the button.</p></li>
+</ol>
+<!-- SCREENSHOT: Add _static/screenshots/catalog-sync-progress.png here. Capture
+an active synchronization with the warning, current category, page, record, and
+category counts readable. Do not capture browser developer tools. -->
+<p>A full synchronization can take several minutes. Mooblender downloads category
+pages in the background, writes a temporary SQLite database, validates the
+result, and replaces the previous snapshot only after completion. <strong>Cancel
+Sync</strong> stops at a safe network boundary and preserves the previous snapshot.</p>
+<p>Catalog synchronization does not download every thumbnail or model. It stores
+the searchable metadata and category relationships. Preview images appear later
+for visible cards, and a model downloads only when you import it.</p>
+</section>
+<section id="browse-and-search">
+<h2>Browse and search<a class="headerlink" href="#browse-and-search" title="Link to this heading">¶</a></h2>
+<p>After synchronization, all browsing controls query the local snapshot:</p>
+<ul class="simple">
+<li><p>Select a category under <strong>Collections</strong> to enter it.</p></li>
+<li><p>Select <strong>Back</strong> to return to the previous category.</p></li>
+<li><p>Enter one or more words in search. Press <kbd class="kbd docutils literal notranslate">Enter</kbd> or select the magnifier
+to apply the query; an empty query restores the current category.</p></li>
+<li><p>Use <strong>Manufacturer</strong> to limit results to one brand.</p></li>
+<li><p>Use <strong>Brand Collection</strong> to limit the selected manufacturer’s collections.</p></li>
+<li><p>Select <strong>Load More</strong> when additional local matches are available.</p></li>
+</ul>
+<!-- SCREENSHOT: Add _static/screenshots/catalog-search-filters.png here. Show a
+search term, a selected manufacturer, a selected brand collection, the local
+match count, Back, and Load More where possible. -->
+<p>Search ignores case and accents and matches item name, description, brand,
+collection, and identifier. Filters combine: a card must satisfy the search and
+both selected menus.</p>
+</section>
+<section id="read-and-import-a-card">
+<h2>Read and import a card<a class="headerlink" href="#read-and-import-a-card" title="Link to this heading">¶</a></h2>
+<p>Each result card can contain:</p>
+<ul class="simple">
+<li><p>an on-demand preview;</p></li>
+<li><p>model name, manufacturer, and brand collection;</p></li>
+<li><p>external dimensions in <code class="docutils literal notranslate"><span class="pre">W</span> <span class="pre">×</span> <span class="pre">D</span> <span class="pre">×</span> <span class="pre">H</span></code> millimetres;</p></li>
+<li><p>an <strong>info</strong> icon that opens the matching regional page on <code class="docutils literal notranslate"><span class="pre">www.mooble.com</span></code>;</p></li>
+<li><p>an <strong>Import</strong> button.</p></li>
+</ul>
+<p>Select <strong>Import</strong> to download the model if necessary and build it in the current
+scene. Blender remains responsive during the download. Reimporting a cached
+model skips the network transfer.</p>
+<!-- SCREENSHOT: Add _static/screenshots/model-download-status.png here. Capture
+the local object-download message above search while the existing cards remain
+visible and disabled. -->
+</section>
+<section id="import-a-local-file">
+<h2>Import a local file<a class="headerlink" href="#import-a-local-file" title="Link to this heading">¶</a></h2>
+<p>This command reads the supported local formats associated with
+<a class="reference external" href="https://promob.com/">Promob</a> assets.</p>
+<ol class="arabic simple">
+<li><p>Open <strong>File → Import → Promob Model</strong>.</p></li>
+<li><p>Choose a <code class="docutils literal notranslate"><span class="pre">.pmob</span></code> or <code class="docutils literal notranslate"><span class="pre">.pcontent</span></code> file.</p></li>
+<li><p>In the file browser’s options region, decide whether to enable
+<strong>Convert triangles to quads</strong>.</p></li>
+<li><p>Select <strong>Import Promob Model</strong>.</p></li>
+</ol>
+<!-- SCREENSHOT: Add _static/screenshots/local-file-import.png here. Capture the
+File Browser with a safe synthetic filename and the Convert triangles to quads
+option visible. Do not show personal directories. -->
+<p>Triangle-to-quad conversion is disabled by default. It joins only compatible
+planar triangle pairs and preserves material boundaries, UV seams, sharp edges,
+and meaningful surface changes.</p>
+</section>
+<section id="work-with-the-imported-object">
+<h2>Work with the imported object<a class="headerlink" href="#work-with-the-imported-object" title="Link to this heading">¶</a></h2>
+<p>An import creates one visible object in the active scene. Select it and open
+the <strong>Modifiers</strong> tab in the Properties editor (wrench icon). The Geometry Nodes
+modifier exposes only controls supported by that package:</p>
+<dl class="simple myst">
+<dt><strong>Realize Instances</strong></dt><dd><p>Converts the final model instance to realized mesh geometry when an editing or
+export workflow requires it. Leave it disabled for lighter scenes.</p>
+</dd>
+<dt><strong>Finish</strong></dt><dd><p>Provides named style menus for the whole model (<strong>Main</strong>) or individual parts.
+Material overrides work before and after realization.</p>
+</dd>
+<dt><strong>Options</strong></dt><dd><p>Shows switches for optional or coupled components. Mirrorable packages add a
+<strong>Reverse</strong> switch that reflects the complete footprint and preserves normals.</p>
+</dd>
+<dt><strong>Doors and Drawers</strong></dt><dd><p>Provides a separate 0–1 value for each movable component. <code class="docutils literal notranslate"><span class="pre">0</span></code> is closed and
+<code class="docutils literal notranslate"><span class="pre">1</span></code> is fully open.</p>
+</dd>
+<dt><strong>Parameters</strong></dt><dd><p>Shows editable insertion dimensions with the limits supplied by the package.
+Fixed dimensions are deliberately omitted.</p>
+</dd>
+</dl>
+<!-- SCREENSHOT: Add _static/screenshots/geometry-nodes-controls.png here.
+Capture one imported object in the Outliner and its expanded Geometry Nodes
+modifier with Realize Instances plus Finish, Options, Doors and Drawers, and
+Parameters panels where available. Avoid product-specific annotations. -->
+<p>Source meshes are not linked into the scene or shown as helper empties. Geometry
+Nodes references those internal datablocks and evaluates hierarchy, placement,
+visibility, resizing, movement, reversal, and finish selection.</p>
+</section>
+<section id="configure-preferences">
+<h2>Configure preferences<a class="headerlink" href="#configure-preferences" title="Link to this heading">¶</a></h2>
+<p>Open <strong>Edit → Preferences → Add-ons</strong>, search for <strong>Mooblender</strong>, and expand its
+preferences.</p>
+<!-- SCREENSHOT: Add _static/screenshots/addon-preferences.png here. Capture the
+expanded Mooblender preferences with all settings visible. Ensure Catalog API
+and Partnership contain only their defaults and no private values. -->
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Setting</p></th>
+<th class="head"><p>Purpose</p></th>
+<th class="head"><p>Recommended use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Catalog API</p></td>
+<td><p>Base URL for the public catalog service</p></td>
+<td><p>Keep the default unless maintaining a compatible deployment</p></td>
+</tr>
+<tr class="row-odd"><td><p>Source country</p></td>
+<td><p>Regional catalog used for synchronization and product links</p></td>
+<td><p>Choose the catalog you are authorized to use</p></td>
+</tr>
+<tr class="row-even"><td><p>Category names</p></td>
+<td><p>Source-language or English category labels</p></td>
+<td><p>Choose before synchronization</p></td>
+</tr>
+<tr class="row-odd"><td><p>Partnership</p></td>
+<td><p>Optional service-specific partnership identifier</p></td>
+<td><p>Leave empty unless your deployment supplies one</p></td>
+</tr>
+<tr class="row-even"><td><p>Page size</p></td>
+<td><p>Number of local matches materialized at once</p></td>
+<td><p>Increase for more cards; decrease for a lighter panel</p></td>
+</tr>
+<tr class="row-odd"><td><p>Convert triangles to quads</p></td>
+<td><p>Default for catalog and local imports</p></td>
+<td><p>Leave off unless editable quad topology is needed</p></td>
+</tr>
+<tr class="row-even"><td><p>Model cache limit</p></td>
+<td><p>Target disk space for downloaded models</p></td>
+<td><p>Default: 2048 MiB</p></td>
+</tr>
+<tr class="row-odd"><td><p>Thumbnail cache limit</p></td>
+<td><p>Target disk space for previews</p></td>
+<td><p>Default: 512 MiB</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="manage-downloads-and-cache">
+<h2>Manage downloads and cache<a class="headerlink" href="#manage-downloads-and-cache" title="Link to this heading">¶</a></h2>
+<p><strong>Clear Downloads</strong> asks for confirmation and removes cached models and
+thumbnails. It keeps the synchronized catalog, so search and navigation remain
+available. Active downloads are protected from cleanup.</p>
+<p>The cache is stored below Blender’s version-specific user-data directory:</p>
+<ul class="simple">
+<li><p>Linux: <code class="docutils literal notranslate"><span class="pre">~/.config/blender/&lt;version&gt;/datafiles/mooblender/cache/</span></code></p></li>
+<li><p>Windows: <code class="docutils literal notranslate"><span class="pre">%APPDATA%\Blender</span> <span class="pre">Foundation\Blender\&lt;version&gt;\datafiles\mooblender\cache\</span></code></p></li>
+<li><p>macOS: <code class="docutils literal notranslate"><span class="pre">~/Library/Application</span> <span class="pre">Support/Blender/&lt;version&gt;/datafiles/mooblender/cache/</span></code></p></li>
+</ul>
+<p>The directory contains <code class="docutils literal notranslate"><span class="pre">catalog.sqlite3</span></code>, <code class="docutils literal notranslate"><span class="pre">models/</span></code>, and <code class="docutils literal notranslate"><span class="pre">thumbnails/</span></code>. Blender
+4.5 and Blender 5.2 use separate version-specific caches.</p>
+</section>
+<section id="network-and-privacy">
+<h2>Network and privacy<a class="headerlink" href="#network-and-privacy" title="Link to this heading">¶</a></h2>
+<p>Mooblender stores no credentials or browser cookies. Catalog and asset requests
+are restricted to configured HTTPS hosts. The info icon opens a normal browser
+page; the destination website then applies its own privacy policy and access
+rules. Clearing downloads does not clear browser data.</p>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="troubleshooting.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Troubleshooting</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="installation.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Installation</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Dante Dex
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">User guide</a><ul>
+<li><a class="reference internal" href="#open-the-mooble-browser">Open the Mooble browser</a></li>
+<li><a class="reference internal" href="#choose-what-the-catalog-contains">Choose what the catalog contains</a></li>
+<li><a class="reference internal" href="#synchronize-the-catalog">Synchronize the catalog</a></li>
+<li><a class="reference internal" href="#browse-and-search">Browse and search</a></li>
+<li><a class="reference internal" href="#read-and-import-a-card">Read and import a card</a></li>
+<li><a class="reference internal" href="#import-a-local-file">Import a local file</a></li>
+<li><a class="reference internal" href="#work-with-the-imported-object">Work with the imported object</a></li>
+<li><a class="reference internal" href="#configure-preferences">Configure preferences</a></li>
+<li><a class="reference internal" href="#manage-downloads-and-cache">Manage downloads and cache</a></li>
+<li><a class="reference internal" href="#network-and-privacy">Network and privacy</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=b9afe91b"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>
