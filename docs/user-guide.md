@@ -48,7 +48,9 @@ Modifier controls are ordered as follows:
 1. **Realize Instances** converts the nested hierarchy to mesh geometry when a
    downstream workflow requires it. Non-default material overrides operate on
    this realized branch.
-2. Named **Finish** menus select source material styles.
+2. The **Finish** panel contains one named style menu per affected part. Menu
+   labels contain only the part name, such as **Tampo**, without a redundant
+   `Finish:` or `Acabamento` prefix.
 3. **Options** contains default-enabled switches for independently selectable
    components such as worktops and baseboards.
 4. **Doors and Drawers** contains independent 0–1 controls for movable parts.

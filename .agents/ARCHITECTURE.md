@@ -57,8 +57,8 @@ procedural controls. Collection-hierarchy mode is no longer exposed: every
 import returns one controller linked directly to the active collection, while
 the source collection remains an unlinked implementation detail.
 
-Modifier interfaces place **Realize Instances** first, followed by unpanelled
-finish menus, an **Options** panel for selectable aggregate components, a
+Modifier interfaces place **Realize Instances** first, followed by a **Finish**
+panel whose menu labels name only the affected part, an **Options** panel for selectable aggregate components, a
 **Doors and Drawers** panel, and a **Parameters** panel for configurable sizes.
 All controls use single-value sockets. Opening services
 bind only to an exact resolved

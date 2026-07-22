@@ -1001,14 +1001,23 @@ def main() -> None:
                 f"{panel_u_extent}"
             )
         interface_items = modifier.node_group.interface.items_tree
-        interface_names = [item.name for item in interface_items]
-        if len(interface_names) != len(set(interface_names)):
-            raise AssertionError(f"duplicate node interface entries: {interface_names}")
+        scoped_names = [
+            (item.parent.name if item.parent else "", item.name)
+            for item in interface_items
+        ]
+        if len(scoped_names) != len(set(scoped_names)):
+            raise AssertionError(f"duplicate scoped interface entries: {scoped_names}")
+        socket_identifiers = [
+            item.identifier for item in interface_items if item.item_type == "SOCKET"
+        ]
+        if len(socket_identifiers) != len(set(socket_identifiers)):
+            raise AssertionError("node interface socket identifiers are not unique")
         if any(item.name == "Open Ratio" for item in interface_items):
             raise AssertionError("legacy shared Open Ratio control is still exposed")
         finish_socket = next(
-            item for item in interface_items if item.name == "Finish: Child finish"
+            item for item in interface_items if item.name == "Child"
         )
+        finish_panel = next(item for item in interface_items if item.name == "Finish")
         doors_panel = next(
             item for item in interface_items if item.name == "Doors and Drawers"
         )
@@ -1019,14 +1028,14 @@ def main() -> None:
         root_names = [item.name for item in root_items]
         expected_order = [
             "Realize Instances",
-            "Finish: Child finish",
+            "Finish",
             "Doors and Drawers",
             "Parameters",
         ]
         if [name for name in root_names if name in expected_order] != expected_order:
             raise AssertionError(f"modifier controls are ordered incorrectly: {root_names}")
-        if finish_socket.parent.name:
-            raise AssertionError("material choices are not above the control panels")
+        if finish_socket.parent != finish_panel:
+            raise AssertionError("material choices are not inside the Finish panel")
         control_sockets = {
             item.name: item
             for item in interface_items
@@ -1175,7 +1184,7 @@ def main() -> None:
             raise AssertionError("finish control is not a named menu")
         if finish_socket.structure_type != "SINGLE":
             raise AssertionError("finish control is a field instead of a single value")
-        if sum(item.name == "Finish: Child finish" for item in interface_items) != 1:
+        if sum(item.name == "Child" for item in interface_items) != 1:
             raise AssertionError("identical material controls were not consolidated")
         menu_switch = next(
             node

@@ -465,13 +465,20 @@ def _make_socket_single_value(socket) -> None:
     socket.structure_type = "SINGLE"
 
 
+def _group_input_output(group_input, socket):
+    """Resolve an interface socket by identifier, allowing names in other panels."""
+    return next(
+        output for output in group_input.outputs if output.identifier == socket.identifier
+    )
+
+
 def _keep_modifier_input_active(node_group, group_input, socket) -> None:
     value_sink = node_group.nodes.new("ShaderNodeMath")
     value_sink.operation = "MULTIPLY"
     value_sink.hide = True
     value_sink.label = "Modifier input driver"
     value_sink.inputs[1].default_value = 0.0
-    node_group.links.new(group_input.outputs[socket.name], value_sink.inputs[0])
+    node_group.links.new(_group_input_output(group_input, socket), value_sink.inputs[0])
 
 
 def _add_dimension_controls(
@@ -486,7 +493,9 @@ def _add_dimension_controls(
         return 0
 
     node_group = modifier.node_group
-    used_names = {item.name for item in node_group.interface.items_tree}
+    used_names = {
+        item.name for item in node_group.interface.items_tree if item.parent == panel
+    }
     defaults = []
     controls = 0
     for data in dimension_nodes:
@@ -540,7 +549,9 @@ def _add_visibility_controls(
     if not option_nodes:
         return 0
     node_group = modifier.node_group
-    used_names = {item.name for item in node_group.interface.items_tree}
+    used_names = {
+        item.name for item in node_group.interface.items_tree if item.parent == panel
+    }
     controls = 0
     for data in option_nodes:
         name = _unique_interface_name(str(data["label"]), used_names)
@@ -676,6 +687,16 @@ def _material_bundles(groups) -> dict[tuple[str, tuple[str, ...]], list[dict]]:
     return bundles
 
 
+def _finish_part_name(group_name: str, fallback: str) -> str:
+    """Turn generic finish-definition names into concise part labels."""
+    words = group_name.strip().split()
+    if words and words[0].casefold() == "acabamento":
+        words.pop(0)
+    if words and words[-1].casefold() == "finish":
+        words.pop()
+    return " ".join(words) or fallback
+
+
 def _material_applications(bundled_groups, materials):
     """Keep only layers for which every menu option resolved a material."""
     applications = []
@@ -718,7 +739,7 @@ def _unique_interface_name(base: str, used_names: set[str]) -> str:
 def _create_style_menu(node_group, group_input, socket, option_names):
     """Create the menu-to-index conversion shared by all matching layers."""
     socket_name = socket.name
-    option_output = group_input.outputs[socket_name]
+    option_output = _group_input_output(group_input, socket)
     style_switch = node_group.nodes.new("GeometryNodeMenuSwitch")
     style_switch.data_type = "INT"
     style_switch.enum_items.clear()
@@ -812,18 +833,32 @@ def _add_material_options(
     realized_geometry = geometry_switch.inputs["True"]
     for link in list(realized_geometry.links):
         node_group.links.remove(link)
-    geometry = realize.outputs["Geometry"]
-    menu_defaults = []
-    used_names = {item.name for item in node_group.interface.items_tree}
+    entries = []
     for (group_name, option_names), bundled_groups in _material_bundles(groups).items():
         applications = _material_applications(bundled_groups, materials)
-        if not applications:
-            continue
-        socket_name = _unique_interface_name(f"Finish: {group_name}", used_names)
+        if applications:
+            entries.append((group_name, option_names, applications))
+    if not entries:
+        return 0
+
+    finish_panel = node_group.interface.new_panel(
+        name="Finish",
+        description="Material styles available for each model part",
+        default_closed=False,
+    )
+    geometry = realize.outputs["Geometry"]
+    menu_defaults = []
+    used_names: set[str] = set()
+    for group_name, option_names, applications in entries:
+        socket_name = _unique_interface_name(
+            _finish_part_name(group_name, controller.name),
+            used_names,
+        )
         socket = node_group.interface.new_socket(
             name=socket_name,
             in_out="INPUT",
             socket_type="NodeSocketMenu",
+            parent=finish_panel,
         )
         _make_socket_single_value(socket)
         socket.description = " / ".join(option_names)
@@ -936,6 +971,15 @@ def build_document(
             option_nodes=option_nodes,
             convert_tris_to_quads=convert_tris_to_quads,
         )
+        _add_material_options(
+            package,
+            controller=root,
+            modifier=geometry_modifier,
+            group_input=group_input,
+            realize=realize,
+            geometry_switch=geometry_switch,
+            material_cache=material_cache,
+        )
         options_panel = (
             geometry_modifier.node_group.interface.new_panel(
                 name="Options",
@@ -976,15 +1020,6 @@ def build_document(
             )
         if open_services:
             root["mooblender_open_service_count"] = open_services
-        _add_material_options(
-            package,
-            controller=root,
-            modifier=geometry_modifier,
-            group_input=group_input,
-            realize=realize,
-            geometry_switch=geometry_switch,
-            material_cache=material_cache,
-        )
         parameters_panel = (
             geometry_modifier.node_group.interface.new_panel(
                 name="Parameters",
