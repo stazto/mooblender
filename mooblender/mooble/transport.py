@@ -54,7 +54,7 @@ class HttpTransport:
         self,
         *,
         timeout: float = 20.0,
-        user_agent: str = "Mooblender/0.5.1 (+https://github.com/dantedex/mooblender)",
+        user_agent: str = "Mooblender/0.6.0 (+https://github.com/dantedex/mooblender)",
         allowed_hosts: tuple[str, ...] = ("catalog.mooble.com", "cdn.mooble.com"),
         max_retries: int = 2,
         max_retry_after: float = 30.0,

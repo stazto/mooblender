@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "mooblender"
-version = "0.5.1"
+version = "0.6.0"
 name = "Mooblender"
 tagline = "Browse Mooble and import configurable Promob models"
 maintainer = "Dante Dex <dante.dex.arch@gmail.com>"

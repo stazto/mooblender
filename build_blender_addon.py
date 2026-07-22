@@ -208,7 +208,7 @@ def main() -> int:
     parser.add_argument(
         "--git-tag",
         default=os.environ.get("MOOBLENDER_GIT_TAG") or None,
-        help="target tag such as v0.5.1; overrides the manifest base version in the ZIP",
+        help="target tag such as v0.6.0; overrides the manifest base version in the ZIP",
     )
     parser.add_argument(
         "--dev-build",

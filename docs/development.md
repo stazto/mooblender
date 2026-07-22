@@ -131,7 +131,7 @@ the GitHub Actions run number or local Git commit count.
 To reproduce a tagged development build:
 
 ```bash
-python3 build_blender_addon.py --git-tag v0.5.1 --dev-build 1
+python3 build_blender_addon.py --git-tag v0.6.0 --dev-build 1
 ```
 
 Pushing a `v*` tag runs the complete CI suite, publishes the ZIP artifact, and
