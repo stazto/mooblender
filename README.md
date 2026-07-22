@@ -131,6 +131,17 @@ behavior has been observed and reproduced. Unsupported semantics are documented
 rather than guessed. Current format evidence and open questions live in
 [`docs/formats/`](docs/formats/) and [`docs/mooble.md`](docs/mooble.md).
 
+## AI Usage
+
+The foundations of this project started more than two years ago just as a
+.pcontent mesh importer. With the usage of GPT 5.6 Sol, this project was
+extended to include a Mooble catalog browser and Geometry Nodes controller. The
+AI was used to assist in code generation, documentation, and testing. The AI
+was used to generate code snippets, documentation, and test cases. Until now,
+most of the code is still written by AI, with large human interaction, review,
+guidance and testing. Now the project enter a new phase with human developer
+reviewing, rewriting and improving the code.
+
 ## License
 
 Original source in this repository is licensed under GPL-3.0-or-later. Mooble,
