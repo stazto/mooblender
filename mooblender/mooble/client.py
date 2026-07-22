@@ -315,8 +315,22 @@ class MoobleClient:
             fallback_item=fallback,
         )
 
+    def _contextual_url(self, url: str) -> str:
+        """Attach country and partnership context when a link omits them."""
+        parts = urlsplit(url)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+        keys = {key for key, _value in query}
+        if "region" not in keys:
+            query.append(("region", self.region))
+        if self.partnership and "partnership" not in keys:
+            query.append(("partnership", self.partnership))
+        return urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+        )
+
     def _details_url(self, detail_url: str, *, fallback_item: CatalogItem) -> ItemDetails:
         """Validate a details response and its downloadable content URL."""
+        detail_url = self._contextual_url(detail_url)
         try:
             payload = self.transport.get_json(detail_url)
         except (TransportError, ValueError) as error:

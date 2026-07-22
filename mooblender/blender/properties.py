@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import bpy
 
+from ..mooble.localization import (
+    CATALOG_COUNTRIES,
+    CATALOG_DEPARTMENTS,
+    CATEGORY_LANGUAGE_ENGLISH,
+    CATEGORY_LANGUAGE_SOURCE,
+)
+
 _SEARCH_REVISION = 0
 ALL_MANUFACTURERS = "__ALL_MANUFACTURERS__"
 ALL_COLLECTIONS = "__ALL_COLLECTIONS__"
@@ -13,19 +20,6 @@ _MANUFACTURER_ITEMS = [
 _COLLECTION_ITEMS = [
     (ALL_COLLECTIONS, "All collections", "Do not filter by brand collection")
 ]
-CATALOG_DEPARTMENTS = (
-    ("sync_catalog_furniture", "Moveis", "Móveis", True),
-    ("sync_catalog_decor", "Decoracao", "Decor", False),
-    ("sync_catalog_construction", "Aberturas", "Construção", False),
-    ("sync_catalog_appliances", "Eletrodomesticos", "Eletros", False),
-    ("sync_catalog_fireplaces", "G5aMaaCZme", "Lareiras | Churrasqueiras", False),
-    ("sync_catalog_layout", "Paredes", "Layout", False),
-    ("sync_catalog_lights", "Luminarias", "Luzes", False),
-    ("sync_catalog_materials", "Revestimentos", "Materiais", False),
-    ("sync_catalog_plants", "qm7nVNRHRi", "Plantas", False),
-)
-
-
 def _manufacturer_items(_self, _context):
     """Provide Blender with the current dynamic manufacturer choices."""
     return _MANUFACTURER_ITEMS
@@ -131,6 +125,8 @@ class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
     catalog_item_count: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
     catalog_category_count: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
     catalog_synced_at: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    catalog_source_country: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    catalog_category_language: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
     view_revision: bpy.props.IntProperty(default=0, options={"HIDDEN"})  # type: ignore
     error: bpy.props.StringProperty()  # type: ignore
     current_url: bpy.props.StringProperty()  # type: ignore
@@ -162,6 +158,8 @@ def _reset_browser(_self, _context) -> None:
             state.catalog_item_count = 0
             state.catalog_category_count = 0
             state.catalog_synced_at = ""
+            state.catalog_source_country = ""
+            state.catalog_category_language = ""
             state.view_revision += 1
             state.status = "Settings changed; select Sync Catalog"
 
@@ -186,15 +184,37 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         default="https://catalog.mooble.com/api/",
         update=_reset_browser,
     )
-    region: bpy.props.StringProperty(  # type: ignore
-        name="Region",
-        description="Mooble region code",
+    region: bpy.props.EnumProperty(  # type: ignore
+        name="Source country",
+        description="Country whose Mooble models are downloaded into the catalog",
+        items=tuple(
+            (code, name, f"Build the local catalog from Mooble {name}")
+            for code, name in CATALOG_COUNTRIES
+        ),
         default="br",
         update=_reset_browser,
     )
+    category_language: bpy.props.EnumProperty(  # type: ignore
+        name="Category names",
+        description="Language used for category labels in the local catalog",
+        items=(
+            (
+                CATEGORY_LANGUAGE_SOURCE,
+                "Source language",
+                "Keep category labels supplied by the selected country",
+            ),
+            (
+                CATEGORY_LANGUAGE_ENGLISH,
+                "English",
+                "Store all category labels in English",
+            ),
+        ),
+        default=CATEGORY_LANGUAGE_SOURCE,
+        update=_reset_browser,
+    )
     sync_catalog_furniture: bpy.props.BoolProperty(  # type: ignore
-        name="Móveis",
-        description="Download the Móveis department during catalog sync",
+        name="Furniture",
+        description="Download the Furniture department during catalog sync",
         default=True,
         update=_catalog_scope_changed,
     )
@@ -205,19 +225,19 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         update=_catalog_scope_changed,
     )
     sync_catalog_construction: bpy.props.BoolProperty(  # type: ignore
-        name="Construção",
-        description="Download the Construção department during catalog sync",
+        name="Openings",
+        description="Download the Openings department during catalog sync",
         default=False,
         update=_catalog_scope_changed,
     )
     sync_catalog_appliances: bpy.props.BoolProperty(  # type: ignore
-        name="Eletros",
-        description="Download the Eletros department during catalog sync",
+        name="Appliances",
+        description="Download the Appliances department during catalog sync",
         default=False,
         update=_catalog_scope_changed,
     )
     sync_catalog_fireplaces: bpy.props.BoolProperty(  # type: ignore
-        name="Lareiras | Churrasqueiras",
+        name="Fireplaces / Grills",
         description="Download fireplaces and grills during catalog sync",
         default=False,
         update=_catalog_scope_changed,
@@ -229,20 +249,20 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         update=_catalog_scope_changed,
     )
     sync_catalog_lights: bpy.props.BoolProperty(  # type: ignore
-        name="Luzes",
-        description="Download the Luzes department during catalog sync",
+        name="Lights",
+        description="Download the Lights department during catalog sync",
         default=False,
         update=_catalog_scope_changed,
     )
     sync_catalog_materials: bpy.props.BoolProperty(  # type: ignore
-        name="Materiais",
-        description="Download the Materiais department during catalog sync",
+        name="Materials",
+        description="Download the Materials department during catalog sync",
         default=False,
         update=_catalog_scope_changed,
     )
     sync_catalog_plants: bpy.props.BoolProperty(  # type: ignore
-        name="Plantas",
-        description="Download the Plantas department during catalog sync",
+        name="Plants",
+        description="Download the Plants department during catalog sync",
         default=False,
         update=_catalog_scope_changed,
     )
@@ -290,6 +310,7 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         layout = self.layout
         layout.prop(self, "catalog_url")
         layout.prop(self, "region")
+        layout.prop(self, "category_language")
         layout.prop(self, "partnership")
         layout.prop(self, "page_size")
         layout.prop(self, "convert_tris_to_quads")

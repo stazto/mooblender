@@ -12,7 +12,8 @@ formats are identified from reproducible samples.
 ## Highlights
 
 - Local, bounds-checked PMob and PContent readers.
-- Full selected-department catalog synchronization into an atomic SQLite cache.
+- Country-selectable, selected-department catalog synchronization into an
+  atomic SQLite cache, with source-language or English category labels.
 - Offline category browsing, text search, manufacturer filtering, and
   brand-collection filtering after synchronization.
 - On-demand model and thumbnail downloads with persistent caches.
@@ -38,7 +39,8 @@ Mooble catalog.
 ## Quick start
 
 1. Open the **Mooble** tab in the 3D View sidebar.
-2. Select the catalog departments to retain and choose **Sync Catalog**.
+2. Select the source country, category-name language, and catalog departments
+   to retain, then choose **Sync Catalog**.
 3. Browse or search the local snapshot, then choose **Import** on a model.
 4. To import a local file, use **File → Import → Promob Model**.
 

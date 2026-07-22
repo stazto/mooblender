@@ -302,7 +302,17 @@ def main() -> None:
             for property_name, _department_id, _label, _default in CATALOG_DEPARTMENTS
         })
         if selected_catalog_departments(preference_defaults) != ("Moveis",):
-            raise AssertionError("only Móveis should be synchronized by default")
+            raise AssertionError("only Furniture should be synchronized by default")
+        country_items = PROMOB_AP_preferences.bl_rna.properties["region"].enum_items
+        if [item.identifier for item in country_items] != [
+            "br", "us", "ca", "es", "ar", "cn", "fr"
+        ]:
+            raise AssertionError("source-country choices do not match the Mooble planner")
+        language_items = PROMOB_AP_preferences.bl_rna.properties[
+            "category_language"
+        ].enum_items
+        if [item.identifier for item in language_items] != ["SOURCE", "ENGLISH"]:
+            raise AssertionError("category-language choices are incomplete")
         if PROMOB_AP_preferences.bl_rna.properties["convert_tris_to_quads"].default:
             raise AssertionError("triangle-to-quad conversion should be opt-in")
         if PROMOB_AP_preferences.bl_rna.properties["model_cache_limit_mb"].default != 2048:

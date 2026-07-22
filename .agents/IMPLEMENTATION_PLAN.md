@@ -74,7 +74,8 @@ Mooble-specific additions:
 
 - hierarchical category navigation using Explorer tag URLs;
 - back navigation and paged **Load More** results;
-- region, partnership, page size, API URL preferences, and persistent sidebar
+- a seven-country source selector, independent source-language/English category
+  labels, partnership, page size, API URL preferences, and persistent sidebar
   checkboxes for each observed top-level catalog department;
 - flexible mapping of tags, specifications, details, and content links; and
 - HTTPS/host validation and bounded downloads.
@@ -98,6 +99,9 @@ Implemented follow-up work:
   items plus category membership into a temporary SQLite snapshot, atomically
   publishing it only on success. A synthetic local root combines global search
   with department-preserving navigation.
+- Source country controls only the Explorer `region` and downloaded item set.
+  Category language controls only labels written to SQLite; English localization
+  uses stable IDs and never falls back to mixed source-language text.
 - A bounded live sync of the two smallest non-furniture departments,
   Lareiras/Churrasqueiras and Plantas, persisted both roots and all 41 reported
   unique items in one snapshot.

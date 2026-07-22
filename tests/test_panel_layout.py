@@ -67,6 +67,18 @@ class PanelLayoutTests(unittest.TestCase):
         self.assertIn("promob.catalog_cancel", string_values)
         self.assertIn("promob.cache_clear", string_values)
 
+    def test_catalog_scope_exposes_country_and_category_language(self) -> None:
+        """Keep both snapshot identity controls next to department selection."""
+        catalog_scope = _function(self.tree, "_draw_catalog_scope")
+        string_values = {
+            node.value
+            for node in ast.walk(catalog_scope)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+
+        self.assertIn("region", string_values)
+        self.assertIn("category_language", string_values)
+
     def test_object_status_is_immediately_before_browser_search(self) -> None:
         """Require object progress after sync controls and before search."""
         calls = _named_call_lines(

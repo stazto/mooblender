@@ -10,7 +10,8 @@ setting.
 ## Catalog workflow
 
 1. Open the **Mooble** tab in the 3D View sidebar.
-2. Select the catalog departments that should exist in the local snapshot.
+2. Select the source country, category-name language, and departments that
+   should exist in the local snapshot.
 3. Select **Sync Catalog** and keep using the previous snapshot while the new
    one downloads.
 4. Browse categories or combine text, manufacturer, and brand-collection
@@ -22,8 +23,16 @@ selected index into a temporary SQLite database and publishes it atomically.
 Search, category navigation, Back, and Load More then query only that snapshot.
 Thumbnails and models are separate on-demand downloads; cached files are reused.
 
-The department checkboxes cover Móveis, Decor, Construção, Eletros,
-Lareiras/Churrasqueiras, Layout, Luzes, Materiais, and Plantas. Only Móveis is
+**Source country** chooses which Mooble catalog supplies the models: Brazil,
+United States, Canada, Spain, Argentina, China, or France. **Category names**
+can retain the selected country's source language or store a consistent English
+view. This changes labels only; it never substitutes models from another
+country. English mode uses stable category IDs and an offline taxonomy, so an
+unknown future category receives an English placeholder instead of introducing
+a source-language word into the same list.
+
+The department checkboxes cover Furniture, Decor, Openings, Appliances,
+Fireplaces/Grills, Layout, Lights, Materials, and Plants. Only Furniture is
 enabled by default. A complete catalog synchronization can take a very long
 time—even many minutes for large department selections, depending on the
 service and network. Its progress appears directly below **Sync Catalog**, and

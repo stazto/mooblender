@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import bpy
 
+from ..mooble.localization import CATEGORY_LANGUAGE_ENGLISH, catalog_country_name
 from .operators import _browser_preferences, ensure_thumbnails
 from .properties import CATALOG_DEPARTMENTS
 from .runtime import icon_for_item
@@ -43,8 +44,10 @@ def _draw_catalog_scope(content, preferences, state) -> None:
     scope.enabled = not state.is_syncing
     scope.label(text="Catalog content", icon="CHECKBOX_HLT")
     if not hasattr(preferences, "bl_rna"):
-        scope.label(text="Móveis", icon="CHECKMARK")
+        scope.label(text="Furniture", icon="CHECKMARK")
         return
+    scope.prop(preferences, "region", text="Source country")
+    scope.prop(preferences, "category_language", text="Category names")
     options = scope.grid_flow(
         row_major=True,
         columns=2,
@@ -80,6 +83,18 @@ def _draw_import_options(content, preferences, state) -> None:
             ),
             icon="CHECKMARK",
         )
+        if state.catalog_source_country:
+            content.label(
+                text=f"Source: {catalog_country_name(state.catalog_source_country)}",
+                icon="WORLD",
+            )
+        if state.catalog_category_language:
+            language = (
+                "English"
+                if state.catalog_category_language == CATEGORY_LANGUAGE_ENGLISH
+                else "Source language"
+            )
+            content.label(text=f"Category names: {language}", icon="SORTALPHA")
 
 
 def _draw_search_and_navigation(content, state) -> None:

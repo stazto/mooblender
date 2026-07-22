@@ -33,6 +33,15 @@ class MoobleClientTests(unittest.TestCase):
         self.assertIn("%21Departamento=Moveis", url)
         self.assertIn("%24top=8", url)
         self.assertIn("search=mesa", url)
+        self.assertIn("region=br", url)
+
+    def test_country_changes_catalog_origin_without_changing_department_ids(self):
+        client = MoobleClient(region="fr", transport=FakeTransport({}))
+
+        url = client.root_url(category="Moveis")
+
+        self.assertIn("region=fr", url)
+        self.assertIn("%21Departamento=Moveis", url)
 
     def test_catalog_index_can_request_the_maximum_page_size(self):
         client = MoobleClient(page_size=12, transport=FakeTransport({}))
@@ -178,6 +187,24 @@ class MoobleClientTests(unittest.TestCase):
 
             self.assertEqual(path.read_bytes(), b"content")
             self.assertIn("explorer/GetSpec/door-id", " ".join(transport.urls))
+
+    def test_model_details_keep_selected_country_context(self):
+        payload = {
+            "Id": "model",
+            "Links": {"Content": "https://cdn.mooble.com/model.pcontent"},
+        }
+        transport = FakeTransport(payload)
+        client = MoobleClient(region="fr", transport=transport)
+
+        client.details(
+            CatalogItem(
+                id="model",
+                name="Model",
+                detail_url="https://catalog.mooble.com/api/explorer/GetSpec/model",
+            )
+        )
+
+        self.assertTrue(any("region=fr" in url for url in transport.urls))
 
     def test_cached_thumbnail_is_not_downloaded_again(self):
         item = CatalogItem(

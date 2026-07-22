@@ -22,9 +22,14 @@ from pathlib import Path
 from threading import Lock
 
 from .client import MoobleClient
+from .localization import (
+    CATEGORY_LANGUAGE_ENGLISH,
+    CATEGORY_LANGUAGE_SOURCE,
+    category_display_name,
+)
 from .models import CatalogCategory, CatalogItem, CatalogPage
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 LOCAL_ROOT_URL = "mooblender://catalog/root"
 
 
@@ -56,6 +61,8 @@ class CatalogSummary:
     item_count: int
     category_count: int
     synced_at: str
+    source_country: str
+    category_language: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +242,7 @@ class _CatalogCrawler:
         max_categories: int,
         max_unique_items: int,
         max_memberships: int,
+        category_language: str,
         cancelled: Callable[[], bool] | None,
     ) -> None:
         """Configure bounded work queues, safety limits, and the write connection."""
@@ -247,6 +255,7 @@ class _CatalogCrawler:
         self.max_categories = max_categories
         self.max_unique_items = max_unique_items
         self.max_memberships = max_memberships
+        self.category_language = category_language
         self.cancelled = cancelled
         self.pending: deque[_CategoryRequest] = deque()
         self.in_flight: dict[Future[tuple[CatalogPage, int]], _CategoryRequest] = {}
@@ -299,9 +308,19 @@ class _CatalogCrawler:
                 items: int,
                 category_name: str,
                 key: str = request.url,
+                category_id: str = request.fallback_id,
             ) -> None:
                 """Attribute worker pagination progress to this request URL."""
-                self.progress.category_page(key, pages, items, category_name)
+                self.progress.category_page(
+                    key,
+                    pages,
+                    items,
+                    category_display_name(
+                        category_id,
+                        category_name,
+                        self.category_language,
+                    ),
+                )
 
             future = executor.submit(
                 _complete_page,
@@ -341,7 +360,7 @@ class _CatalogCrawler:
             request.url,
             pages=downloaded_pages,
             items=len(page.items),
-            category_name=current.name,
+            category_name=self._display_name(current),
             categories=len(self.visited),
             outstanding=len(self.pending) + len(self.in_flight),
         )
@@ -354,7 +373,7 @@ class _CatalogCrawler:
         """Persist the canonical selected row for the downloaded category."""
         normalized = CatalogCategory(
             id=current.id,
-            name=current.name,
+            name=self._display_name(current),
             url=request.url,
             level=current.level,
             item_count=current.item_count,
@@ -378,7 +397,7 @@ class _CatalogCrawler:
             child_url = self.client.with_page_size(child.url, 48)
             normalized = CatalogCategory(
                 id=child.id,
-                name=child.name,
+                name=self._display_name(child),
                 url=child_url,
                 level=child.level,
                 item_count=child.item_count,
@@ -393,6 +412,14 @@ class _CatalogCrawler:
                 self.pending.append(
                     _CategoryRequest(child_url, request.url, position, child.id)
                 )
+
+    def _display_name(self, category: CatalogCategory) -> str:
+        """Apply the snapshot's language policy without changing category IDs."""
+        return category_display_name(
+            category.id,
+            category.name,
+            self.category_language,
+        )
 
     def _check_item_limits(self, page_items: int) -> None:
         """Enforce separate limits for memberships and unique catalog items."""
@@ -433,6 +460,15 @@ class CatalogStore:
         with closing(self._connect()) as connection:
             return self._metadata(connection, "root_url")
 
+    def matches_identity(self, source_country: str, category_language: str) -> bool:
+        """Return whether a snapshot belongs to the active catalog settings."""
+        with closing(self._connect()) as connection:
+            return (
+                self._metadata(connection, "source_country") == source_country
+                and self._metadata(connection, "category_language")
+                == category_language
+            )
+
     def summary(self) -> CatalogSummary:
         """Read published item/category counts and synchronization timestamp."""
         with closing(self._connect()) as connection:
@@ -445,6 +481,8 @@ class CatalogStore:
                 item_count=item_count,
                 category_count=category_count,
                 synced_at=self._metadata(connection, "synced_at"),
+                source_country=self._metadata(connection, "source_country"),
+                category_language=self._metadata(connection, "category_language"),
             )
 
     def page(self, url: str = "") -> CatalogPage | None:
@@ -521,6 +559,7 @@ class CatalogStore:
         client: MoobleClient,
         *,
         categories: tuple[str, ...],
+        category_language: str = CATEGORY_LANGUAGE_SOURCE,
         progress: Callable[[CatalogSyncProgress], None] | None = None,
         max_download_workers: int = 4,
         max_pages_per_category: int = 2048,
@@ -534,6 +573,12 @@ class CatalogStore:
         if not categories:
             client.close()
             raise ValueError("Select at least one Mooble catalog section")
+        if category_language not in {
+            CATEGORY_LANGUAGE_SOURCE,
+            CATEGORY_LANGUAGE_ENGLISH,
+        }:
+            client.close()
+            raise ValueError("Unsupported category language")
 
         # Resolve every department URL before allocating the temporary snapshot.
         # A configuration error therefore leaves no partial database behind.
@@ -587,6 +632,7 @@ class CatalogStore:
                     max_categories=max_categories,
                     max_unique_items=max_unique_items,
                     max_memberships=max_memberships,
+                    category_language=category_language,
                     cancelled=cancelled,
                 ).crawl(requests)
                 _raise_if_cancelled(cancelled)
@@ -638,6 +684,8 @@ class CatalogStore:
                     json.dumps(source_urls, separators=(",", ":")),
                 )
                 self._set_metadata(connection, "synced_at", synced_at)
+                self._set_metadata(connection, "source_country", client.region)
+                self._set_metadata(connection, "category_language", category_language)
                 connection.commit()
             # Check once more at the final safe boundary before publishing the
             # completed temporary database over the usable snapshot.

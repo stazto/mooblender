@@ -7,6 +7,7 @@ from threading import Barrier, Event
 
 from mooblender.mooble.catalog_store import CatalogStore, CatalogSyncCancelled
 from mooblender.mooble.client import MoobleClient
+from mooblender.mooble.localization import CATEGORY_LANGUAGE_ENGLISH
 from mooblender.mooble.models import CatalogCategory, CatalogItem, CatalogPage
 
 
@@ -16,10 +17,12 @@ class _CatalogClient:
     DECOR_ROOT_URL = "https://catalog.mooble.com/decor?%24top=48"
     DECOR_CHILD_URL = "https://catalog.mooble.com/accessories?%24top=48"
 
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, portuguese_labels: bool = False) -> None:
         self.fail = fail
+        self.portuguese_labels = portuguese_labels
         self.closed = False
         self.urls: list[str] = []
+        self.region = "br"
 
     def root_url(self, *, category: str, **_kwargs) -> str:
         return {
@@ -37,16 +40,16 @@ class _CatalogClient:
         if self.fail:
             raise ValueError("sync failed")
         root = CatalogCategory(
-            id="root",
-            name="Furniture",
+            id="Moveis" if self.portuguese_labels else "root",
+            name="Móveis" if self.portuguese_labels else "Furniture",
             url=self.ROOT_URL,
             level=0,
             item_count=2,
             selected=True,
         )
         child = CatalogCategory(
-            id="child",
-            name="Kitchen",
+            id="Cozinha" if self.portuguese_labels else "child",
+            name="Cozinha" if self.portuguese_labels else "Kitchen",
             url="https://catalog.mooble.com/kitchen?$top=12",
             level=1,
             item_count=1,
@@ -154,6 +157,8 @@ class CatalogStoreTests(unittest.TestCase):
             self.assertEqual(summary.item_count, 2)
             self.assertEqual(summary.category_count, 2)
             self.assertTrue(summary.synced_at)
+            self.assertEqual(summary.source_country, "br")
+            self.assertEqual(summary.category_language, "SOURCE")
             self.assertEqual(progress[-1].categories, 2)
 
             root = store.page()
@@ -178,6 +183,36 @@ class CatalogStoreTests(unittest.TestCase):
             assert child is not None
             self.assertEqual([item.id for item in child.items], ["two"])
             self.assertEqual([category.name for category in child.categories], ["Kitchen"])
+
+    def test_sync_persists_english_category_language_without_changing_items(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = CatalogStore(Path(directory) / "catalog.sqlite3")
+
+            summary = store.sync(
+                _CatalogClient(portuguese_labels=True),  # type: ignore[arg-type]
+                categories=("Moveis",),
+                category_language=CATEGORY_LANGUAGE_ENGLISH,
+            )
+
+            self.assertEqual(summary.source_country, "br")
+            self.assertEqual(summary.category_language, CATEGORY_LANGUAGE_ENGLISH)
+            self.assertTrue(
+                store.matches_identity("br", CATEGORY_LANGUAGE_ENGLISH)
+            )
+            self.assertFalse(
+                store.matches_identity("us", CATEGORY_LANGUAGE_ENGLISH)
+            )
+            self.assertEqual([item.id for item in store.page().items], ["one", "two"])
+            self.assertEqual(
+                [category.name for category in store.page().categories],
+                ["Catalog", "Furniture"],
+            )
+            furniture = store.page(_CatalogClient.ROOT_URL)
+            assert furniture is not None
+            self.assertEqual(
+                [category.name for category in furniture.categories],
+                ["Furniture", "Kitchen"],
+            )
 
     def test_sync_combines_selected_departments_under_one_local_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

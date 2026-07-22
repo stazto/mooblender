@@ -15,6 +15,12 @@ under `/api/explorer/v2` with parameters including:
 - optional `partnership` and `search`; and
 - `$top=<page size>`.
 
+The official planner country menu observed on 2026-07-22 exposes `br` (Brazil),
+`us` (United States), `ca` (Canada), `es` (Spain), `ar` (Argentina), `cn`
+(China), and `fr` (France). The `region` value controls both model availability
+and the labels returned by Mooble; department IDs remain stable across tested
+regions.
+
 The response contains `Output.Pin.AvailableTags.Data` for hierarchical category
 navigation and `Output.Specifications.Data` for product cards. Tag records expose
 navigation URLs and counts. Specification summaries expose IDs, names,
@@ -37,8 +43,18 @@ As a bounded end-to-end check on the same date, synchronizing only
 Lareiras/Churrasqueiras and Plantas produced one local root with both department
 children and 41 unique items, matching their reported 28 plus 13 records.
 
-The sidebar exposes one persistent checkbox for each section, with only Móveis
-enabled by default. Mooblender contacts Explorer catalog endpoints only after
+The sidebar exposes a source-country dropdown, a category-language dropdown,
+and one persistent checkbox for each section, with only Furniture enabled by
+default. English category localization is applied offline while writing the
+temporary snapshot and does not alter the API region or downloaded item set.
+Stable IDs take priority over source labels; unknown future IDs use a stable
+English placeholder rather than mixing languages. The published SQLite metadata
+records its source country and label language. A snapshot whose identity differs
+from the active dropdowns is not opened, preventing its item details from being
+requested with another country's context. Detail and aggregate requests retain
+the same `region` used to construct the snapshot.
+
+Mooblender contacts Explorer catalog endpoints only after
 the user selects **Sync Catalog**. The background synchronizer follows every
 selected department's root pagination and category branches with a 48-item
 request size, per-category page and cycle limits, and global category, item,

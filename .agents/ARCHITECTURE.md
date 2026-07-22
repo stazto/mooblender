@@ -116,7 +116,10 @@ Catalog HTTP is confined to the explicit **Sync Catalog** operation. Browser
 queries never fall back to the network: they read the last complete SQLite
 snapshot or report that synchronization is required. Thumbnail and model
 downloads remain lazy, independent caches. The sync scope is a hardcoded set of
-observed top-level department identifiers exposed as sidebar checkboxes. Each
+observed top-level department identifiers exposed as sidebar checkboxes. A
+country enum selects the Explorer `region`; an independent language enum either
+keeps server category labels or localizes them to English before persistence.
+Snapshot metadata records both dimensions so its origin remains visible. Each
 enabled department is crawled as a separate root, then attached below one
 synthetic local root whose deduplicated item membership supports global search.
 Catalog HTTP uses a bounded four-worker category pool backed by the transport's

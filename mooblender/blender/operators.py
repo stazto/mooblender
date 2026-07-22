@@ -24,6 +24,10 @@ from ..mooble import CatalogItem, CatalogPage
 from ..mooble.cache import clear_download_cache
 from ..mooble.catalog_store import CatalogStore, CatalogSyncCancelled
 from ..mooble.client import thumbnail_cache_path
+from ..mooble.localization import (
+    CATEGORY_LANGUAGE_SOURCE,
+    catalog_country_name,
+)
 from ..mooble.search import filter_catalog_items
 from .background import (
     JOBS,
@@ -224,6 +228,16 @@ def _load_local_index(context, url: str = "") -> CatalogPage | None:
             return cached
     store = _catalog_store()
     if not store.exists():
+        return None
+    preferences = _browser_preferences(context)
+    expected_country = getattr(preferences, "region", "")
+    expected_language = getattr(preferences, "category_language", "")
+    if (
+        expected_country
+        and expected_language
+        and not store.matches_identity(expected_country, expected_language)
+    ):
+        state.status = "Catalog source or language changed; select Sync Catalog"
         return None
     if not target:
         target = store.root_url()
@@ -447,9 +461,11 @@ class _CatalogSyncCompletion:
             state.catalog_item_count = summary.item_count
             state.catalog_category_count = summary.category_count
             state.catalog_synced_at = summary.synced_at
+            state.catalog_source_country = summary.source_country
+            state.catalog_category_language = summary.category_language
             state.status = (
-                f"Catalog synced: {summary.item_count} models in "
-                f"{summary.category_count} categories"
+                f"{catalog_country_name(summary.source_country)} catalog synced: "
+                f"{summary.item_count} models in {summary.category_count} categories"
             )
         except (CancelledError, CatalogSyncCancelled):
             state.error = ""
@@ -502,6 +518,11 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
             _catalog_store().sync,
             client_from_context(context),
             categories=departments,
+            category_language=getattr(
+                preferences,
+                "category_language",
+                CATEGORY_LANGUAGE_SOURCE,
+            ),
             progress=progress_queue.put,
             cancelled=cancel_event.is_set,
         )
@@ -614,7 +635,12 @@ def load_catalog_on_startup():
         state.catalog_item_count = summary.item_count
         state.catalog_category_count = summary.category_count
         state.catalog_synced_at = summary.synced_at
-        state.status = f"{summary.item_count} cached models ready"
+        state.catalog_source_country = summary.source_country
+        state.catalog_category_language = summary.category_language
+        state.status = (
+            f"{summary.item_count} cached models ready from "
+            f"{catalog_country_name(summary.source_country)}"
+        )
     except (AttributeError, KeyError, OSError, RuntimeError, ValueError):
         # Registration and workspace restoration can briefly leave bpy.context
         # incomplete.  Retrying is safe because this path only reads the
