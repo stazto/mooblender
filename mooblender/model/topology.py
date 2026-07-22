@@ -2,8 +2,9 @@
 
 PMob often duplicates vertices at UV seams. The preparation pipeline groups
 coincident positions, gives serialized normals and smoothing groups precedence
-over its angular fallback, and finally compacts indices while keeping UVs and
-normals on the original face-corner sequence.
+over generated data, and finally compacts indices while keeping UVs and normals
+on the original face-corner sequence. Meshes without smoothing metadata retain
+their authored vertex splits.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from .scene import Mesh, Vector2, Vector3
 
 POSITION_TOLERANCE = 1e-5
 NORMAL_TOLERANCE = 1e-5
-SMOOTH_ANGLE_RADIANS = math.radians(45.0)
 
 
 @dataclass(slots=True)
@@ -69,16 +69,6 @@ def _generated_normals(source: Mesh) -> list[Vector3]:
 def _near(first: Vector3, second: Vector3, tolerance: float) -> bool:
     """Compare two points or vectors with an Euclidean tolerance."""
     return sum((a - b) ** 2 for a, b in zip(first, second, strict=True)) <= tolerance**2
-
-
-def _smooth_angle(first: Vector3, second: Vector3) -> bool:
-    """Return whether generated normals belong to the same smooth fan."""
-    first = _normalized(first)
-    second = _normalized(second)
-    if first == (0.0, 0.0, 0.0) or second == (0.0, 0.0, 0.0):
-        return False
-    dot = sum(a * b for a, b in zip(first, second, strict=True))
-    return dot > math.cos(SMOOTH_ANGLE_RADIANS)
 
 
 @dataclass(slots=True)
@@ -154,19 +144,13 @@ def _merge_compatible_normals(
     groups: list[list[int]],
     normals: list[Vector3],
     *,
-    source_normals: bool,
     vertices: _DisjointSet,
 ) -> None:
-    """Merge coincident vertices only when their normal fans are compatible."""
+    """Merge coincident vertices with matching serialized normals."""
     for group in groups:
         for offset, first in enumerate(group):
             for second in group[offset + 1:]:
-                compatible = (
-                    _near(normals[first], normals[second], NORMAL_TOLERANCE)
-                    if source_normals
-                    else _smooth_angle(normals[first], normals[second])
-                )
-                if compatible:
+                if _near(normals[first], normals[second], NORMAL_TOLERANCE):
                     vertices.union(first, second)
 
 
@@ -234,8 +218,8 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     Blender stores both UVs and custom normals per face corner, so compatible
     copies can share one Blender vertex. Complete serialized normals are the
     strongest evidence. Otherwise, explicit smoothing groups are authoritative:
-    a coincident pair omitted from them remains a hard edge. The 45-degree test
-    is only a fallback for meshes which provide neither form of smoothing data.
+    a coincident pair omitted from them remains a hard edge. If neither form of
+    smoothing data exists, the authored indices and vertex splits are retained.
     """
     # Phase 1: establish one normal per source vertex. Generated area-weighted
     # normals are used only when PMob did not serialize a complete normal array.
@@ -243,31 +227,29 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     normals = list(source.normals) if has_source_normals else _generated_normals(source)
     used_indices = list(dict.fromkeys(source.indices))
     # Phase 2: spatial bucketing limits expensive tolerance comparisons to the
-    # 27 neighboring cells instead of comparing every vertex with every other.
-    position_groups, group_by_source = _group_coincident_positions(source, used_indices)
+    # 27 neighboring cells. It is unnecessary when no metadata authorizes any
+    # weld, which is common in catalog meshes such as the IB55S.
     vertices = _DisjointSet.from_indices(used_indices)
+    if has_source_normals or source.smooth_groups:
+        position_groups, group_by_source = _group_coincident_positions(
+            source,
+            used_indices,
+        )
     if has_source_normals:
         # Serialized normals preserve both smooth UV seams and intentional hard
         # edges. A smoothing-group entry must not override conflicting normals.
         _merge_compatible_normals(
             position_groups,
             normals,
-            source_normals=True,
             vertices=vertices,
         )
     elif source.smooth_groups:
         # The presence of groups makes their omissions meaningful. Applying the
         # angle heuristic here used to over-weld unlisted hard-edge duplicates.
         _merge_explicit_smoothing_groups(source, used_indices, group_by_source, vertices)
-    else:
-        # Some legacy meshes omit all smoothing metadata. Retain the observed
-        # producer threshold as a conservative compatibility fallback for them.
-        _merge_compatible_normals(
-            position_groups,
-            normals,
-            source_normals=False,
-            vertices=vertices,
-        )
+    # With neither normals nor groups, the existing shared indices are the only
+    # trustworthy evidence of continuity. Proximity and face angle are not
+    # sufficient: disconnected panels may be coincident and nearly coplanar.
     # Phase 3: the disjoint-set roots define the exact welded topology. Corner
     # arrays below intentionally retain the original index order, preserving UV
     # seams even when their duplicate positions now share a Blender vertex.

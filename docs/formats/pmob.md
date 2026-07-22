@@ -79,11 +79,13 @@ can weld coincident smooth vertices without discarding UV seams. It groups
 positions within the producer's `1e-5` source-unit tolerance and keeps UVs on
 the face-corner domain. Complete serialized normals take precedence. Without
 them, explicit smoothing groups are authoritative, including coincident pairs
-omitted to retain hard edges. The observed 45-degree threshold is used only when
-both normals and groups are absent. It then writes the generated
-normal to every face corner and enables smooth polygon shading. On the sampled
-corpus this safely removes UV-seam duplicates while retaining all triangle
-corners and their UV coordinates.
+omitted to retain hard edges. When both are absent, Mooblender preserves the
+authored vertex splits and generates normals only across already-shared source
+vertices. Inferring connectivity from position and angle caused nearly coplanar,
+disconnected panels such as the IB55S refrigerator front to shade as one surface.
+The importer writes the resulting normal to every face corner and enables smooth
+polygon shading. This safely removes documented UV-seam duplicates while
+retaining all triangle corners and their UV coordinates.
 
 PMob still stores mesh faces as triangles. As an optional Blender-side import
 step, Mooblender can reconstruct nearly coplanar triangle pairs as quads. The

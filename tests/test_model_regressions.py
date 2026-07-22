@@ -198,7 +198,7 @@ class ReportedModelRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(width, 330.6666666666667)
         self.assertEqual(positions, [0.0, 326.6666666666667, 653.3333333333334])
 
-    def test_duplicate_vertices_merge_only_when_normal_fans_are_smooth(self):
+    def test_ib55s_keeps_vertex_splits_when_smoothing_metadata_is_absent(self):
         angle = math.radians(30.0)
         source = Mesh(
             vertices=[
@@ -214,8 +214,8 @@ class ReportedModelRegressionTests(unittest.TestCase):
 
         prepared = prepare_mesh(source)
 
-        self.assertEqual(len(prepared.vertices), 4)
-        self.assertEqual(prepared.removed_vertex_count, 2)
+        self.assertEqual(len(prepared.vertices), 6)
+        self.assertEqual(prepared.removed_vertex_count, 0)
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ class TopologyTests(unittest.TestCase):
         self.assertEqual(topology.removed_vertex_count, 0)
         self.assertEqual(topology.faces, [(0, 1, 2), (3, 4, 5)])
 
-    def test_welds_generated_normal_fans_below_observed_smooth_angle(self):
+    def test_preserves_authored_splits_without_smoothing_metadata(self):
         angle = math.radians(30.0)
         source = Mesh(
             vertices=[
@@ -73,10 +73,12 @@ class TopologyTests(unittest.TestCase):
 
         topology = prepare_mesh(source)
 
-        self.assertEqual(len(topology.vertices), 4)
-        self.assertEqual(topology.faces, [(0, 1, 2), (0, 1, 3)])
-        self.assertAlmostEqual(topology.loop_normals[0][1], -math.sin(angle / 2.0))
-        self.assertAlmostEqual(topology.loop_normals[0][2], math.cos(angle / 2.0))
+        self.assertEqual(len(topology.vertices), 6)
+        self.assertEqual(topology.removed_vertex_count, 0)
+        self.assertEqual(topology.faces, [(0, 1, 2), (3, 4, 5)])
+        self.assertEqual(topology.loop_normals[0], (0.0, 0.0, 1.0))
+        self.assertAlmostEqual(topology.loop_normals[3][1], -math.sin(angle))
+        self.assertAlmostEqual(topology.loop_normals[3][2], math.cos(angle))
 
     def test_serialized_normals_remain_authoritative(self):
         source = Mesh(
