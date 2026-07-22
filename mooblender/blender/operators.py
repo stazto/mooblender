@@ -1,4 +1,10 @@
-"""Blender operators for cached catalog navigation and model imports."""
+"""Bridge Blender's event loop to catalog, preview, and import workflows.
+
+Network and parsing work runs in worker threads.  Blender collections,
+properties, datablocks, and reports are touched only by timer callbacks on the
+main thread.  This module owns that boundary as well as the browser's transient
+in-memory view of the persistent catalog.
+"""
 
 import json
 from concurrent.futures import CancelledError
@@ -36,8 +42,16 @@ from .properties import (
 from .runtime import cache_directory, clear_previews, client_from_context
 from .scene_builder import build_document
 
+# Blender keeps timer callables only while they remain registered.  Strong
+# references also give shutdown code a complete list of callbacks to cancel.
 _ACTIVE_POLLS = set()
+
+# Thumbnail jobs are indexed per item even though several items share one batch
+# callback.  This makes view changes and duplicate-scheduling checks O(1).
 _ACTIVE_THUMBNAILS = {}
+
+# SQLite is the durable catalog.  This mapping is only a session-level read
+# cache, so discarding it can never lose synchronized data.
 _CATALOG_INDEXES: dict[str, CatalogPage] = {}
 _ACTIVE_CATALOG_SYNC = None
 
@@ -87,6 +101,9 @@ def _online_or_report(operator) -> bool:
 def _set_page(context, page) -> None:
     """Replace visible entries while retaining already cached preview paths."""
     state = context.window_manager.promob_browser
+    # A new page invalidates queued preview work, but a running batch may still
+    # finish. ``view_revision`` records the collection change, while completion
+    # code updates only entries that still exist in the current view.
     _cancel_queued_thumbnails()
     state.view_revision += 1
     thumbnails = {
@@ -137,6 +154,10 @@ def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) 
     state = context.window_manager.promob_browser
     preferences = _browser_preferences(context)
     _CATALOG_INDEXES[page.current_url] = page
+
+    # Filter choices are derived from the unfiltered category page.  Collections
+    # are then narrowed by manufacturer, matching the dependency order shown in
+    # the UI without issuing another catalog request.
     manufacturers = tuple(
         sorted({item.brand for item in page.items if item.brand}, key=str.casefold)
     )
@@ -262,6 +283,8 @@ class _AsyncCompletion:
     def __call__(self):
         """Continue polling or finish the job and clear the loading state."""
         if not self.future.done():
+            # Returning a delay asks Blender to call the same timer again.  The
+            # callback must not block here or the entire interface would freeze.
             return 0.1
 
         context = bpy.context
@@ -301,6 +324,8 @@ class _ThumbnailBatchCompletion:
 
         context = bpy.context
         state = context.window_manager.promob_browser
+        # Navigation can replace the RNA collection while a batch is running.
+        # Re-resolve IDs at completion instead of holding stale RNA references.
         entries = {item.item_id: item for item in state.items}
         try:
             paths = self.future.result()
@@ -353,6 +378,9 @@ def ensure_thumbnails(context, entries) -> None:
     if not pending:
         return
 
+    # One submission represents the visible viewport.  Its worker performs a
+    # small bounded fan-out, reducing timer and executor overhead versus one
+    # future per card while still keeping downloads on demand.
     items = tuple(_catalog_item(entry) for entry in pending)
     item_ids = tuple(item.id for item in items)
     for entry in pending:
@@ -387,6 +415,9 @@ class _CatalogSyncCompletion:
         global _ACTIVE_CATALOG_SYNC
         context = bpy.context
         state = context.window_manager.promob_browser
+        # Workers may publish progress faster than Blender redraws.  Drain the
+        # queue and render only the newest snapshot so stale messages cannot
+        # make the progress display appear to move backwards.
         latest = None
         try:
             while True:
@@ -464,6 +495,9 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
         state.status = f"Starting sync for {len(departments)} catalog section(s)..."
         progress_queue = SimpleQueue()
         cancel_event = Event()
+        # The worker owns the temporary database and the client.  The main
+        # thread owns only a queue and cancellation event, keeping bpy entirely
+        # outside the synchronization implementation.
         future = JOBS.submit(
             _catalog_store().sync,
             client_from_context(context),
@@ -582,6 +616,9 @@ def load_catalog_on_startup():
         state.catalog_synced_at = summary.synced_at
         state.status = f"{summary.item_count} cached models ready"
     except (AttributeError, KeyError, OSError, RuntimeError, ValueError):
+        # Registration and workspace restoration can briefly leave bpy.context
+        # incomplete.  Retrying is safe because this path only reads the
+        # published snapshot and replaces transient UI collections.
         return 0.5
     return None
 

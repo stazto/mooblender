@@ -1,4 +1,9 @@
-"""Convert PMob records into the shared scene model."""
+"""Convert validated PMob records into the Blender-independent scene model.
+
+The structure reader owns byte bounds and recursion safety; this layer assigns
+semantic meaning, checks typed payload widths, and normalizes legacy omissions.
+Keeping that split lets format tests exercise parsing without importing Blender.
+"""
 
 from __future__ import annotations
 
@@ -308,6 +313,9 @@ def read_pmob(data: bytes) -> PmobDocument:
     except PmobStructureError as error:
         raise PmobFormatError(str(error)) from error
 
+    # Unknown records are preserved as IDs for research, while known siblings
+    # continue to import. This makes the reader forward-tolerant without
+    # silently guessing the meaning of unobserved payloads.
     document = PmobDocument(unknown_record_types=_collect_unknown_types(root))
     for child in root.children:
         kind = child.type_id
@@ -330,11 +338,15 @@ def read_pmob(data: bytes) -> PmobDocument:
                 if material.type_id == ContentType.MATERIAL
             ]
 
+    # Legacy version-zero files encode the effective specular intensity in the
+    # RGB bytes rather than the dedicated scalar used by later versions.
     if document.version == 0:
         for material in document.materials:
             _, red, green, blue = material.specular_color
             material.specular_power = (red + green + blue) / 765.0
 
+    # Some valid assets omit an explicit primitive tree. Synthesize one layer
+    # reference per mesh layer so downstream builders need only one traversal.
     if document.primitive is None:
         document.primitive = Primitive(
             name="root",

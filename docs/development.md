@@ -68,3 +68,25 @@ mooblender/          # repository root
 The low-level `formats`, `model`, and `mooble` packages remain importable without
 `bpy`. Blender-specific datablock, UI, and runtime code belongs under
 `mooblender/blender`.
+
+## Code commentary policy
+
+Public modules and callable units have docstrings that state their contract.
+Inline comments are reserved for information the syntax cannot explain well:
+workflow phases, cross-thread ownership, safety boundaries, format observations,
+coordinate-system decisions, and reasons an apparently simpler implementation
+would be incorrect. When behavior changes, update the nearby invariant comment
+in the same change; avoid comments that merely translate Python into prose.
+
+The main import path intentionally follows these layers:
+
+1. `mooble` downloads bounded responses and publishes cache files atomically.
+2. `formats` validates bytes and creates Blender-independent package data.
+3. `model` evaluates expressions, dimensions, openings, and topology.
+4. `mesh_builder` creates unlinked source datablocks and transform records.
+5. `scene_builder` interprets package relationships and declares controls.
+6. `geometry_nodes` compiles everything into the one scene-linked controller.
+
+Current background workers complete steps 1 and 2, including recursive package
+resolution. Blender RNA, model-to-mesh conversion, and datablock creation begin
+only on the main thread through timer completions.

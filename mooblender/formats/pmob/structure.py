@@ -1,4 +1,10 @@
-"""Bounds-checked parser for the recursive PMob record table."""
+"""Bounds-checked parser for the recursive PMob record table.
+
+Each record header stores payload size and child count. Its child table contains
+absolute offsets, while the record payload begins only after that entire table.
+Parsing therefore follows offsets recursively instead of assuming records are
+laid out as a contiguous preorder stream.
+"""
 
 from __future__ import annotations
 
@@ -69,6 +75,9 @@ class StructureReader:
         payload_size, child_count = struct.unpack_from("<ii", self.data, offset)
         if payload_size < 0 or child_count < 0:
             raise PmobStructureError(f"negative size/count in record at {offset}")
+        # The payload is not adjacent to the header. Every child descriptor is
+        # stored first as ``(type_id, absolute_offset)``; only then do the
+        # current record's payload bytes begin.
         table_start = offset + 8
         table_size = child_count * 8
         payload_start = table_start + table_size
@@ -76,6 +85,8 @@ class StructureReader:
         if payload_end > len(self.data):
             raise PmobStructureError(f"record at {offset} extends past end of file")
 
+        # Track only the active recursion chain. Reusing an offset from another
+        # branch is legal shared structure; reaching it from itself is a cycle.
         self._active_offsets.add(offset)
         try:
             children: list[Record] = []

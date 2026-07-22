@@ -1,4 +1,9 @@
-"""Minimal HTTPS transport with bounded responses and reusable connections."""
+"""Minimal HTTPS transport with bounded responses and reusable connections.
+
+Every initial URL and redirect is revalidated against an explicit host list.
+Connections are reused only by their owning thread, while response sizes,
+redirects, stale-connection retries, and service-directed waits are bounded.
+"""
 
 from __future__ import annotations
 
@@ -121,6 +126,8 @@ class HttpTransport:
         retry_stale: bool = True,
     ) -> tuple[HTTPResponse, str, int]:
         """Open a validated GET with bounded redirects and one stale retry."""
+        # Validation occurs on every recursive call, so an allowed endpoint
+        # cannot redirect the client to an arbitrary host or credentialed URL.
         self.validate_url(url)
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").lower()
@@ -184,6 +191,9 @@ class HttpTransport:
                         retry_count += 1
                         continue
                     raise TransportError(f"Mooble returned HTTP {response.status}")
+                # Content-Length rejects known oversize responses early. The
+                # limited read is authoritative for absent or dishonest headers
+                # and consumes one sentinel byte to detect overflow.
                 length = response.getheader("Content-Length")
                 if length is not None and int(length) > max_bytes:
                     raise TransportError("response exceeds configured size limit")

@@ -1,4 +1,10 @@
-"""Safe in-memory reader for the observed PContent ZIP container."""
+"""Safe in-memory reader for the observed PContent ZIP container.
+
+The archive is validated as a whole before any member is decoded. Members are
+never extracted to disk: the PMob payload, properties, and texture resources
+remain bytes owned by the returned package, which also becomes the root of the
+later aggregate-resolution tree.
+"""
 
 from __future__ import annotations
 
@@ -110,6 +116,9 @@ def read_pcontent(
 
     with archive:
         infos = archive.infolist()
+        # Validate paths and expansion cost before calling ``archive.read`` on
+        # any member. This ordering prevents a malformed archive from consuming
+        # unbounded memory or using extraction-like traversal semantics.
         if len(infos) > max_members:
             raise PContentFormatError("PContent member count exceeds safety limit")
         total_size = sum(info.file_size for info in infos)
@@ -123,6 +132,9 @@ def read_pcontent(
             if info.compress_size and info.file_size / info.compress_size > max_ratio:
                 raise PContentFormatError("PContent compression ratio exceeds safety limit")
 
+        # A normal package contains one geometric PMob plus optional metadata.
+        # Properties-only packages are valid because aggregates and material
+        # specifications can reference their geometry elsewhere.
         pmob_infos = [
             info for info in infos
             if not info.is_dir() and PurePosixPath(info.filename).suffix.lower() == ".pmob"
@@ -147,6 +159,9 @@ def read_pcontent(
         if document is None and properties_info is None:
             raise PContentFormatError("PContent contains neither a PMob model nor properties")
         image_suffixes = {".bmp", ".jpeg", ".jpg", ".png", ".tga", ".tif", ".tiff", ".webp"}
+        # Retain only image types consumed by the material builder. Unknown
+        # archive members remain listed for diagnostics but are not duplicated
+        # in memory.
         resources = {
             info.filename.replace("\\", "/").casefold(): archive.read(info)
             for info in infos

@@ -1,4 +1,10 @@
-"""Resolve aggregate references in properties-only PContent entities."""
+"""Resolve aggregate references into a bounded shared PContent package graph.
+
+The resolver follows the first/default specification for each aggregate and
+also fetches material specifications. A global memo avoids repeated downloads;
+the ancestry set has the separate job of rejecting cycles along the active
+branch.
+"""
 
 from __future__ import annotations
 
@@ -43,6 +49,9 @@ class _ResolutionContext:
 
     def _resolve_materials(self, package: PContentPackage) -> None:
         """Resolve material IDs referenced by a package's model components."""
+        # Material packages share the same memo and entity budget as geometric
+        # aggregates. A document cannot bypass the global download limit by
+        # expressing references through a different properties section.
         package.resolved_materials.clear()
         models = package.properties.get("Models", [])
         if not isinstance(models, list):
@@ -82,6 +91,8 @@ class _ResolutionContext:
         """Resolve a package tree recursively with depth and cycle protection."""
         if depth > self.max_depth:
             raise AggregateResolutionError("PContent aggregate depth exceeds safety limit")
+        # Resolve finish dependencies before children so the package is usable
+        # as soon as it is appended to its parent's resolved aggregate list.
         self._resolve_materials(package)
         raw_aggregates = package.properties.get("Aggregates", [])
         if not isinstance(raw_aggregates, list):

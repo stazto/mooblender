@@ -311,6 +311,9 @@ def compile_hierarchy(
         obj for obj in source_collection.all_objects if obj.type == "MESH"
     ]
 
+    # Phase 1: create one graph branch per source mesh and replay its complete
+    # ancestor chain as Transform Geometry nodes. Shared TransformNode records
+    # still compile independently because each leaf needs an explicit dataflow.
     for mesh_object in mesh_objects:
         # Object Info references the unlinked source datablock.  Realizing this
         # leaf internally lets later face-domain material and parity operations
@@ -331,6 +334,9 @@ def compile_hierarchy(
         links.new(leaf_realize.outputs["Geometry"], store_parity.inputs["Geometry"])
         geometry = store_parity.outputs["Geometry"]
 
+        # Static mirror parity is accumulated while transforms are attached and
+        # stored on faces before all branches join. Dynamic whole-model reversal
+        # is combined with this attribute in the next phase.
         negative_determinant = False
         for transform_object in _transform_chain(
             mesh_object,
@@ -351,6 +357,9 @@ def compile_hierarchy(
         store_parity.inputs["Value"].default_value = negative_determinant
         links.new(geometry, controller_nodes.source_geometry.inputs["Geometry"])
 
+    # Phase 2: correct winding once after branch joining but before the model is
+    # wrapped as an instance, so materials and normals behave identically for
+    # both realized and non-realized public output.
     _correct_face_orientation(
         node_group,
         controller_nodes.group_input,
@@ -359,9 +368,9 @@ def compile_hierarchy(
         transform_controls,
     )
 
-    # Source object transforms are deliberately cleared.  Their complete
-    # placement now lives in Transform Geometry nodes, which prevents hidden
-    # object state from changing the procedural result.
+    # Phase 3: erase redundant object-space state. Complete placement now lives
+    # in Transform Geometry nodes, so the graph is the only authority and hidden
+    # object state cannot change the procedural result.
     for mesh_object in mesh_objects:
         mesh_object.parent = None
         mesh_object.matrix_basis = Matrix.Identity(4)

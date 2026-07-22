@@ -1,4 +1,10 @@
-"""Create and reuse Blender materials from neutral Promob material data."""
+"""Create and safely reuse Blender materials from neutral Promob data.
+
+Embedded texture bytes are deduplicated and packed into the blend file. A
+material is reused only when both its neutral source fingerprint and its current
+Blender node-state fingerprint match, so user edits are never silently shared
+with a later import.
+"""
 
 from __future__ import annotations
 
@@ -40,6 +46,9 @@ def _embedded_image(package: PContentPackage | None, source_name: str | None):
     suffix = PurePosixPath(source_name or "image.png").suffix.lower()
     if suffix not in {".bmp", ".jpeg", ".jpg", ".png", ".tga", ".tif", ".tiff", ".webp"}:
         suffix = ".img"
+    # Blender's image loader needs a pathname. The temporary file exists only
+    # for decoding; packing transfers ownership into the image datablock before
+    # the file is deleted.
     descriptor, temporary_name = tempfile.mkstemp(prefix="mooblender-", suffix=suffix)
     try:
         with os.fdopen(descriptor, "wb") as stream:
@@ -119,6 +128,8 @@ def _socket_default(value):
 
 def _material_state_digest(material) -> str:
     """Fingerprint editable Blender state so user-modified materials are not reused."""
+    # Node names and sorted links make the digest deterministic inside one blend
+    # file. Defaults and image hashes capture edits that do not change topology.
     node_tree = material.node_tree if material.use_nodes else None
     nodes = []
     links = []
@@ -258,6 +269,8 @@ def create_material(
     package: PContentPackage | None,
 ):
     """Create or reuse an unmodified Blender material for a Promob material."""
+    # Two gates are required for reuse: the source must describe the same finish
+    # and the existing datablock must still match the state recorded at import.
     source_digest = _source_digest(source, package)
     existing = next(
         (

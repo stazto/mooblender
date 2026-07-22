@@ -1,4 +1,9 @@
-"""Blender-independent background work for the Mooble browser."""
+"""Blender-independent worker entry points for the Mooble browser.
+
+These functions deliberately return neutral Python models or filesystem paths.
+They never import ``bpy``: all Blender datablock construction remains in the
+main-thread timer completions in :mod:`mooblender.blender.operators`.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,9 @@ def fetch_thumbnails(
     """Download one visible thumbnail batch and close its worker client."""
     if not items:
         return {}
+    # The outer preview executor keeps batches responsive across page changes;
+    # this inner, bounded pool parallelizes the independent HTTP requests within
+    # the one currently visible batch.
     workers = min(4, len(items))
     try:
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -30,6 +38,9 @@ def fetch_thumbnails(
 def fetch_model(client: MoobleClient, item: CatalogItem):
     """Download, parse, and recursively resolve one catalog model."""
     try:
+        # Aggregate resolution belongs in the same worker as the root download.
+        # The main thread receives a fully resolved package tree and never
+        # pauses halfway through Blender object creation for more I/O.
         path = client.download_model(item)
         loaded = load_path(path)
         if isinstance(loaded, PContentPackage):
@@ -94,6 +105,8 @@ class BackgroundJobs:
     def shutdown(self) -> None:
         """Cancel queued work and release the pool without blocking Blender."""
         if self._executor is not None:
+            # Running HTTP calls finish under their own transport timeouts.
+            # Waiting here would stall add-on disable or Blender shutdown.
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
 

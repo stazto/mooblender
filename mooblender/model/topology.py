@@ -1,4 +1,10 @@
-"""Prepare PMob topology for corner-domain UVs and normals."""
+"""Prepare PMob topology for Blender's corner-domain UVs and normals.
+
+PMob often duplicates vertices at UV seams. The preparation pipeline groups
+coincident positions, welds only compatible normal fans, applies explicit
+smoothing groups, and finally compacts indices while keeping UVs and normals on
+the original face-corner sequence.
+"""
 
 from __future__ import annotations
 
@@ -230,9 +236,13 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     normals can share one Blender vertex. Copies with different normals remain
     separate and continue to define a hard edge.
     """
+    # Phase 1: establish one normal per source vertex. Generated area-weighted
+    # normals are used only when PMob did not serialize a complete normal array.
     has_source_normals = len(source.normals) == len(source.vertices)
     normals = list(source.normals) if has_source_normals else _generated_normals(source)
     used_indices = list(dict.fromkeys(source.indices))
+    # Phase 2: spatial bucketing limits expensive tolerance comparisons to the
+    # 27 neighboring cells instead of comparing every vertex with every other.
     position_groups, group_by_source = _group_coincident_positions(source, used_indices)
     vertices = _DisjointSet.from_indices(used_indices)
     _merge_compatible_normals(
@@ -242,6 +252,9 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
         vertices=vertices,
     )
     _merge_explicit_smoothing_groups(source, used_indices, group_by_source, vertices)
+    # Phase 3: the disjoint-set roots define the exact welded topology. Corner
+    # arrays below intentionally retain the original index order, preserving UV
+    # seams even when their duplicate positions now share a Blender vertex.
     normal_by_root = _averaged_normals(used_indices, normals, vertices)
     compact_vertices, compact_normals, original_to_compact = _compact_vertices(
         source, used_indices, normal_by_root, vertices

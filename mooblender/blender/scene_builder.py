@@ -259,6 +259,9 @@ def _build_package_tree(
     dimension_controls_enabled: bool = True,
 ) -> None:
     """Build temporary transform records and source meshes for one package."""
+    # Phase 1: establish the dimensions visible to expressions in this package.
+    # A parameter transform is inserted only when metadata declares a genuinely
+    # editable range; fixed aggregate instances inherit values without sockets.
     model_information = selected_model_information(package.properties)
     parent_dimensions = _package_dimensions(package, current_dimensions)
     package_parent = parent
@@ -285,6 +288,8 @@ def _build_package_tree(
             }
         )
 
+    # Phase 2: materialize the package's own document beneath its parameter
+    # scope. The resulting objects stay in the unlinked source collection.
     if package.document is not None:
         document_parent = package_parent
         if document_scale != (1.0, 1.0, 1.0):
@@ -311,6 +316,9 @@ def _build_package_tree(
             geometry_scale=document_scale,
         )
 
+    # Phase 3: evaluate and place every selected child aggregate. Recursion uses
+    # target dimensions for child expressions but measured geometry dimensions
+    # to compute the independent mesh-envelope scale.
     for resolved in package.resolved_aggregates:
         raw = _raw_aggregate(package, resolved.index)
         child = resolved.package
@@ -326,6 +334,8 @@ def _build_package_tree(
         )
         variables.update(dimension_variables(target_dimensions))
 
+        # Invisible branches are omitted from both source data and controls;
+        # their formulas have already been evaluated with parent/local values.
         visible_condition = raw.get("VisibleCondition")
         if visible_condition is not None and not evaluate_condition(
             visible_condition,
@@ -485,6 +495,9 @@ def _add_package_controls(
     material_cache: dict[tuple[int, int], bpy.types.Material],
 ) -> None:
     """Create every modifier panel and bind it to package transform records."""
+    # Controls are registered only after the full transform tree exists. This
+    # separates package interpretation from Geometry Nodes interface creation
+    # and prevents duplicate sockets during recursive traversal.
     add_material_options(
         package,
         controller_nodes=controller_nodes,
@@ -581,6 +594,7 @@ def build_document(
 
     # Only the controller is linked to the active scene.  Source meshes live in
     # an unlinked collection and are referenced by Object Info nodes.
+    # Phase 1: allocate the public controller and private source ownership.
     source_collection = bpy.data.collections.new(f"{name} Source")
     controller_nodes = create_controller(name, destination)
     hierarchy_root = TransformNode(f"{name} Hierarchy")
@@ -593,6 +607,9 @@ def build_document(
     mesh_cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
 
+    # Phase 2: translate documents and aggregate metadata into source meshes,
+    # lightweight transforms, and socket bindings. No node graph traversal is
+    # needed while this semantic tree is still changing.
     if package is not None:
         _build_package_tree(
             package,
@@ -640,6 +657,8 @@ def build_document(
         object_parents,
     )
 
+    # Phase 4: attach stable diagnostics only after graph compilation succeeds.
+    # If an earlier phase raises, callers never receive a half-configured object.
     controller = controller_nodes.controller
     source_collection["mooblender_node_source"] = True
     controller["promob_version"] = document.version if document is not None else 0

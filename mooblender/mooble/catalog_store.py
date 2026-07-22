@@ -1,4 +1,10 @@
-"""Persistent, locally queryable mirror of the Mooble catalog."""
+"""Persistent, locally queryable mirror of the Mooble catalog.
+
+Synchronization crawls category pages concurrently but routes every SQLite
+mutation through one coordinator thread. The crawler writes a temporary
+database, validates the complete result, and atomically replaces the published
+snapshot; readers therefore see either the old catalog or the complete new one.
+"""
 
 from __future__ import annotations
 
@@ -167,6 +173,8 @@ def _complete_page(
     next_url = url
     pin_name = ""
     pages = 0
+    # A category becomes writable only after all continuation pages have been
+    # merged and its advertised item count has been checked.
     while next_url:
         # HTTP requests cannot be interrupted safely from another thread.  The
         # worker checks immediately before and after each bounded request, so a
@@ -249,6 +257,9 @@ class _CatalogCrawler:
     def crawl(self, requests) -> dict[int, tuple[str, ...]]:
         """Download every reachable category and persist each completed page."""
         self.pending.extend(requests)
+        # Futures perform HTTP and parsing only. ``_consume`` always runs on
+        # this coordinator thread; sharing one SQLite connection with download
+        # workers would make ordering and rollback needlessly fragile.
         with ThreadPoolExecutor(
             max_workers=self.workers,
             thread_name_prefix="mooblender-catalog",
@@ -315,6 +326,8 @@ class _CatalogCrawler:
             item_count=len(page.items),
             selected=True,
         )
+        # The temporary snapshot may commit incrementally to bound transaction
+        # size, but it stays invisible to normal readers until ``os.replace``.
         self._write_current(request, current)
         self._queue_children(request, current, page)
         self.store._write_items(self.connection, request.url, page.items)
@@ -522,6 +535,8 @@ class CatalogStore:
             client.close()
             raise ValueError("Select at least one Mooble catalog section")
 
+        # Resolve every department URL before allocating the temporary snapshot.
+        # A configuration error therefore leaves no partial database behind.
         try:
             _raise_if_cancelled(cancelled)
             source_urls = tuple(
@@ -547,6 +562,7 @@ class CatalogStore:
         progress_tracker = _SyncProgressTracker(progress)
         try:
             with closing(sqlite3.connect(temporary_path)) as connection:
+                # Phase 1: crawl selected department trees into normalized rows.
                 self._create_schema(connection)
                 self._write_category(
                     connection,
@@ -574,6 +590,8 @@ class CatalogStore:
                     cancelled=cancelled,
                 ).crawl(requests)
                 _raise_if_cancelled(cancelled)
+                # Phase 2: build the synthetic root's stable union. A model may
+                # belong to multiple departments but appears once at the root.
                 root_item_ids: list[str] = []
                 root_item_set: set[str] = set()
                 for position in sorted(department_item_ids):
@@ -604,6 +622,8 @@ class CatalogStore:
                         for position, item_id in enumerate(root_item_ids)
                     ),
                 )
+                # Phase 3: write metadata last, so schema/version presence marks
+                # a complete temporary snapshot rather than an in-progress one.
                 synced_at = datetime.now(UTC).isoformat(timespec="seconds")
                 self._set_metadata(connection, "schema_version", SCHEMA_VERSION)
                 self._set_metadata(connection, "root_url", LOCAL_ROOT_URL)

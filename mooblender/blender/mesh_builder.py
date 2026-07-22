@@ -1,4 +1,10 @@
-"""Build Blender meshes and primitive hierarchies from neutral Promob scenes."""
+"""Build Blender source meshes and an in-memory transform hierarchy.
+
+This layer creates mesh/object datablocks but does not link them to the visible
+scene. :mod:`scene_builder` supplies package semantics, and
+:mod:`geometry_nodes` later compiles these source objects and ``TransformNode``
+records into the single linked controller object's graph.
+"""
 
 from __future__ import annotations
 
@@ -118,6 +124,9 @@ def _create_meshes(
         meshes = []
         for mesh_index, source in enumerate(layer.meshes):
             mesh_name = f"{layer_name}_{mesh_index}"
+            # Topology preparation welds safe duplicates while retaining PMob's
+            # face-corner UV and normal order. Unit conversion happens only on
+            # positions; UVs remain in their authored material space.
             topology = prepare_mesh(source)
             vertices = [
                 tuple(component * scale for component in point) for point in topology.vertices
@@ -125,6 +134,9 @@ def _create_meshes(
             mesh = bpy.data.meshes.new(mesh_name)
             mesh.from_pydata(vertices, [], topology.faces)
             mesh.update()
+            # Face attributes carry package semantics through joins and
+            # instances, allowing Geometry Nodes to assign layer-specific
+            # materials without one scene object per component.
             layer_attribute = mesh.attributes.new(
                 name="mooblender_layer",
                 type="INT",
@@ -210,6 +222,8 @@ def _instantiate_primitive(
 ):
     """Recursively instantiate primitive records and their referenced meshes."""
     name = _unique_name(primitive.name, f"Primitive {fallback_index}")
+    # ``TransformNode`` mirrors Blender transform semantics but is intentionally
+    # not a datablock. It becomes a Transform Geometry node during compilation.
     node = TransformNode(name, parent)
     local_transform = Matrix(
         blender_matrix_rows(primitive.matrix, unit_scale=unit_scale)
@@ -240,6 +254,9 @@ def _instantiate_primitive(
             material is not None and material.get("promob_mapping_type") == 1
         )
         if cubic_mapping or not mesh.uv_layers:
+            # Physical box projection must see the complete authored transform;
+            # generating it earlier would give nested or resized parts a
+            # different texel density for the same material.
             object_mesh = mesh.copy()
             correction_transform = Matrix.Translation(correction_location) @ Matrix.Diagonal(
                 (*correction_scale, 1.0)
@@ -440,6 +457,9 @@ def _layer_resize_corrections(
     """Compute per-layer corrections that keep fixed hardware from stretching."""
     if package is None or package.document is None:
         return {}
+    # Promob's ``Edit=False`` marks hardware such as handles that should move
+    # with a resized panel but keep its own size. Corrections cancel the global
+    # stretch for those layers and stretch the remaining panel around them.
     fixed_candidates = _fixed_component_layers(package)
     if not fixed_candidates:
         return {}
@@ -523,6 +543,9 @@ def _document_root(
 ):
     """Create or reuse one document's materials, meshes, and primitive records."""
     cache_key = id(package) if package is not None else id(document)
+    # One resolved package may be referenced more than once. Share immutable
+    # source mesh datablocks, then create distinct object/transform branches for
+    # each placement so graph controls remain independent.
     meshes_by_layer = cache.get(cache_key)
     if meshes_by_layer is None:
         materials = []

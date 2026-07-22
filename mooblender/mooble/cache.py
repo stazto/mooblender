@@ -1,4 +1,10 @@
-"""Bounded, concurrency-safe management of downloaded Mooble cache files."""
+"""Bounded, concurrency-safe management of downloaded Mooble cache files.
+
+Only the flat ``models`` and ``thumbnails`` directories are managed here. A
+download registers its destination as active, publishes it atomically, and then
+asks this module to evict least-recently-used inactive bundles. The catalog
+database has a separate lifecycle and is intentionally outside this policy.
+"""
 
 from __future__ import annotations
 
@@ -120,6 +126,9 @@ def _bundles(group: str, entries: Iterable[_CacheEntry]) -> tuple[_CacheBundle, 
     """Group model content with metadata so pruning never leaves an orphan."""
     grouped: dict[str, list[_CacheEntry]] = {}
     for entry in entries:
+        # A model sidecar is named ``<content name>.json``. Removing the final
+        # suffix gives content and metadata one eviction key; thumbnails remain
+        # independent bundles.
         name = entry.path.name
         key = name.removesuffix(".json") if group == "models" else name
         grouped.setdefault(key, []).append(entry)
@@ -139,6 +148,8 @@ def cache_paths_in_use(paths: Iterable[str | Path]) -> Iterator[None]:
     """Protect download targets from pruning until their caller finishes."""
     normalized = {_absolute(path) for path in paths}
     with _CACHE_LOCK:
+        # Reference counts, rather than a set, support overlapping cache hits
+        # for the same model from multiple background operations.
         for path in normalized:
             _ACTIVE_PATHS[path] = _ACTIVE_PATHS.get(path, 0) + 1
     try:
@@ -177,6 +188,8 @@ def prune_cache_group(
         removed_bytes = 0
         protected_paths = explicit_protected | set(_ACTIVE_PATHS)
         bundles = _bundles(group, entries)
+        # Successful cache hits touch mtime, so this stable ordering implements
+        # LRU eviction without a second index or metadata database.
         for bundle in sorted(
             bundles,
             key=lambda item: (item.modified_ns, item.name),
@@ -204,6 +217,9 @@ def prune_cache_group(
 
 def clear_download_cache(cache_dir: str | Path) -> CacheCleanup:
     """Delete inactive model and thumbnail files while preserving the catalog."""
+    # Explicit clearing shares automatic pruning's allow-list and non-recursive
+    # traversal. It cannot widen into an arbitrary directory if unexpected
+    # entries appear below the cache root.
     with _CACHE_LOCK:
         entries = tuple(
             entry

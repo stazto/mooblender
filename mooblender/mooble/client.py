@@ -2,6 +2,9 @@
 
 The endpoint and response mapping are observations, not a stable public API.
 All transport is injectable so schema changes can be tested without Blender.
+Responses are normalized into small value objects before they cross into
+catalog persistence or Blender code. Downloads use deterministic hashed names,
+atomic publication, and bounded cache eviction.
 """
 
 from __future__ import annotations
@@ -164,6 +167,9 @@ class MoobleClient:
         url = self.root_url(category=category, search=search)
         cached = self.load_cached_page(url)
         live = self.browse_url(url)
+        # Explorer occasionally returns a shorter first page for a request that
+        # was previously extended through continuation URLs. Keep that longer
+        # cache only when its prefix and categories prove compatibility.
         if (
             cached is not None
             and len(cached.items) > len(live.items)
@@ -366,6 +372,8 @@ class MoobleClient:
             raise MoobleError(f"unsupported downloaded model extension: {suffix}")
         path = self._cache_path("models", cache_key, suffix)
         metadata_path = path.with_suffix(path.suffix + ".json")
+        # Protection spans lookup, download, publication, and pruning so another
+        # worker cannot evict either half of this model bundle while it is used.
         with cache_paths_in_use((path, metadata_path)):
             if path.exists() and path.stat().st_size:
                 touch_cache_file(path)
@@ -375,6 +383,8 @@ class MoobleClient:
                 data = self.transport.get_bytes(details.content_url, max_bytes=max_bytes)
             except TransportError as error:
                 raise MoobleError(f"could not download model: {error}") from error
+            # Publish content before its descriptive sidecar. Future cache hits
+            # require non-empty content rather than trusting metadata alone.
             self._atomic_write(path, data)
             metadata = {
                 "id": cache_key,
@@ -404,6 +414,8 @@ class MoobleClient:
             return None
         path = thumbnail_cache_path(self._cache_root(), item)
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Preview failure is recoverable: a missing card image must not abort
+        # catalog browsing or a later model import.
         with cache_paths_in_use((path,)):
             if path.exists() and path.stat().st_size:
                 touch_cache_file(path)
@@ -447,6 +459,8 @@ class MoobleClient:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
+            # This is atomic on the destination filesystem because the temporary
+            # file is created beside the final path.
             os.replace(temporary_name, path)
         except BaseException:
             with suppress(FileNotFoundError):
