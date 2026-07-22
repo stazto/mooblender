@@ -27,11 +27,14 @@ datablocks.
 
 Observed dimension/position expressions use arithmetic variables such as
 `$PW$`, `$PD$`, `$PH$` for parent dimensions and `$W$`, `$D$`, `$H$` for child
-dimensions. Open-service expressions additionally use C-style ternaries inside
-an `@(...)` wrapper. Aggregate `VisibleCondition` records use numeric
-comparisons and Boolean operators. Mooblender evaluates only this small numeric
-grammar; it does not execute Python or arbitrary source text, and it omits an
-aggregate when its visibility expression is false.
+dimensions. Some packages serialize the equivalent long names
+`$PARENTWIDTH$`, `$PARENTDEPTH$`, `$PARENTHEIGHT$`, `$WIDTH$`, `$DEPTH$`, and
+`$HEIGHT$`; both vocabularies refer to the same values. Open-service expressions
+additionally use C-style ternaries inside an `@(...)` wrapper. Aggregate
+`VisibleCondition` records use numeric comparisons and Boolean operators.
+Mooblender evaluates only this small numeric grammar; it does not execute Python
+or arbitrary source text, and it omits an aggregate when its visibility
+expression is false.
 
 `Dimension`, `DrawingDimension`, and the serialized PMob geometry are distinct.
 `Dimension` supplies logical/default values when an aggregate omits an axis.

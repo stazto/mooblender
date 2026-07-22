@@ -157,9 +157,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Resolve properties-only aggregate and material specifications recursively in
   the background, with caching, cycle/depth/entity limits, and package reuse.
 - Evaluate the observed numeric dimension, position, visibility, inversion,
-  and opening expression subset without executing arbitrary code. Use current
-  drawing dimensions for parent formula variables without conflating them with
-  the measured mesh envelope used for redimensioning.
+  and opening expression subset without executing arbitrary code. Accept both
+  short (`PW`, `W`) and long (`PARENTWIDTH`, `WIDTH`) dimension variable names.
+  Use current drawing dimensions for parent formula variables without
+  conflating them with the measured mesh envelope used for redimensioning.
 - Reconstruct doors and drawers with independent, lazily created controls named
   from their Mooble component localization and retain a Door/Drawer prefix when
   the localization is only ordinal or directional. Bind services to exact
@@ -224,6 +225,10 @@ fronts.
 Cached 4220A/0079K validation gives the internal body and both drawers a
 UV-to-world edge ratio of 1.0 before their shared 150 mm material mapping, so
 all three use the same 6.6667 texture repetitions per metre.
+Cached door validation reconstructs the 800 × 2099 mm leaf and correctly placed
+handle inside `Porta de Giro 31`, and distributes all three 330.67 × 2195 mm
+panels across the 980 mm frame of `Porta de Correr 21`. These packages use the
+long-form parent dimension variables that previously collapsed their panels.
 A 212-package cached topology corpus contains 611,468 PMob vertices and no
 serialized mesh normals. Nested smoothing groups plus inferred 45-degree
 normal fans compact this to 319,119 Blender vertices while preserving triangle

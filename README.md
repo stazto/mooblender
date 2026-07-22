@@ -89,7 +89,9 @@ meshes receive a size-aware physical UV projection after all static transforms,
 so the same material retains the same texel density on resized and unresized
 components. Observed Promob texture dimensions control that common scale.
 Aggregate visibility expressions, attachment normals, and current drawing
-dimensions are respected when placing nested components.
+dimensions are respected when placing nested components. Both short and
+long-form Mooble dimension variables are supported, including `PW` and
+`PARENTWIDTH` (and their depth/height counterparts).
 The source meshes and transform helpers are retained in a private collection
 referenced by the Geometry Nodes graph, but that collection is not linked to
 the scene. The controller is linked directly to the active Blender collection,

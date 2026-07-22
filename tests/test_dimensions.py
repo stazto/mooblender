@@ -5,6 +5,7 @@ import unittest
 from mooblender.model.dimensions import (
     bounding_box_dimensions,
     configurable_dimensions,
+    dimension_variables,
     document_geometry_dimensions,
     document_layer_bounds,
     document_layer_dimensions,
@@ -109,6 +110,25 @@ class DimensionTests(unittest.TestCase):
                 fallback=(100.0, 15.0, 100.0),
             ),
             (381.0, 15.0, 395.0),
+        )
+
+    def test_aggregate_expressions_accept_long_dimension_names(self):
+        parent = (980.0, 190.0, 2189.0)
+        child = (900.0, 80.1, 2100.0)
+        raw = {
+            "Dimension": {
+                "Width": "$PARENTWIDTH$-180",
+                "Height": "$PARENTHEIGHT$-90",
+            }
+        }
+
+        variables = dimension_variables(child, parent=parent)
+
+        self.assertEqual(variables["PW"], variables["PARENTWIDTH"])
+        self.assertEqual(variables["PH"], variables["PARENTHEIGHT"])
+        self.assertEqual(
+            property_dimensions(raw, variables=variables, fallback=child),
+            (800.0, 80.1, 2099.0),
         )
 
     def test_document_geometry_includes_primitive_transforms(self):

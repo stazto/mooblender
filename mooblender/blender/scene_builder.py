@@ -21,6 +21,7 @@ from mathutils import Matrix, Quaternion, Vector
 from ..formats.pcontent import PContentPackage
 from ..model.dimensions import (
     configurable_dimensions,
+    dimension_variables,
     document_geometry_dimensions,
     document_layer_bounds,
     document_layer_dimensions,
@@ -825,12 +826,11 @@ def _apply_open_services(
             continue
         motion = data["motion"]
         content = data["content"]
-        width, depth, height = data["dimensions"]
+        dimensions = data["dimensions"]
+        width, depth, height = dimensions
         inverted = bool(data["inverted"])
         variables: dict[str, float | bool] = {
-            "W": width,
-            "D": depth,
-            "H": height,
+            **dimension_variables(dimensions),
             "I": inverted,
             "INVERTED": inverted,
         }
@@ -974,24 +974,16 @@ def _build_package_tree(
         raw = _raw_aggregate(package, resolved.index)
         child = resolved.package
         default_dimensions = property_dimensions(child.properties)
-        variables: dict[str, float | bool] = {
-            "PW": parent_dimensions[0],
-            "PD": parent_dimensions[1],
-            "PH": parent_dimensions[2],
-            "W": default_dimensions[0],
-            "D": default_dimensions[1],
-            "H": default_dimensions[2],
-        }
+        variables: dict[str, float | bool] = dimension_variables(
+            default_dimensions,
+            parent=parent_dimensions,
+        )
         target_dimensions = property_dimensions(
             raw,
             variables=variables,
             fallback=default_dimensions,
         )
-        variables.update(
-            W=target_dimensions[0],
-            D=target_dimensions[1],
-            H=target_dimensions[2],
-        )
+        variables.update(dimension_variables(target_dimensions))
         visible_condition = raw.get("VisibleCondition")
         if visible_condition is not None and not bool(
             evaluate_expression(visible_condition, variables)

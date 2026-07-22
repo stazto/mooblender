@@ -32,6 +32,35 @@ _CONFIGURABLE_AXES = (
 )
 
 
+def dimension_variables(
+    dimensions: Dimension3,
+    *,
+    parent: Dimension3 | None = None,
+) -> dict[str, float]:
+    """Return the short and long dimension names used by Mooble formulas."""
+
+    width, depth, height = dimensions
+    values = {
+        "W": width,
+        "D": depth,
+        "H": height,
+        "WIDTH": width,
+        "DEPTH": depth,
+        "HEIGHT": height,
+    }
+    if parent is not None:
+        parent_width, parent_depth, parent_height = parent
+        values.update(
+            PW=parent_width,
+            PD=parent_depth,
+            PH=parent_height,
+            PARENTWIDTH=parent_width,
+            PARENTDEPTH=parent_depth,
+            PARENTHEIGHT=parent_height,
+        )
+    return values
+
+
 def _dimension_value(value: object, coordinate: str, field: str) -> float:
     if not isinstance(value, Mapping):
         return 0.0

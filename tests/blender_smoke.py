@@ -457,16 +457,25 @@ def main() -> None:
                 "Aggregates": [
                     {
                         "Description": "Visible oriented part",
-                        "Dimension": {"Width": 10, "Depth": 10, "Height": 100},
-                        "Position": {"X": 100, "Y": 0, "Z": 0, "Rotation": 180},
+                        "Dimension": {
+                            "Width": "$PARENTWIDTH$/50",
+                            "Depth": "$PARENTDEPTH$/40",
+                            "Height": "$PARENTHEIGHT$/3",
+                        },
+                        "Position": {
+                            "X": "$PARENTWIDTH$/5",
+                            "Y": 0,
+                            "Z": 0,
+                            "Rotation": 180,
+                        },
                         "Normal": {"X": -1, "Y": 0, "Z": 0},
-                        "VisibleCondition": "$PH$>=300",
+                        "VisibleCondition": "$PARENTHEIGHT$>=300",
                     },
                     {
                         "Description": "Hidden alternate part",
                         "Dimension": {"Width": 10, "Depth": 10, "Height": 100},
                         "Position": {"X": 400, "Y": 0, "Z": 0},
-                        "VisibleCondition": "$PH$<100",
+                        "VisibleCondition": "$PARENTHEIGHT$<100",
                     },
                 ],
             },

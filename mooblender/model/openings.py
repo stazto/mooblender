@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 
+from .dimensions import dimension_variables
 from .expressions import evaluate_expression
 
 
@@ -53,11 +54,8 @@ def door_motion(
     back to the unmirrored child coordinates before creating the Blender pivot.
     """
 
-    width, depth, height = dimensions
     variables: dict[str, float | bool] = {
-        "W": width,
-        "D": depth,
-        "H": height,
+        **dimension_variables(dimensions),
         "I": inverted,
         "INVERTED": inverted,
     }
