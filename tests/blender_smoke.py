@@ -262,9 +262,6 @@ def main() -> None:
             raise AssertionError("Mooblender browser started in a loading state")
         if bpy.ops.promob.catalog_cancel.poll():
             raise AssertionError("catalog cancellation is enabled without an active sync")
-        if bpy.ops.promob.catalog_info.get_rna_type().properties.get("item_id") is None:
-            raise AssertionError("catalog information operator is not registered")
-
         # Cancellation remains entirely asynchronous: the operator sets a
         # thread-safe flag, while the timer callback restores UI state only
         # after the worker future acknowledges it.

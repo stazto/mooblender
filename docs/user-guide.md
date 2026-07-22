@@ -17,15 +17,15 @@ setting.
 4. Browse categories or combine text, manufacturer, and brand-collection
    filters.
 5. Read the external W/D/H dimensions directly on a card, or select its
-   information icon for description, manufacturer, collection, and dimensions.
+   information icon to open the matching regional product page on Mooble.
 6. Select **Import** on a result card.
 
 Synchronization is the only catalog-wide network action. It downloads the full
 selected index into a temporary SQLite database and publishes it atomically.
 Search, category navigation, Back, and Load More then query only that snapshot.
 Thumbnails and models are separate on-demand downloads; cached files are reused.
-Card dimensions and information come from the SQLite snapshot, so opening the
-information dialog never makes a network request.
+Card dimensions come from the SQLite snapshot. The information icon opens the
+system web browser and therefore requires access to the Mooble website.
 
 **Source country** chooses which Mooble catalog supplies the models: Brazil,
 United States, Canada, Spain, Argentina, China, or France. **Category names**

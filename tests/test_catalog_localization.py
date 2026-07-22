@@ -11,6 +11,7 @@ from mooblender.mooble.localization import (
     CATEGORY_LANGUAGE_SOURCE,
     category_display_name,
     english_category_name,
+    product_page_url,
 )
 
 
@@ -66,6 +67,26 @@ class CatalogLocalizationTests(unittest.TestCase):
                 "Plants",
             ],
         )
+
+    def test_product_pages_use_each_country_localized_route(self) -> None:
+        expected_segments = {
+            "br": "produto",
+            "us": "product",
+            "ca": "product",
+            "es": "producto",
+            "ar": "producto",
+            "cn": "product",
+            "fr": "product",
+        }
+        for country, segment in expected_segments.items():
+            with self.subTest(country=country):
+                self.assertEqual(
+                    product_page_url(country, "model/id"),
+                    f"https://www.mooble.com/{country}/{segment}/model%2Fid",
+                )
+
+        self.assertEqual(product_page_url("unsupported", "model"), "")
+        self.assertEqual(product_page_url("br", ""), "")
 
 
 if __name__ == "__main__":

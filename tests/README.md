@@ -24,7 +24,7 @@ geometry responsible for each failure:
 | Duplicate vertices and smooth surfaces | `test_topology.py` and the named model regression | custom normals, UV seams, explicit hard edges, and optional quads in `blender_smoke.py` |
 | IB55S refrigerator shading | `test_ib55s_keeps_vertex_splits_when_smoothing_metadata_is_absent` | source topology remains split without normals or smoothing groups |
 | Catalog country and language | `test_catalog_localization.py`, `test_catalog_store.py`, and `test_mooble.py` | preference enums and panel placement in Blender/structural tests |
-| Card dimensions and local model information | Explorer parsing and SQLite persistence in `test_mooble.py` / `test_catalog_store.py` | card action/layout and property registration in `test_panel_layout.py` / `blender_smoke.py` |
+| Card dimensions and regional product information | Explorer parsing, SQLite persistence, and localized URL mapping | card link/layout and property registration in `test_panel_layout.py` / `blender_smoke.py` |
 | Porta de Giro 31 | `test_porta_de_giro_31_resolves_long_parent_dimension_variables` | long-form aggregate variables in `blender_smoke.py` |
 | Porta de Correr 21 | `test_porta_de_correr_21_distributes_three_panels_across_frame` | long-form aggregate variables in `blender_smoke.py` |
 | ELA-2 opposing lift carriages | — | `test_ela_2_opposing_side_normals_keep_both_carriages_above_anchor` |

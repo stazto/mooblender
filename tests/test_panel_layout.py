@@ -117,9 +117,10 @@ class PanelLayoutTests(unittest.TestCase):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
 
-        self.assertIn("promob.catalog_info", string_values)
+        self.assertIn("wm.url_open", string_values)
         self.assertIn("promob.catalog_import", string_values)
         self.assertIn("format_external_dimensions", call_names)
+        self.assertIn("product_page_url", call_names)
 
 
 if __name__ == "__main__":

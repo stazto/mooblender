@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from urllib.parse import quote
 
 CATEGORY_LANGUAGE_SOURCE = "SOURCE"
 CATEGORY_LANGUAGE_ENGLISH = "ENGLISH"
@@ -24,6 +25,16 @@ CATALOG_COUNTRIES = (
     ("fr", "France"),
 )
 CATALOG_COUNTRY_CODES = frozenset(code for code, _name in CATALOG_COUNTRIES)
+
+_PRODUCT_PAGE_SEGMENTS = {
+    "br": "produto",
+    "es": "producto",
+    "ar": "producto",
+    "us": "product",
+    "ca": "product",
+    "cn": "product",
+    "fr": "product",
+}
 
 CATALOG_DEPARTMENTS = (
     ("sync_catalog_furniture", "Moveis", "Furniture", True),
@@ -831,6 +842,18 @@ _NUMBERED_SET = re.compile(r"^Conjunto\s+(\d+)$", re.IGNORECASE)
 def catalog_country_name(code: str) -> str:
     """Return the public country label for a supported Mooble region code."""
     return dict(CATALOG_COUNTRIES).get(code.casefold(), code.upper())
+
+
+def product_page_url(source_country: str, item_id: str) -> str:
+    """Build a regional public Mooble product URL from a cached catalog item."""
+    country = source_country.casefold()
+    segment = _PRODUCT_PAGE_SEGMENTS.get(country)
+    if segment is None or not item_id:
+        return ""
+    return (
+        f"https://www.mooble.com/{quote(country, safe='')}/{segment}/"
+        f"{quote(item_id, safe='')}"
+    )
 
 
 def english_category_name(category_id: str, source_name: str) -> str:

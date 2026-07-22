@@ -26,8 +26,10 @@ navigation and `Output.Specifications.Data` for product cards. Tag records expos
 navigation URLs and counts. Specification summaries expose IDs, names,
 descriptions, brands, collections, thumbnail links, dimensions, and detail URLs.
 External millimetre dimensions are observed at `Properties.Dimension.Width`,
-`Depth`, and `Height`. Mooblender normalizes and stores them with each item, so
-cards and their information dialogs need no detail request.
+`Depth`, and `Height`. Mooblender normalizes and stores them with each item.
+The card information icon opens `www.mooble.com/<country>/<localized-route>/<id>`;
+the route is `produto` for Brazil, `producto` for Spain and Argentina, and
+`product` for the other supported countries.
 Pagination is supplied as a server-generated `Links.Next` URL.
 Initial Explorer responses place product records under
 `Output.Specifications.Data`; observed `GetNext/Specs` responses instead place

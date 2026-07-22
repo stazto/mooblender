@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import bpy
 
-from ..mooble.localization import CATEGORY_LANGUAGE_ENGLISH, catalog_country_name
+from ..mooble.localization import (
+    CATEGORY_LANGUAGE_ENGLISH,
+    catalog_country_name,
+    product_page_url,
+)
 from ..mooble.models import format_external_dimensions
 from .operators import _browser_preferences, ensure_thumbnails
 from .properties import CATALOG_DEPARTMENTS
@@ -169,11 +173,14 @@ def _draw_catalog_items(content, state) -> None:
         )
         import_operator.item_id = item.item_id
         info_operator = actions.operator(
-            "promob.catalog_info",
+            "wm.url_open",
             text="",
             icon="INFO",
         )
-        info_operator.item_id = item.item_id
+        info_operator.url = product_page_url(
+            state.catalog_source_country or "br",
+            item.item_id,
+        )
     if state.local_result_limit < state.local_result_total:
         content.operator("promob.catalog_load_more", text="Load More", icon="ADD")
 
