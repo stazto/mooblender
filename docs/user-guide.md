@@ -39,13 +39,14 @@ hard edges, material boundaries, and non-planar surface changes.
 
 ## Imported object and controls
 
-Each import creates one scene-linked object with a Geometry Nodes modifier. The
-source collection and its transform hierarchy stay unlinked from the scene and
-remain instanced by default.
+Each import creates one scene-linked object with a Geometry Nodes modifier.
+Unlinked source meshes remain instanced by default, while every source,
+aggregate, opening, resize, visibility, and reversal transform is evaluated
+inside the node group. Imports do not create helper empties.
 
 Modifier controls are ordered as follows:
 
-1. **Realize Instances** converts the nested hierarchy to mesh geometry when a
+1. **Realize Instances** converts the transformed mesh instances to geometry when a
    downstream workflow requires it. Non-default material overrides operate on
    this realized branch.
 2. The **Finish** panel contains one named style menu per affected part. Menu
@@ -53,7 +54,7 @@ Modifier controls are ordered as follows:
    `Finish:` or `Acabamento` prefix.
 3. **Options** contains default-enabled switches for independently selectable
    components such as worktops and baseboards. Models marked as mirrorable also
-   receive a **Reverse** switch that mirrors the full hierarchy in place.
+   receive a **Reverse** switch that mirrors the full model in place.
 4. **Doors and Drawers** contains independent 0–1 controls for movable parts.
 5. **Parameters** contains editable insertion dimensions such as **Largura** and
    **Profundidade**, including their source limits.
@@ -61,9 +62,9 @@ Modifier controls are ordered as follows:
 Controls are single values rather than fields. Numeric or directional component
 labels retain their kind, for example **Drawer: 1ª** and **Door: Esq**. Constant
 aggregate children do not expose misleading size controls.
-Driver-backed inputs also remain connected to the final Geometry Nodes output
-through neutral geometry operations. This keeps Blender from drawing active,
-editable controls with the disabled gray appearance reserved for unused inputs.
+Every editable input connects directly to the transform or material nodes that
+produce the final output. Blender therefore displays controls as active instead
+of using the disabled gray appearance reserved for unused inputs.
 
 ## Geometry and material behavior
 

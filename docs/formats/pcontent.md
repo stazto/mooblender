@@ -93,8 +93,8 @@ without changing a sibling instance.
 An aggregate marked `Concurrent: true` is independently selectable unless it
 is also `Constant` or `AlwaysVisible`. Every resolved selectable aggregate gets
 a default-enabled Boolean control in the Geometry Nodes **Options** panel. The
-control keeps the source hierarchy intact and drives only that aggregate
-instance's visibility. In the observed C67 package, **Tampo** and **Rodapé**
+control drives only that aggregate instance's node-based visibility transform.
+In the observed C67 package, **Tampo** and **Rodapé**
 therefore receive separate controls, while the constant door does not.
 
 The root `Attributes.CANMIRROR.VALUE` flag exposes whole-model reversal. The

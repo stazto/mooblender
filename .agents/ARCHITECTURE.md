@@ -42,20 +42,21 @@ Mooble Explorer ──> explicit background sync ──> atomic SQLite snapshot
 Format readers own byte-level validation and return a shared, Blender-neutral
 model. The Blender adapter owns coordinate conversion and datablock creation.
 Within that adapter, `scene_builder` orchestrates one import, `mesh_builder`
-creates geometry and source hierarchy, and `materials` owns image and shader
+creates geometry and build-time transform records, and `materials` owns image and shader
 datablocks. UI operators schedule work but do not implement format semantics.
 The Mooble client owns HTTP behavior and passes downloaded bytes through the
 same format readers as local files.
 
-Geometry Nodes imports expose exactly one scene-linked controller object. The
-source mesh and transform hierarchy lives in an unlinked collection referenced
-by the controller's Collection Info node. Collection children and their origins
-remain nested until an explicit top-level **Realize Instances** input selects
-the realized graph branch. This keeps helper empties out of the
-scene Outliner while preserving their datablocks, parenting, drivers, and
-procedural controls. Collection-hierarchy mode is no longer exposed: every
-import returns one controller linked directly to the active collection, while
-the source collection remains an unlinked implementation detail.
+Geometry Nodes imports expose exactly one scene-linked controller object.
+Source mesh objects live in an unlinked collection with identity object
+transforms and are referenced individually by Object Info nodes. Lightweight
+Python records represent the source hierarchy only while importing;
+`scene_builder` compiles each ordered local transform into Transform Geometry
+nodes and then discards those records. Static placement, opening pivots,
+dimensions, optional-part visibility, and whole-model reversal therefore run
+inside the node group. No helper empty datablocks or transform drivers are
+created. An explicit top-level **Realize Instances** input selects the realized
+branch when downstream mesh operations need it.
 
 Modifier interfaces place **Realize Instances** first, followed by a **Finish**
 panel whose menu labels name only the affected part, an **Options** panel for selectable aggregate components, a
@@ -66,12 +67,9 @@ aggregate path, and multiple source records for that path collapse to the one
 movable component control. Numeric or directional component names retain a
 `Door` or `Drawer` prefix. Material definitions with the same display name and
 ordered style names share one menu across package scopes; differing option sets
-receive unique interface names. The controller node group has a geometry output
-only because source geometry enters through its Collection Info node.
-Float inputs also feed hidden zero-effect sink nodes, keeping Blender's modifier
-UI controls enabled while their values drive source-hierarchy transforms. Those
-neutral dependencies remain on the path to the node-group geometry output;
-Blender grays inputs whose node branches do not contribute to an output.
+receive unique interface names. Every exposed control has a directed path
+through its actual transform or material operation to the group output, so
+Blender keeps the modifier input active instead of graying it as unused.
 
 Before Blender datablock creation, the neutral topology adapter reconstructs
 normal fans for PMob meshes that omit normals. It honors nested smoothing

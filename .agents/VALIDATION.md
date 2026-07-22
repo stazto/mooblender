@@ -34,7 +34,10 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
 - Synthetic Blender fixtures verify custom corner normals, UV-seam retention,
   optional triangle-to-quad conversion, material reuse, single-value modifier
   inputs, non-duplicated Geometry Nodes interface entries, and a directed path
-  from every exposed modifier input to the final geometry output.
+  from every exposed modifier input to the final geometry output. They also
+  assert that source meshes have identity object transforms and that importing
+  creates no helper empties; all placement and controlled transforms live in
+  the Geometry Nodes graph.
 
 ## Catalog behavior
 

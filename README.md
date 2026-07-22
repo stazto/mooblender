@@ -43,9 +43,9 @@ Mooble catalog.
 
 Synchronization is the only catalog-wide network action. Browsing and search
 use the last complete local snapshot; thumbnails and selected models download
-only when needed. Each import creates one visible controller object while its
-source hierarchy remains in an unlinked collection referenced by Geometry
-Nodes.
+only when needed. Each import creates one visible controller object. Unlinked
+source meshes are referenced directly by Geometry Nodes; their complete
+transform hierarchy is encoded in the node graph, without helper empties.
 
 See the [user guide](docs/user-guide.md) for catalog behavior, import options,
 and modifier controls.

@@ -7,7 +7,7 @@ import zlib
 
 import bmesh
 import bpy
-from mathutils import Matrix
+from mathutils import Euler, Matrix, Quaternion, Vector
 
 from ..formats.pcontent import PContentPackage
 from ..model.dimensions import (
@@ -19,6 +19,44 @@ from ..model.scene import PmobDocument, Primitive, PrimitiveType
 from ..model.topology import prepare_mesh
 from ..model.transforms import blender_matrix_rows
 from .materials import create_material
+
+
+class TransformNode:
+    """Lightweight build-time transform that never becomes a Blender object."""
+
+    def __init__(self, name: str, parent: TransformNode | None = None):
+        self.name = name
+        self.parent = parent
+        self.location = Vector((0.0, 0.0, 0.0))
+        self.rotation_mode = "XYZ"
+        self.rotation_euler = Euler((0.0, 0.0, 0.0), "XYZ")
+        self.rotation_quaternion = Quaternion((1.0, 0.0, 0.0, 0.0))
+        self.scale = Vector((1.0, 1.0, 1.0))
+        self.metadata: dict[str, object] = {}
+
+    def __setitem__(self, key: str, value: object) -> None:
+        self.metadata[key] = value
+
+    @property
+    def matrix_basis(self) -> Matrix:
+        rotation = (
+            self.rotation_quaternion
+            if self.rotation_mode == "QUATERNION"
+            else self.rotation_euler.to_quaternion()
+        )
+        return Matrix.LocRotScale(self.location, rotation, self.scale)
+
+    @property
+    def matrix_local(self) -> Matrix:
+        return self.matrix_basis
+
+    @matrix_local.setter
+    def matrix_local(self, value: Matrix) -> None:
+        location, rotation, scale = value.decompose()
+        self.location = location
+        self.rotation_mode = "QUATERNION"
+        self.rotation_quaternion = rotation
+        self.scale = scale
 
 
 def _unique_name(value: str, fallback: str) -> str:
@@ -159,13 +197,11 @@ def _instantiate_primitive(
         tuple[tuple[float, float, float], tuple[float, float, float]],
     ],
     geometry_scale: tuple[float, float, float],
+    object_parents: dict[bpy.types.Object, TransformNode],
     document_transform: Matrix | None = None,
 ):
     name = _unique_name(primitive.name, f"Primitive {fallback_index}")
-    node = bpy.data.objects.new(name, None)
-    node.empty_display_type = "PLAIN_AXES"
-    collection.objects.link(node)
-    node.parent = parent
+    node = TransformNode(name, parent)
     local_transform = Matrix(
         blender_matrix_rows(primitive.matrix, unit_scale=unit_scale)
     )
@@ -207,9 +243,9 @@ def _instantiate_primitive(
                 ),
             )
         obj = bpy.data.objects.new(f"{name}_{mesh_index}", object_mesh)
-        obj.parent = node
         obj.scale = correction_scale
         obj.location = correction_location
+        object_parents[obj] = node
         obj["promob_layer"] = primitive.layer_ref
         obj["promob_material_id"] = mesh.get("promob_material_id", -1)
         if source_id:
@@ -227,6 +263,7 @@ def _instantiate_primitive(
             fallback_index=child_index,
             layer_corrections=layer_corrections,
             geometry_scale=geometry_scale,
+            object_parents=object_parents,
             document_transform=document_transform,
         )
     return node
@@ -470,6 +507,7 @@ def _document_root(
     cache: dict[int, dict[str, list[bpy.types.Mesh]]],
     material_cache: dict[tuple[int, int], bpy.types.Material],
     convert_tris_to_quads: bool,
+    object_parents: dict[bpy.types.Object, TransformNode],
     geometry_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ):
     cache_key = id(package) if package is not None else id(document)
@@ -525,4 +563,5 @@ def _document_root(
         fallback_index=0,
         layer_corrections=_layer_resize_corrections(package, geometry_scale),
         geometry_scale=geometry_scale,
+        object_parents=object_parents,
     )

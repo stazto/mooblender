@@ -25,7 +25,13 @@ from ..model.dimensions import (
 from ..model.expressions import evaluate_condition, evaluate_expression
 from ..model.openings import control_name, door_motion
 from ..model.scene import PmobDocument
-from .mesh_builder import _document_root, _entity_code, _remote_material, _unique_name
+from .mesh_builder import (
+    TransformNode,
+    _document_root,
+    _entity_code,
+    _remote_material,
+    _unique_name,
+)
 
 
 def _aggregate_orientation(normal: Vector, rotation: float) -> Quaternion:
@@ -55,86 +61,34 @@ def _raw_aggregate(package: PContentPackage, index: int) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
-def _add_open_driver(
-    target,
-    index: int,
-    controller,
-    controller_data_path: str,
-    expression: str,
-) -> None:
-    driver = target.driver_add("rotation_euler" if index == 2 else "location", index).driver
-    driver.type = "SCRIPTED"
-    driver.expression = expression
-    variable = driver.variables.new()
-    variable.name = "open_ratio"
-    variable.type = "SINGLE_PROP"
-    variable.targets[0].id = controller
-    variable.targets[0].data_path = controller_data_path
+TransformControls = dict[
+    object,
+    dict[tuple[str, int], tuple[Any, float, float]],
+]
 
 
-def _add_dimension_driver(
+def _drive_transform(
+    controls: TransformControls,
     target,
+    channel: str,
     axis: int,
-    controller,
-    controller_data_path: str,
-    default_value: float,
+    socket,
+    *,
+    offset: float = 0.0,
+    factor: float = 1.0,
 ) -> None:
-    driver = target.driver_add("scale", axis).driver
-    driver.type = "SCRIPTED"
-    driver.expression = f"dimension/{default_value:.17g}"
-    variable = driver.variables.new()
-    variable.name = "dimension"
-    variable.type = "SINGLE_PROP"
-    variable.targets[0].id = controller
-    variable.targets[0].data_path = controller_data_path
-
-
-def _add_visibility_driver(
-    target,
-    controller,
-    controller_data_path: str,
-    default_scale: tuple[float, float, float],
-) -> None:
-    for axis, scale in enumerate(default_scale):
-        driver = target.driver_add("scale", axis).driver
-        driver.type = "SCRIPTED"
-        driver.expression = f"{scale:.17g}*enabled"
-        variable = driver.variables.new()
-        variable.name = "enabled"
-        variable.type = "SINGLE_PROP"
-        variable.targets[0].id = controller
-        variable.targets[0].data_path = controller_data_path
-
-
-def _add_mirror_drivers(
-    target,
-    controller,
-    controller_data_path: str,
-    mirror_offset: float,
-) -> None:
-    expressions = {
-        ("scale", 0): "1-2*reverse",
-        ("location", 0): f"{mirror_offset:.17g}*reverse",
-    }
-    for (property_name, axis), expression in expressions.items():
-        driver = target.driver_add(property_name, axis).driver
-        driver.type = "SCRIPTED"
-        driver.expression = expression
-        variable = driver.variables.new()
-        variable.name = "reverse"
-        variable.type = "SINGLE_PROP"
-        variable.targets[0].id = controller
-        variable.targets[0].data_path = controller_data_path
+    """Record ``offset + factor * socket`` for later Geometry Nodes compilation."""
+    controls.setdefault(target, {})[(channel, axis)] = (socket, offset, factor)
 
 
 def _apply_open_services(
     package: PContentPackage,
     *,
     prefix: tuple[int, ...],
-    controller,
-    opening_control: Callable[[dict[str, object], str], tuple[str, str]],
+    opening_control: Callable[[dict[str, object], str], tuple[Any, str]],
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
     controlled_paths: set[tuple[int, ...]],
+    transform_controls: TransformControls,
 ) -> int:
     services = package.properties.get("OpenServices", [])
     if not isinstance(services, list):
@@ -180,33 +134,35 @@ def _apply_open_services(
             )
             if abs(angle) <= 1e-12:
                 continue
-            controller_data_path, control_name = opening_control(
+            socket, control_name = opening_control(
                 service,
                 data["placement"].name,
             )
             motion.location = tuple(value * 0.001 for value in pivot)
             content.location = tuple(-value * 0.001 for value in pivot)
-            _add_open_driver(
+            _drive_transform(
+                transform_controls,
                 motion,
+                "rotation",
                 2,
-                controller,
-                controller_data_path,
-                f"{angle:.17g}*open_ratio",
+                socket,
+                factor=angle,
             )
         elif service_type == "drawer":
             distance = maximum * -0.001
             if abs(distance) <= 1e-12:
                 continue
-            controller_data_path, control_name = opening_control(
+            socket, control_name = opening_control(
                 service,
                 data["placement"].name,
             )
-            _add_open_driver(
+            _drive_transform(
+                transform_controls,
                 motion,
+                "translation",
                 1,
-                controller,
-                controller_data_path,
-                f"{distance:.17g}*open_ratio",
+                socket,
+                factor=distance,
             )
         else:
             continue
@@ -228,6 +184,7 @@ def _build_package_tree(
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
     dimension_nodes: list[dict[str, Any]] | None,
     option_nodes: list[dict[str, Any]] | None,
+    object_parents: dict[bpy.types.Object, TransformNode],
     convert_tris_to_quads: bool,
     prefix: tuple[int, ...] = (),
     current_dimensions: tuple[float, float, float] | None = None,
@@ -277,10 +234,8 @@ def _build_package_tree(
             control_label or (package.document.name if package.document else ""),
             "Entity",
         )
-        package_parent = bpy.data.objects.new(f"{label} Parameters", None)
-        package_parent.parent = parent
+        package_parent = TransformNode(f"{label} Parameters", parent)
         package_parent["mooblender_configurable_dimensions"] = len(dimensions)
-        collection.objects.link(package_parent)
         dimension_nodes.append(
             {
                 "label": control_label,
@@ -292,11 +247,11 @@ def _build_package_tree(
         document_parent = package_parent
         if document_scale != (1.0, 1.0, 1.0):
             document_name = _unique_name(package.document.name, "Aggregate")
-            document_parent = bpy.data.objects.new(f"{document_name} Geometry Scale", None)
-            document_parent.parent = package_parent
+            document_parent = TransformNode(
+                f"{document_name} Geometry Scale", package_parent
+            )
             document_parent.scale = document_scale
             document_parent["mooblender_geometry_scale"] = document_scale
-            collection.objects.link(document_parent)
         _document_root(
             package.document,
             package,
@@ -306,6 +261,7 @@ def _build_package_tree(
             cache=cache,
             material_cache=material_cache,
             convert_tris_to_quads=convert_tris_to_quads,
+            object_parents=object_parents,
             geometry_scale=document_scale,
         )
     for resolved in package.resolved_aggregates:
@@ -365,16 +321,13 @@ def _build_package_tree(
         ]
         fallback = f"Aggregate {resolved.index}"
         name = _unique_name(str(raw.get("Description") or raw.get("Id") or ""), fallback)
-        placement = bpy.data.objects.new(name, None)
-        placement.empty_display_type = "CUBE"
-        placement.parent = package_parent
+        placement = TransformNode(name, package_parent)
         placement.location = location
         placement.rotation_mode = "QUATERNION"
         placement.rotation_quaternion = orientation
         placement.scale.x = -1.0 if inverted else 1.0
         placement["mooble_specification_id"] = resolved.specification_id
         placement["promob_aggregate_index"] = resolved.index
-        collection.objects.link(placement)
         if option_nodes is not None and is_optional_aggregate(raw):
             option_nodes.append(
                 {
@@ -384,12 +337,8 @@ def _build_package_tree(
                 }
             )
 
-        motion = bpy.data.objects.new(f"{name} Opening", None)
-        motion.parent = placement
-        collection.objects.link(motion)
-        content = bpy.data.objects.new(f"{name} Content", None)
-        content.parent = motion
-        collection.objects.link(content)
+        motion = TransformNode(f"{name} Opening", placement)
+        content = TransformNode(f"{name} Content", motion)
         path = prefix + (resolved.index,)
         aggregate_nodes[path] = {
             "placement": placement,
@@ -416,6 +365,7 @@ def _build_package_tree(
             dimension_controls_enabled=(
                 dimension_controls_enabled and raw.get("Constant") is not True
             ),
+            object_parents=object_parents,
         )
 
 
@@ -429,7 +379,7 @@ def _modifier_socket_value(modifier, socket, value):
     return modifier.path_from_id(f'["{socket.identifier}"]')
 
 
-def _geometry_nodes_controller(name: str, collection, source_collection):
+def _geometry_nodes_controller(name: str, collection):
     mesh = bpy.data.meshes.new(f"{name} Geometry")
     controller = bpy.data.objects.new(name, mesh)
     collection.objects.link(controller)
@@ -455,11 +405,8 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
     realize_socket.default_value = False
     nodes = node_group.nodes
     links = node_group.links
-    collection_info = nodes.new("GeometryNodeCollectionInfo")
-    collection_info.label = "Nested Source Hierarchy"
-    collection_info.inputs["Collection"].default_value = source_collection
-    collection_info.inputs["Separate Children"].default_value = False
-    collection_info.inputs["Reset Children"].default_value = False
+    source_geometry = nodes.new("GeometryNodeJoinGeometry")
+    source_geometry.label = "Transformed Source Meshes"
     realize = nodes.new("GeometryNodeRealizeInstances")
     realize.label = "Optional Realization"
     geometry_switch = nodes.new("GeometryNodeSwitch")
@@ -468,8 +415,8 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
     group_input = nodes.new("NodeGroupInput")
     output = nodes.new("NodeGroupOutput")
     output.is_active_output = True
-    links.new(collection_info.outputs["Instances"], realize.inputs["Geometry"])
-    links.new(collection_info.outputs["Instances"], geometry_switch.inputs["False"])
+    links.new(source_geometry.outputs["Geometry"], realize.inputs["Geometry"])
+    links.new(source_geometry.outputs["Geometry"], geometry_switch.inputs["False"])
     links.new(realize.outputs["Geometry"], geometry_switch.inputs["True"])
     links.new(group_input.outputs[realize_socket.name], geometry_switch.inputs["Switch"])
     links.new(geometry_switch.outputs["Output"], output.inputs[output_socket.name])
@@ -480,6 +427,7 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
         controller,
         modifier,
         group_input,
+        source_geometry,
         realize,
         geometry_switch,
         realize_socket,
@@ -497,45 +445,127 @@ def _group_input_output(group_input, socket):
     )
 
 
-def _keep_modifier_input_active(node_group, group_input, socket) -> None:
-    """Route a driver-only input through a neutral path to the group output.
+def _rotation_euler(obj) -> tuple[float, float, float]:
+    if obj.rotation_mode == "QUATERNION":
+        return tuple(obj.rotation_quaternion.to_euler("XYZ"))
+    if obj.rotation_mode == "AXIS_ANGLE":
+        return tuple(obj.matrix_basis.to_euler("XYZ"))
+    return tuple(obj.rotation_euler)
 
-    Blender intentionally grays interface values that cannot affect an output.
-    Our controls drive source objects, outside the node tree, so a neutral
-    geometry dependency is needed to communicate that they are active.
-    """
-    output = next(node for node in node_group.nodes if node.bl_idname == "NodeGroupOutput")
-    geometry_input = next(value for value in output.inputs if value.type == "GEOMETRY")
-    source_link = geometry_input.links[0]
-    source_geometry = source_link.from_socket
-    node_group.links.remove(source_link)
-    interface_value = _group_input_output(group_input, socket)
 
-    if socket.socket_type == "NodeSocketBool":
-        dependency = node_group.nodes.new("GeometryNodeSwitch")
-        dependency.input_type = "GEOMETRY"
-        dependency.label = "Active modifier input"
-        dependency.hide = True
-        node_group.links.new(interface_value, dependency.inputs["Switch"])
-        node_group.links.new(source_geometry, dependency.inputs["False"])
-        node_group.links.new(source_geometry, dependency.inputs["True"])
-        result = dependency.outputs["Output"]
-    else:
-        zero = node_group.nodes.new("ShaderNodeMath")
-        zero.operation = "MULTIPLY"
-        zero.inputs[1].default_value = 0.0
-        zero.hide = True
-        combine = node_group.nodes.new("ShaderNodeCombineXYZ")
-        combine.hide = True
-        dependency = node_group.nodes.new("GeometryNodeTransform")
-        dependency.label = "Active modifier input"
-        dependency.hide = True
-        node_group.links.new(interface_value, zero.inputs[0])
-        node_group.links.new(zero.outputs[0], combine.inputs["X"])
-        node_group.links.new(combine.outputs["Vector"], dependency.inputs["Translation"])
-        node_group.links.new(source_geometry, dependency.inputs["Geometry"])
-        result = dependency.outputs["Geometry"]
-    node_group.links.new(result, geometry_input)
+def _affine_control_output(node_group, group_input, driven):
+    socket, offset, factor = driven
+    output = _group_input_output(group_input, socket)
+    if factor != 1.0:
+        multiply = node_group.nodes.new("ShaderNodeMath")
+        multiply.operation = "MULTIPLY"
+        multiply.inputs[1].default_value = factor
+        multiply.hide = True
+        node_group.links.new(output, multiply.inputs[0])
+        output = multiply.outputs[0]
+    if offset:
+        add = node_group.nodes.new("ShaderNodeMath")
+        add.operation = "ADD"
+        add.inputs[1].default_value = offset
+        add.hide = True
+        node_group.links.new(output, add.inputs[0])
+        output = add.outputs[0]
+    return output
+
+
+def _transform_chain(
+    obj,
+    hierarchy_root,
+    object_parents: dict[bpy.types.Object, TransformNode],
+) -> list[object]:
+    chain = []
+    current = obj
+    while current is not None:
+        chain.append(current)
+        if current == hierarchy_root:
+            break
+        current = object_parents.get(current) if current == obj else current.parent
+    if not chain or chain[-1] != hierarchy_root:
+        raise ValueError(f"source mesh {obj.name!r} is outside the import hierarchy")
+    return chain
+
+
+def _compile_geometry_nodes_hierarchy(
+    node_group,
+    group_input,
+    source_geometry,
+    source_collection,
+    hierarchy_root,
+    transform_controls: TransformControls,
+    object_parents: dict[bpy.types.Object, TransformNode],
+) -> None:
+    """Compile build-time transform records into a self-contained node graph."""
+    nodes = node_group.nodes
+    links = node_group.links
+    source_objects = list(source_collection.all_objects)
+    mesh_objects = [obj for obj in source_objects if obj.type == "MESH"]
+
+    for mesh_object in mesh_objects:
+        object_info = nodes.new("GeometryNodeObjectInfo")
+        object_info.label = mesh_object.name
+        object_info.transform_space = "ORIGINAL"
+        object_info.inputs["Object"].default_value = mesh_object
+        object_info.inputs["As Instance"].default_value = True
+        geometry = object_info.outputs["Geometry"]
+
+        for transform_object in _transform_chain(
+            mesh_object, hierarchy_root, object_parents
+        ):
+            channels = transform_controls.get(transform_object, {})
+            translation = tuple(transform_object.location)
+            rotation = _rotation_euler(transform_object)
+            scale = tuple(transform_object.scale)
+            is_identity = (
+                not channels
+                and translation == (0.0, 0.0, 0.0)
+                and rotation == (0.0, 0.0, 0.0)
+                and scale == (1.0, 1.0, 1.0)
+            )
+            if is_identity:
+                continue
+            transform = nodes.new("GeometryNodeTransform")
+            transform.label = transform_object.name
+            transform.inputs["Translation"].default_value = translation
+            transform.inputs["Rotation"].default_value = rotation
+            transform.inputs["Scale"].default_value = scale
+            links.new(geometry, transform.inputs["Geometry"])
+
+            defaults = {
+                "translation": translation,
+                "rotation": rotation,
+                "scale": scale,
+            }
+            for channel in defaults:
+                driven_axes = {
+                    axis: driven
+                    for (name, axis), driven in channels.items()
+                    if name == channel
+                }
+                if not driven_axes:
+                    continue
+                combine = nodes.new("ShaderNodeCombineXYZ")
+                combine.hide = True
+                for axis, axis_name in enumerate(("X", "Y", "Z")):
+                    combine.inputs[axis_name].default_value = defaults[channel][axis]
+                    driven = driven_axes.get(axis)
+                    if driven is not None:
+                        links.new(
+                            _affine_control_output(node_group, group_input, driven),
+                            combine.inputs[axis_name],
+                        )
+                links.new(combine.outputs["Vector"], transform.inputs[channel.title()])
+            geometry = transform.outputs["Geometry"]
+        links.new(geometry, source_geometry.inputs["Geometry"])
+
+    for mesh_object in mesh_objects:
+        mesh_object.parent = None
+        mesh_object.matrix_basis = Matrix.Identity(4)
+    node_group.interface_update(bpy.context)
 
 
 def _add_dimension_controls(
@@ -545,6 +575,7 @@ def _add_dimension_controls(
     modifier,
     group_input,
     panel,
+    transform_controls: TransformControls,
 ) -> int:
     if not dimension_nodes:
         return 0
@@ -585,9 +616,15 @@ def _add_dimension_controls(
 
     node_group.interface_update(bpy.context)
     for socket, value, target, axis in defaults:
-        _keep_modifier_input_active(node_group, group_input, socket)
-        data_path = _modifier_socket_value(modifier, socket, value)
-        _add_dimension_driver(target, axis, controller, data_path, value)
+        _modifier_socket_value(modifier, socket, value)
+        _drive_transform(
+            transform_controls,
+            target,
+            "scale",
+            axis,
+            socket,
+            factor=1.0 / value,
+        )
     node_group.interface_update(bpy.context)
     if controls:
         controller["mooblender_dimension_control_count"] = controls
@@ -601,6 +638,7 @@ def _add_visibility_controls(
     modifier,
     group_input,
     panel,
+    transform_controls: TransformControls,
 ) -> int:
     """Expose independently selectable aggregates as single-value switches."""
     if not option_nodes:
@@ -622,14 +660,16 @@ def _add_visibility_controls(
         socket.default_value = True
         socket.description = f"Show or hide {data['label']}"
         node_group.interface_update(bpy.context)
-        _keep_modifier_input_active(node_group, group_input, socket)
-        data_path = _modifier_socket_value(modifier, socket, True)
-        _add_visibility_driver(
-            data["object"],
-            controller,
-            data_path,
-            data["default_scale"],
-        )
+        _modifier_socket_value(modifier, socket, True)
+        for axis, scale in enumerate(data["default_scale"]):
+            _drive_transform(
+                transform_controls,
+                data["object"],
+                "scale",
+                axis,
+                socket,
+                factor=scale,
+            )
         controls += 1
     node_group.interface_update(bpy.context)
     controller["mooblender_option_control_count"] = controls
@@ -644,6 +684,7 @@ def _add_mirror_control(
     modifier,
     group_input,
     panel,
+    transform_controls: TransformControls,
 ) -> bool:
     """Create a whole-model X mirror control when source metadata permits it."""
     if not can_mirror(package.properties):
@@ -658,8 +699,7 @@ def _add_mirror_control(
     socket.default_value = False
     socket.description = "Mirror the complete model while preserving its footprint"
     modifier.node_group.interface_update(bpy.context)
-    _keep_modifier_input_active(modifier.node_group, group_input, socket)
-    data_path = _modifier_socket_value(modifier, socket, False)
+    _modifier_socket_value(modifier, socket, False)
     limits = package.properties.get("Limits", {})
     limits = limits if isinstance(limits, dict) else {}
     minimum = limits.get("Min", {})
@@ -671,7 +711,23 @@ def _add_mirror_control(
         evaluate_expression(minimum.get("X"), default=0.0)
         + evaluate_expression(maximum.get("X"), default=width)
     ) * 0.001
-    _add_mirror_drivers(hierarchy_root, controller, data_path, mirror_offset)
+    _drive_transform(
+        transform_controls,
+        hierarchy_root,
+        "scale",
+        0,
+        socket,
+        offset=1.0,
+        factor=-2.0,
+    )
+    _drive_transform(
+        transform_controls,
+        hierarchy_root,
+        "translation",
+        0,
+        socket,
+        factor=mirror_offset,
+    )
     controller["mooblender_can_mirror"] = True
     return True
 
@@ -1001,17 +1057,15 @@ def build_document(
         root,
         geometry_modifier,
         group_input,
+        source_geometry,
         realize,
         geometry_switch,
         realize_socket,
     ) = _geometry_nodes_controller(
         name,
         destination,
-        source_collection,
     )
-    hierarchy_root = bpy.data.objects.new(f"{name} Hierarchy", None)
-    hierarchy_root.empty_display_type = "CUBE"
-    source_collection.objects.link(hierarchy_root)
+    hierarchy_root = TransformNode(f"{name} Hierarchy")
     target_collection = source_collection
     control_name_counts: dict[str, int] = {}
     opening_panel = None
@@ -1019,7 +1073,7 @@ def build_document(
     def opening_control(
         service: dict[str, object],
         fallback: str,
-    ) -> tuple[str, str]:
+    ) -> tuple[Any, str]:
         nonlocal opening_panel
         if opening_panel is None:
             opening_panel = geometry_modifier.node_group.interface.new_panel(
@@ -1043,16 +1097,14 @@ def build_document(
         socket.max_value = 1.0
         socket.description = f"Open {base}"
         geometry_modifier.node_group.interface_update(bpy.context)
-        _keep_modifier_input_active(
-            geometry_modifier.node_group,
-            group_input,
-            socket,
-        )
-        return _modifier_socket_value(geometry_modifier, socket, 0.0), name
+        _modifier_socket_value(geometry_modifier, socket, 0.0)
+        return socket, name
 
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]] = {}
     dimension_nodes: list[dict[str, Any]] = []
     option_nodes: list[dict[str, Any]] = []
+    transform_controls: TransformControls = {}
+    object_parents: dict[bpy.types.Object, TransformNode] = {}
     cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
     if package is not None:
@@ -1066,6 +1118,7 @@ def build_document(
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
             option_nodes=option_nodes,
+            object_parents=object_parents,
             convert_tris_to_quads=convert_tris_to_quads,
         )
         _add_material_options(
@@ -1093,6 +1146,7 @@ def build_document(
             modifier=geometry_modifier,
             group_input=group_input,
             panel=options_panel,
+            transform_controls=transform_controls,
         )
         _add_mirror_control(
             package,
@@ -1101,6 +1155,7 @@ def build_document(
             modifier=geometry_modifier,
             group_input=group_input,
             panel=options_panel,
+            transform_controls=transform_controls,
         )
         open_services = 0
         controlled_paths: set[tuple[int, ...]] = set()
@@ -1115,10 +1170,10 @@ def build_document(
             open_services += _apply_open_services(
                 current,
                 prefix=prefix,
-                controller=root,
                 opening_control=opening_control,
                 aggregate_nodes=aggregate_nodes,
                 controlled_paths=controlled_paths,
+                transform_controls=transform_controls,
             )
             stack.extend(
                 (item.package, prefix + (item.index,))
@@ -1141,6 +1196,7 @@ def build_document(
             modifier=geometry_modifier,
             group_input=group_input,
             panel=parameters_panel,
+            transform_controls=transform_controls,
         )
     elif document is not None:
         _document_root(
@@ -1152,7 +1208,17 @@ def build_document(
             cache=cache,
             material_cache=material_cache,
             convert_tris_to_quads=convert_tris_to_quads,
+            object_parents=object_parents,
         )
+    _compile_geometry_nodes_hierarchy(
+        geometry_modifier.node_group,
+        group_input,
+        source_geometry,
+        source_collection,
+        hierarchy_root,
+        transform_controls,
+        object_parents,
+    )
     source_collection["mooblender_node_source"] = True
     root["promob_version"] = document.version if document is not None else 0
     if source_id:

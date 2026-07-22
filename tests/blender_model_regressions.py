@@ -26,6 +26,8 @@ from tests.blender_smoke import (  # noqa: E402
     _modifier_inputs_reaching_output,
     _remove_import,
     _set_modifier_input,
+    _source_instance_matrix,
+    _source_transform_labels,
 )
 
 
@@ -225,10 +227,11 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             and item.parent.name == "Doors and Drawers"
         }
         source = _geometry_source_collection(controller)
-        placements = {
-            obj["promob_aggregate_index"]: obj
-            for obj in source.all_objects
-            if "promob_aggregate_index" in obj
+        source_meshes = list(source.all_objects)
+        transformed_parts = {
+            label
+            for obj in source_meshes
+            for label in _source_transform_labels(controller, obj)
         }
 
         self.assertEqual(set(option_sockets), {"Tampo", "Rodapé", "Reverse"})
@@ -236,7 +239,16 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             all(socket.structure_type == "SINGLE" for socket in option_sockets.values())
         )
         self.assertEqual(opening_sockets, {"Porta"})
-        self.assertEqual(set(placements), {0, 1, 2})
+        self.assertTrue(
+            all(
+                any(label.startswith(part) for label in transformed_parts)
+                for part in ("Porta", "Tampo", "Rodapé")
+            )
+        )
+        self.assertFalse(
+            any(label.startswith("Porta Inferior") for label in transformed_parts)
+        )
+        self.assertTrue(all(obj.type == "MESH" for obj in source_meshes))
         self.assertEqual(controller["mooblender_option_control_count"], 2)
         self.assertEqual(controller["mooblender_open_service_count"], 1)
         active_inputs = _modifier_inputs_reaching_output(modifier.node_group)
@@ -245,18 +257,50 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         )
 
         _set_modifier_input(modifier, option_sockets["Rodapé"], False)
-        self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (0, 0, 0))
-        _set_modifier_input(modifier, option_sockets["Rodapé"], True)
-        self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (1, 1, 1))
-
-        hierarchy_root = next(
+        baseboard_mesh = next(
             obj
-            for obj in source.objects
-            if obj.parent is None and obj.name.endswith("Hierarchy")
+            for obj in source_meshes
+            if "Rodapé" in _source_transform_labels(controller, obj)
         )
+        self.assertEqual(
+            tuple(
+                round(value, 6)
+                for value in _source_instance_matrix(
+                    controller, baseboard_mesh
+                ).to_scale()
+            ),
+            (0, 0, 0),
+        )
+        _set_modifier_input(modifier, option_sockets["Rodapé"], True)
+        self.assertEqual(
+            tuple(
+                round(value, 6)
+                for value in _source_instance_matrix(
+                    controller, baseboard_mesh
+                ).to_scale()
+            ),
+            (1, 1, 1),
+        )
+
+        door_mesh = next(
+            obj
+            for obj in source_meshes
+            if any(
+                label.startswith("Porta")
+                for label in _source_transform_labels(controller, obj)
+            )
+        )
+        baseline_matrix = _source_instance_matrix(controller, door_mesh)
+        baseline_points = [baseline_matrix @ vertex.co for vertex in door_mesh.data.vertices]
         _set_modifier_input(modifier, option_sockets["Reverse"], True)
-        self.assertEqual(tuple(round(value, 6) for value in hierarchy_root.scale), (-1, 1, 1))
-        self.assertAlmostEqual(hierarchy_root.location.x, 0.79)
+        reverse_matrix = _source_instance_matrix(controller, door_mesh)
+        reversed_points = [reverse_matrix @ vertex.co for vertex in door_mesh.data.vertices]
+        for baseline, reversed_point in zip(
+            baseline_points, reversed_points, strict=True
+        ):
+            self.assertAlmostEqual(reversed_point.x, 0.79 - baseline.x)
+            self.assertAlmostEqual(reversed_point.y, baseline.y)
+            self.assertAlmostEqual(reversed_point.z, baseline.z)
 
     def test_modifier_keeps_nested_instances_until_top_option_realizes_them(self):
         controller = self._build(_part_package("Instance hierarchy"), "Instances")
@@ -265,15 +309,18 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         realize_socket = next(
             item for item in interface_items if item.name == "Realize Instances"
         )
-        collection_info = next(
+        source_join = next(
             node
             for node in modifier.node_group.nodes
-            if node.bl_idname == "GeometryNodeCollectionInfo"
+            if node.bl_idname == "GeometryNodeJoinGeometry"
+            and node.label == "Transformed Source Meshes"
         )
 
         self.assertFalse(realize_socket.default_value)
-        self.assertFalse(collection_info.inputs["Separate Children"].default_value)
-        self.assertFalse(collection_info.inputs["Reset Children"].default_value)
+        self.assertGreaterEqual(len(source_join.inputs["Geometry"].links), 1)
+        self.assertFalse(
+            any(obj.type == "EMPTY" for obj in _geometry_source_collection(controller).all_objects)
+        )
         depsgraph = bpy.context.evaluated_depsgraph_get()
         depsgraph.update()
         instances = [
@@ -283,7 +330,10 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             and item.parent is not None
             and item.parent.original == controller
         ]
-        self.assertGreaterEqual(len(instances), 2)
+        self.assertEqual(
+            len(instances),
+            len(_geometry_source_collection(controller).all_objects),
+        )
         evaluated = controller.evaluated_get(depsgraph)
         self.assertEqual(len(evaluated.to_mesh().polygons), 0)
         evaluated.to_mesh_clear()

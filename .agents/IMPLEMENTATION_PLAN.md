@@ -112,8 +112,9 @@ Implemented follow-up work:
   uncached cards are requested, queued stale batches are cancelled when
   possible, and newly visible work is not trapped behind one old batch.
 - Geometry Nodes imports link only their controller object to the scene. Source
-  meshes and helper empties remain in a node-referenced, scene-unlinked
-  collection, preserving procedural behavior without polluting the Outliner.
+  meshes remain in a scene-unlinked collection and are referenced by Object
+  Info nodes. Static and controlled transforms are compiled into Transform
+  Geometry nodes; no helper empties or transform drivers are created.
 
 Remaining exit work:
 
@@ -165,7 +166,7 @@ geometry, hierarchy, transforms, materials, and animation independently.
   from their Mooble component localization and retain a Door/Drawer prefix when
   the localization is only ordinal or directional. Bind services to exact
   aggregate paths and collapse alternate service records so each movable
-  component owns one single-value input and driver.
+  component owns one single-value input connected to its node transform.
 - Resolve model-information visibility tokens from the package's selected
   `References.ModelsId` entry. Expose nonconstant `Concurrent` aggregate
   components as independent, default-enabled Boolean controls in an **Options**
@@ -176,8 +177,8 @@ geometry, hierarchy, transforms, materials, and animation independently.
   Suppress those controls below a `Constant` aggregate edge.
 - Import one visible Geometry Nodes object directly into the active collection;
   keep the node source collection unlinked and create no visible import wrapper.
-- Preserve that collection's nested instances by default and expose an explicit
-  top-level realization switch. Keep material menus immediately below it, with
+- Preserve source meshes as transformed instances by default and expose an
+  explicit top-level realization switch. Keep material menus immediately below it, with
   opening and configurable-size controls separated into named interface panels.
 - Convert multi-option model finish groups into named Geometry Nodes menu inputs
   that assign the resolved material by PMob layer and package scope; apply the

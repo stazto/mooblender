@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import bpy
+from mathutils import Matrix, Vector
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -49,16 +50,18 @@ def _set_modifier_input(modifier, socket, value) -> None:
 def _remove_import(controller) -> None:
     modifier = controller.modifiers.get("Mooblender")
     node_groups = {modifier.node_group} if modifier and modifier.node_group else set()
-    source_collections = {
-        node.inputs["Collection"].default_value
+    source_objects = {
+        node.inputs["Object"].default_value
         for node_group in node_groups
         for node in node_group.nodes
-        if node.bl_idname == "GeometryNodeCollectionInfo"
-        and node.inputs["Collection"].default_value is not None
+        if node.bl_idname == "GeometryNodeObjectInfo"
+        and node.inputs["Object"].default_value is not None
+    }
+    source_collections = {
+        collection for obj in source_objects for collection in obj.users_collection
     }
     objects = {controller}
-    for source_collection in source_collections:
-        objects.update(source_collection.all_objects)
+    objects.update(source_objects)
     meshes = {obj.data for obj in objects if obj.type == "MESH"}
     materials = {
         material
@@ -85,17 +88,85 @@ def _geometry_source_collection(controller):
     modifier = controller.modifiers.get("Mooblender")
     if modifier is None or modifier.node_group is None:
         raise AssertionError("Geometry Nodes controller has no Mooblender node group")
-    source = next(
+    source_object = next(
         (
-            node.inputs["Collection"].default_value
+            node.inputs["Object"].default_value
             for node in modifier.node_group.nodes
-            if node.bl_idname == "GeometryNodeCollectionInfo"
+            if node.bl_idname == "GeometryNodeObjectInfo"
         ),
         None,
     )
-    if source is None:
+    if source_object is None or not source_object.users_collection:
         raise AssertionError("Mooblender node group has no source collection")
-    return source
+    return source_object.users_collection[0]
+
+
+def _realized_points(controller):
+    modifier = controller.modifiers["Mooblender"]
+    realize_socket = next(
+        item
+        for item in modifier.node_group.interface.items_tree
+        if item.item_type == "SOCKET" and item.name == "Realize Instances"
+    )
+    interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
+    previous = (
+        getattr(interface_inputs, realize_socket.identifier).value
+        if interface_inputs is not None
+        and hasattr(interface_inputs, realize_socket.identifier)
+        else modifier.get(realize_socket.identifier, realize_socket.default_value)
+    )
+    _set_modifier_input(modifier, realize_socket, True)
+    evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh()
+    points = [Vector(vertex.co) for vertex in mesh.vertices]
+    evaluated.to_mesh_clear()
+    _set_modifier_input(modifier, realize_socket, previous)
+    return points
+
+
+def _source_instance_matrix(controller, source_object):
+    modifier = controller.modifiers["Mooblender"]
+    realize_socket = next(
+        item
+        for item in modifier.node_group.interface.items_tree
+        if item.item_type == "SOCKET" and item.name == "Realize Instances"
+    )
+    interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
+    previous = (
+        getattr(interface_inputs, realize_socket.identifier).value
+        if interface_inputs is not None
+        and hasattr(interface_inputs, realize_socket.identifier)
+        else modifier.get(realize_socket.identifier, realize_socket.default_value)
+    )
+    _set_modifier_input(modifier, realize_socket, False)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    for instance in depsgraph.object_instances:
+        original = getattr(instance.instance_object, "original", None)
+        if instance.is_instance and original == source_object:
+            matrix = instance.matrix_world.copy()
+            _set_modifier_input(modifier, realize_socket, previous)
+            return matrix
+    _set_modifier_input(modifier, realize_socket, previous)
+    raise AssertionError(f"no Geometry Nodes instance found for {source_object.name}")
+
+
+def _source_transform_labels(controller, source_object) -> set[str]:
+    node_group = controller.modifiers["Mooblender"].node_group
+    node = next(
+        node
+        for node in node_group.nodes
+        if node.bl_idname == "GeometryNodeObjectInfo"
+        and node.inputs["Object"].default_value == source_object
+    )
+    labels = set()
+    output = node.outputs["Geometry"]
+    while output.links:
+        node = output.links[0].to_node
+        if node.bl_idname != "GeometryNodeTransform":
+            break
+        labels.add(node.label)
+        output = node.outputs["Geometry"]
+    return labels
 
 
 def _modifier_inputs_reaching_output(node_group) -> set[str]:
@@ -518,10 +589,7 @@ def main() -> None:
         ]
         if len(orientation_meshes) != 1:
             raise AssertionError("aggregate VisibleCondition did not hide its alternate")
-        orientation_points = [
-            orientation_meshes[0].matrix_world @ vertex.co
-            for vertex in orientation_meshes[0].data.vertices
-        ]
+        orientation_points = _realized_points(orientation_controller)
         orientation_extents = tuple(
             max(point[axis] for point in orientation_points)
             - min(point[axis] for point in orientation_points)
@@ -852,6 +920,7 @@ def main() -> None:
             resolved_materials={"root-finish": root_material},
         )
         collection_count = len(bpy.data.collections)
+        empty_count = sum(obj.type == "EMPTY" for obj in bpy.data.objects)
         controller = build_document(
             package,
             bpy.context,
@@ -862,11 +931,19 @@ def main() -> None:
             raise AssertionError("Geometry Nodes import did not create one scene object")
         if len(bpy.data.collections) != collection_count + 1:
             raise AssertionError("Geometry Nodes import created a visible import collection")
+        if sum(obj.type == "EMPTY" for obj in bpy.data.objects) != empty_count:
+            raise AssertionError("Geometry Nodes import created helper empties")
         if any(
             tuple(obj.users_collection) != (source_collection,)
             for obj in source_collection.all_objects
         ):
             raise AssertionError("Geometry Nodes helper is linked outside its node source")
+        if any(
+            obj.parent is not None
+            or obj.matrix_basis != Matrix.Identity(4)
+            for obj in source_collection.all_objects
+        ):
+            raise AssertionError("source meshes retained transforms outside Geometry Nodes")
         obj = next(
             obj
             for obj in source_collection.all_objects
@@ -887,8 +964,11 @@ def main() -> None:
                 "cubic UVs do not represent final physical dimensions: "
                 f"{static_uv_extents}"
             )
-        world_vertex = obj.matrix_world @ obj.data.vertices[1].co
-        if tuple(round(value, 5) for value in world_vertex) != (2.0, 0.0, 0.0):
+        realized_points = _realized_points(controller)
+        if not any(
+            tuple(round(value, 5) for value in point) == (2.0, 0.0, 0.0)
+            for point in realized_points
+        ):
             raise AssertionError("scene builder did not apply PMob units and root transform")
         image_nodes = [
             node
@@ -935,8 +1015,17 @@ def main() -> None:
             and node.label == "Keep Instances / Realize"
         )
         false_source = geometry_switch.inputs["False"].links[0].from_node
-        if false_source.bl_idname != "GeometryNodeCollectionInfo":
-            raise AssertionError("the default Geometry Nodes branch lost its hierarchy")
+        if false_source.bl_idname != "GeometryNodeJoinGeometry":
+            raise AssertionError("the default Geometry Nodes branch lost its mesh instances")
+        if any(obj.type == "EMPTY" for obj in source_collection.all_objects):
+            raise AssertionError("the node source still contains helper empties")
+        object_info_sources = {
+            node.inputs["Object"].default_value
+            for node in modifier.node_group.nodes
+            if node.bl_idname == "GeometryNodeObjectInfo"
+        }
+        if object_info_sources != set(source_collection.all_objects):
+            raise AssertionError("source meshes are not referenced directly by Geometry Nodes")
         depsgraph = bpy.context.evaluated_depsgraph_get()
         depsgraph.update()
         source_instances = [
@@ -958,19 +1047,13 @@ def main() -> None:
         evaluated_mesh = evaluated.to_mesh()
         if len(evaluated_mesh.polygons) != 5:
             raise AssertionError("single-object Geometry Nodes import is not producing geometry")
-        child_placement = next(
-            obj
-            for obj in source_collection.all_objects
-            if obj.get("promob_aggregate_index") == 0 and obj.name == "Child"
-        )
-        if round(child_placement.location.y, 3) != -1.0:
-            raise AssertionError("aggregate expressions did not use the logical parent size")
         handle = next(
             obj
             for obj in source_collection.all_objects
             if obj.type == "MESH" and obj.get("promob_layer") == "Handle"
         )
-        handle_points = [handle.matrix_world @ vertex.co for vertex in handle.data.vertices]
+        handle_matrix = _source_instance_matrix(controller, handle)
+        handle_points = [handle_matrix @ vertex.co for vertex in handle.data.vertices]
         handle_width = max(point.x for point in handle_points) - min(
             point.x for point in handle_points
         )
@@ -979,10 +1062,11 @@ def main() -> None:
         child_panel = next(
             obj
             for obj in source_collection.all_objects
-            if obj.type == "MESH" and obj.parent.name == "Child Compatibility"
+            if obj.type == "MESH" and obj.name.startswith("Child Compatibility")
         )
+        panel_matrix = _source_instance_matrix(controller, child_panel)
         panel_points = [
-            child_panel.matrix_world @ vertex.co for vertex in child_panel.data.vertices
+            panel_matrix @ vertex.co for vertex in child_panel.data.vertices
         ]
         panel_width = max(point.x for point in panel_points) - min(
             point.x for point in panel_points
@@ -999,9 +1083,8 @@ def main() -> None:
             for obj in source_collection.all_objects
             if obj.type == "MESH" and obj.get("promob_layer") == "Top Trim"
         )
-        trim_points = [
-            top_trim.matrix_world @ vertex.co for vertex in top_trim.data.vertices
-        ]
+        trim_matrix = _source_instance_matrix(controller, top_trim)
+        trim_points = [trim_matrix @ vertex.co for vertex in top_trim.data.vertices]
         trim_bounds = (
             min(point.y for point in trim_points),
             max(point.y for point in trim_points),
@@ -1123,29 +1206,53 @@ def main() -> None:
                 for value, target in zip(observed, expected, strict=True)
             ):
                 raise AssertionError(f"dimension range is invalid for {name}: {observed}")
-        motions = {
-            obj.get("mooblender_open_service"): obj
-            for obj in source_collection.all_objects
-            if obj.get("mooblender_open_service")
+        source_meshes = list(source_collection.all_objects)
+        external_mesh = next(
+            obj
+            for obj in source_meshes
+            if "Child Opening" in _source_transform_labels(controller, obj)
+            and "Nested Opening" not in _source_transform_labels(controller, obj)
+        )
+        internal_mesh = next(
+            obj
+            for obj in source_meshes
+            if {"Child Opening", "Nested Opening"}
+            <= _source_transform_labels(controller, obj)
+        )
+        fixed_mesh = next(
+            obj
+            for obj in source_meshes
+            if "Child Opening" not in _source_transform_labels(controller, obj)
+        )
+        baseline_y = {
+            obj: _source_instance_matrix(controller, obj).translation.y
+            for obj in (external_mesh, internal_mesh, fixed_mesh)
         }
         _set_modifier_input(modifier, control_sockets["Gaveta externa"], 1.0)
-        external_y = motions["Gaveta externa"].evaluated_get(
-            bpy.context.evaluated_depsgraph_get()
-        ).location.y
-        internal_y = motions["Gaveta interna"].evaluated_get(
-            bpy.context.evaluated_depsgraph_get()
-        ).location.y
-        if round(external_y, 3) != -0.1 or round(internal_y, 3) != 0.0:
+        moved_external = {
+            obj: _source_instance_matrix(controller, obj).translation.y
+            for obj in (external_mesh, internal_mesh, fixed_mesh)
+        }
+        if (
+            round(moved_external[external_mesh] - baseline_y[external_mesh], 3)
+            != -0.1
+            or round(moved_external[internal_mesh] - baseline_y[internal_mesh], 3)
+            != -0.1
+            or round(moved_external[fixed_mesh] - baseline_y[fixed_mesh], 3) != 0.0
+        ):
             raise AssertionError("one opening control moved more than its own component")
         _set_modifier_input(modifier, control_sockets["Gaveta externa"], 0.0)
         _set_modifier_input(modifier, control_sockets["Gaveta interna"], 1.0)
-        external_y = motions["Gaveta externa"].evaluated_get(
-            bpy.context.evaluated_depsgraph_get()
-        ).location.y
-        internal_y = motions["Gaveta interna"].evaluated_get(
-            bpy.context.evaluated_depsgraph_get()
-        ).location.y
-        if round(external_y, 3) != 0.0 or round(internal_y, 3) != -0.05:
+        moved_internal = {
+            obj: _source_instance_matrix(controller, obj).translation.y
+            for obj in (external_mesh, internal_mesh, fixed_mesh)
+        }
+        if (
+            round(moved_internal[external_mesh] - baseline_y[external_mesh], 3) != 0.0
+            or round(moved_internal[internal_mesh] - baseline_y[internal_mesh], 3)
+            != -0.05
+            or round(moved_internal[fixed_mesh] - baseline_y[fixed_mesh], 3) != 0.0
+        ):
             raise AssertionError("nested opening control is not independent")
         _set_modifier_input(modifier, control_sockets["Gaveta interna"], 0.0)
 
