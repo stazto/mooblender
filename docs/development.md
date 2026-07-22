@@ -89,9 +89,28 @@ content, or unrelated desktop areas.
 ## GitHub Pages
 
 `.github/workflows/docs.yml` builds every documentation pull request with
-warnings as errors. A push to `main` that changes the documentation builds and
-uploads the HTML artifact, then deploys it through the protected
-`github-pages` environment.
+warnings as errors. Every commit and merge into `main` publishes the resulting
+manual under `/dev`. Publishing a GitHub release from a `vN.N.N` tag publishes
+the same build to `/vN.N.N`, `/stable`, and `/latest`. The site root presents a
+version selector, and previously published version directories remain
+available.
+
+`build_documentation_site.py` performs the directory updates and validates that
+a release tag matches the extension manifest. The workflow stores the complete
+site on the machine-managed `docs-site` branch before creating the Pages
+artifact. Do not edit that branch by hand: source documentation belongs in
+`docs/` on `main`. The automated release job explicitly dispatches this
+publication after creating its GitHub release; manually published releases use
+the `release.published` trigger.
+
+Published URLs follow this layout:
+
+| URL | Contents |
+| --- | --- |
+| `/dev/` | Most recent successful build from `main` |
+| `/stable/` | Recommended published release |
+| `/latest/` | Most recently published release |
+| `/vN.N.N/` | Documentation for that exact release |
 
 Repository administrators must select **GitHub Actions** once under
 **Settings → Pages → Build and deployment → Source**. The workflow uses the

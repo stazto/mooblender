@@ -7,7 +7,7 @@ tagline = "Browse Mooble and import configurable Promob models"
 maintainer = "Dante Dex <dante.dex.arch@gmail.com>"
 type = "add-on"
 
-website = "https://dantedex.github.io/mooblender/"
+website = "https://dantedex.github.io/mooblender/stable/"
 tags = ["Import-Export", "3D View"]
 blender_version_min = "4.5.0"
 license = ["SPDX:GPL-3.0-or-later"]

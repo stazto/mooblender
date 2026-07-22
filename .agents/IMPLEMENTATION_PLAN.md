@@ -31,6 +31,8 @@ Deliverables:
 - Deterministic, standard-library-only Blender extension ZIP builder.
 - GitHub Actions coverage for Ruff, the supported Python matrix, packaging,
   artifact upload, and one isolated live Mooble health check.
+- Versioned GitHub Pages publication with `/dev` for `main` and `/latest`,
+  `/stable`, and `/vN.N.N` snapshots for published releases.
 
 Exit evidence: Ruff and offline test discovery pass from the repository root;
 two consecutive builds have the same SHA-256 digest; the opt-in Mooble health

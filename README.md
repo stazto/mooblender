@@ -1,6 +1,6 @@
 # Mooblender
 
-[Documentation](https://dantedex.github.io/mooblender/) ·
+[Documentation](https://dantedex.github.io/mooblender/stable/) ·
 [Source](https://github.com/dantedex/mooblender) ·
 [License](LICENSE.md)
 
@@ -70,7 +70,7 @@ transform hierarchy is encoded in the node graph, without helper empties.
 > below **Sync Catalog**. **Cancel Sync** safely discards incomplete work, and
 > the previous cached catalog stays available.
 
-See the [documentation](https://dantedex.github.io/mooblender/) for
+See the [stable documentation](https://dantedex.github.io/mooblender/stable/) for
 installation, catalog navigation, configuration, troubleshooting, format
 references, and contributor workflows.
 
@@ -85,7 +85,7 @@ e-commerce. The interactive application is the
 [Promob](https://promob.com/) provides software for the furniture industry,
 connecting design, quoting, production, sales, and management. Its official
 company page identifies the business as **Promob | A Cyncly Company**. See the
-[project credits](https://dantedex.github.io/mooblender/credits.html) for a
+[project credits](https://dantedex.github.io/mooblender/stable/credits.html) for a
 longer description, official links, ownership context, and trademark notice.
 
 ## Documentation
@@ -97,9 +97,11 @@ python3 -m pip install --requirement docs/requirements.txt
 python3 -m sphinx -W --keep-going -b html docs docs/_build/html
 ```
 
-GitHub Actions validates documentation changes and deploys `main` to GitHub
-Pages. Screenshot placement notes are kept as comments beside the relevant
-user-guide steps.
+GitHub Actions validates documentation changes. Every commit or merge into
+`main` updates the [development manual](https://dantedex.github.io/mooblender/dev/).
+A published release updates `/stable`, `/latest`, and its permanent
+`/vN.N.N` URL. Screenshot placement notes are kept as comments beside the
+relevant user-guide steps.
 
 ## Development
 

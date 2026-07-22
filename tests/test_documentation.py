@@ -134,9 +134,41 @@ class DocumentationTests(unittest.TestCase):
 
         self.assertIn("python -m sphinx -W --keep-going", workflow)
         self.assertIn("actions/upload-pages-artifact@v4", workflow)
-        self.assertIn("actions/deploy-pages@v4", workflow)
-        self.assertIn("needs: build", workflow)
+        self.assertIn("actions/deploy-pages@v5", workflow)
+        self.assertIn("needs: publish", workflow)
         self.assertIn("github.ref == 'refs/heads/main'", workflow)
+
+    def test_pages_workflow_publishes_main_and_release_channels(self) -> None:
+        workflow = (PROJECT_ROOT / ".github" / "workflows" / "docs.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("types: [published]", workflow)
+        self.assertIn("group: documentation-pages", workflow)
+        self.assertIn("--channel dev", workflow)
+        self.assertIn("--channel release", workflow)
+        self.assertIn("github.event.release.tag_name", workflow)
+        self.assertIn("docs-site", workflow)
+        self.assertIn("actions/upload-artifact@v7", workflow)
+        self.assertIn("actions/download-artifact@v8", workflow)
+        self.assertIn("inputs.release_tag", workflow)
+
+        push_section = workflow.split("pull_request:", maxsplit=1)[0]
+        self.assertNotIn("paths:", push_section)
+
+        release_workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('gh workflow run docs.yml --ref main -f release_tag=', release_workflow)
+
+    def test_public_documentation_links_to_versioned_channels(self) -> None:
+        readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+        development = (DOCS_ROOT / "development.md").read_text(encoding="utf-8")
+
+        self.assertIn("https://dantedex.github.io/mooblender/stable/", readme)
+        for channel in ("/dev/", "/stable/", "/latest/", "/vN.N.N/"):
+            with self.subTest(channel=channel):
+                self.assertIn(channel, development)
 
 
 if __name__ == "__main__":

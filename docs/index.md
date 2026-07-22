@@ -30,6 +30,12 @@ respective owners.
 - Keep the Blender scene tidy: source geometry stays unlinked while one
   controller object appears in the active collection.
 
+The online manual is published as
+[stable](https://dantedex.github.io/mooblender/stable/),
+[latest](https://dantedex.github.io/mooblender/latest/), and
+[development](https://dantedex.github.io/mooblender/dev/) channels. Released
+manuals also remain available at versioned `/vN.N.N/` URLs.
+
 Mooblender does not reproduce the full Mooble planner or Promob application. It
 focuses on catalog discovery and faithful asset transfer into Blender. It also
 does not bypass accounts, licenses, regional availability, or service access

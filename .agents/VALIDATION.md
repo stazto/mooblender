@@ -84,6 +84,11 @@ only whether the configured public endpoint still responds.
 - Structural tests keep the rendered manual independent from private agent
   notes, require privacy-aware screenshot instructions, and verify that Pages
   deployment consumes a successful strict documentation build.
+- Pages publication is persistent and versioned: every successful `main` build
+  replaces only `/dev`, while a published `vN.N.N` release replaces `/latest`,
+  `/stable`, and `/vN.N.N`. Synthetic filesystem tests prove that unrelated
+  release directories survive both update modes and that tags must match the
+  extension manifest.
 - The public format references describe reusable format traits and unknowns;
   product-specific regression evidence remains in these internal validation
   notes and executable synthetic tests.
