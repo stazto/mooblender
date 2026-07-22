@@ -17,7 +17,8 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
   side-attached handles inside their drawer fronts.
 - C67 resolves its active `TIPO=P1` model information to the matching door and
   exposes independent **Tampo** and **Rodapé** switches without treating its
-  constant door as optional.
+  constant door as optional. Its `CANMIRROR` flag adds a **Reverse** switch that
+  reflects the complete 790 mm footprint in place.
 - Porta de Giro 31 and Porta de Correr 21 resolve long-form parent-dimension
   variables. ELA-2 keeps opposing lift carriages consistently oriented above
   their anchors.

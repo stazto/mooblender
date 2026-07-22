@@ -97,6 +97,11 @@ control keeps the source hierarchy intact and drives only that aggregate
 instance's visibility. In the observed C67 package, **Tampo** and **Rodapé**
 therefore receive separate controls, while the constant door does not.
 
+The root `Attributes.CANMIRROR.VALUE` flag exposes whole-model reversal. The
+**Reverse** control reflects X around the midpoint reported by `Limits.Min` and
+`Limits.Max`, preserving the insertion footprint instead of moving the model
+to negative coordinates. The observed C67 uses a 0–790 mm X footprint.
+
 Some fixed hardware is flattened into the same PMob document as a resizable
 panel. In the observed 728 door, `Models.Components` marks `PUXADOR` with
 `Edit: false`; its geometry spans the door width but only a small fraction of

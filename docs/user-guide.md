@@ -52,7 +52,8 @@ Modifier controls are ordered as follows:
    labels contain only the part name, such as **Tampo**, without a redundant
    `Finish:` or `Acabamento` prefix.
 3. **Options** contains default-enabled switches for independently selectable
-   components such as worktops and baseboards.
+   components such as worktops and baseboards. Models marked as mirrorable also
+   receive a **Reverse** switch that mirrors the full hierarchy in place.
 4. **Doors and Drawers** contains independent 0–1 controls for movable parts.
 5. **Parameters** contains editable insertion dimensions such as **Largura** and
    **Profundidade**, including their source limits.

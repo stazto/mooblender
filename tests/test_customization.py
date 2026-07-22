@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from mooblender.model.customization import (
+    can_mirror,
     is_optional_aggregate,
     selected_model_information,
 )
@@ -58,6 +59,14 @@ class CustomizationTests(unittest.TestCase):
             is_optional_aggregate({"Concurrent": True, "AlwaysVisible": True})
         )
         self.assertFalse(is_optional_aggregate({"Concurrent": False}))
+
+    def test_canmirror_attribute_enables_whole_model_reversal(self):
+        self.assertTrue(
+            can_mirror({"Attributes": {"CANMIRROR": {"VALUE": "True"}}})
+        )
+        self.assertFalse(
+            can_mirror({"Attributes": {"CANMIRROR": {"VALUE": "False"}}})
+        )
 
 
 if __name__ == "__main__":

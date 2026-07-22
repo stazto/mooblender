@@ -141,6 +141,11 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             document=None,
             properties={
                 "Dimension": {"Width": 790, "Depth": 790, "Height": 820},
+                "Limits": {
+                    "Min": {"X": 0, "Y": -790, "Z": 0},
+                    "Max": {"X": 790, "Y": 0, "Z": 820},
+                },
+                "Attributes": {"CANMIRROR": {"VALUE": "True"}},
                 "Models": [
                     {
                         "Id": "coz_bal|plain",
@@ -225,7 +230,7 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             if "promob_aggregate_index" in obj
         }
 
-        self.assertEqual(set(option_sockets), {"Tampo", "Rodapé"})
+        self.assertEqual(set(option_sockets), {"Tampo", "Rodapé", "Reverse"})
         self.assertTrue(
             all(socket.structure_type == "SINGLE" for socket in option_sockets.values())
         )
@@ -238,6 +243,15 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (0, 0, 0))
         _set_modifier_input(modifier, option_sockets["Rodapé"], True)
         self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (1, 1, 1))
+
+        hierarchy_root = next(
+            obj
+            for obj in source.objects
+            if obj.parent is None and obj.name.endswith("Hierarchy")
+        )
+        _set_modifier_input(modifier, option_sockets["Reverse"], True)
+        self.assertEqual(tuple(round(value, 6) for value in hierarchy_root.scale), (-1, 1, 1))
+        self.assertAlmostEqual(hierarchy_root.location.x, 0.79)
 
     def test_modifier_keeps_nested_instances_until_top_option_realizes_them(self):
         controller = self._build(_part_package("Instance hierarchy"), "Instances")

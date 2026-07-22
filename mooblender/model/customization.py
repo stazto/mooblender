@@ -64,3 +64,14 @@ def is_optional_aggregate(aggregate: Mapping[str, object]) -> bool:
         and aggregate.get("Constant") is not True
         and aggregate.get("AlwaysVisible") is not True
     )
+
+
+def can_mirror(properties: Mapping[str, object]) -> bool:
+    """Return whether the package exposes Promob's whole-model mirror option."""
+    attributes = properties.get("Attributes", {})
+    if not isinstance(attributes, Mapping):
+        return False
+    value = attributes.get("CANMIRROR")
+    if isinstance(value, Mapping):
+        value = value.get("VALUE")
+    return value is True or (isinstance(value, str) and value.casefold() == "true")

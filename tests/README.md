@@ -16,7 +16,7 @@ geometry responsible for each failure:
 | 728 stretching, fixed handles, generated UVs | dimension and opening primitives | resized panel/hardware/UV checks in `blender_smoke.py` |
 | PE27 width and depth controls | `test_pe27_exposes_width_and_depth_but_not_fixed_height` | axis-specific modifier resizing in `blender_smoke.py` |
 | R678 fixed door and black handle | `test_r678_constant_door_metadata_is_distinct_from_variable_dimensions` | `test_r678_constant_door_only_exposes_opening_and_keeps_black_handle` |
-| C67 model-selected door and optional Tampo/Rodapé | `test_customization.py` and `test_model_information_selects_conditional_aggregate` | `test_c67_imports_selected_door_and_exposes_optional_components` |
+| C67 model-selected door, Tampo/Rodapé, and reversal | `test_customization.py` and `test_model_information_selects_conditional_aggregate` | `test_c67_imports_selected_door_and_exposes_optional_components` |
 | SUP01.0003 drawer alternatives | `test_sup01_0003_selects_only_one_drawer_body_variant` | aggregate visibility in `blender_smoke.py` |
 | 44950/007 drawing-depth placement | `test_44950_007_positions_drawers_from_drawing_depth_not_mesh_envelope` | aggregate parent-dimension placement in `blender_smoke.py` |
 | 10122 side-attached handles | `test_10122_handle_source_dimensions_include_primitive_transforms` | `test_10122_side_normal_rotation_keeps_local_front_height_positive` |

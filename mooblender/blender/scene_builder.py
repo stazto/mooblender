@@ -11,7 +11,11 @@ import bpy
 from mathutils import Matrix, Quaternion, Vector
 
 from ..formats.pcontent import PContentPackage
-from ..model.customization import is_optional_aggregate, selected_model_information
+from ..model.customization import (
+    can_mirror,
+    is_optional_aggregate,
+    selected_model_information,
+)
 from ..model.dimensions import (
     configurable_dimensions,
     dimension_variables,
@@ -97,6 +101,27 @@ def _add_visibility_driver(
         driver.expression = f"{scale:.17g}*enabled"
         variable = driver.variables.new()
         variable.name = "enabled"
+        variable.type = "SINGLE_PROP"
+        variable.targets[0].id = controller
+        variable.targets[0].data_path = controller_data_path
+
+
+def _add_mirror_drivers(
+    target,
+    controller,
+    controller_data_path: str,
+    mirror_offset: float,
+) -> None:
+    expressions = {
+        ("scale", 0): "1-2*reverse",
+        ("location", 0): f"{mirror_offset:.17g}*reverse",
+    }
+    for (property_name, axis), expression in expressions.items():
+        driver = target.driver_add(property_name, axis).driver
+        driver.type = "SCRIPTED"
+        driver.expression = expression
+        variable = driver.variables.new()
+        variable.name = "reverse"
         variable.type = "SINGLE_PROP"
         variable.targets[0].id = controller
         variable.targets[0].data_path = controller_data_path
@@ -579,6 +604,46 @@ def _add_visibility_controls(
     return controls
 
 
+def _add_mirror_control(
+    package: PContentPackage,
+    *,
+    hierarchy_root,
+    controller,
+    modifier,
+    group_input,
+    panel,
+) -> bool:
+    """Create a whole-model X mirror control when source metadata permits it."""
+    if not can_mirror(package.properties):
+        return False
+    socket = modifier.node_group.interface.new_socket(
+        name="Reverse",
+        in_out="INPUT",
+        socket_type="NodeSocketBool",
+        parent=panel,
+    )
+    _make_socket_single_value(socket)
+    socket.default_value = False
+    socket.description = "Mirror the complete model while preserving its footprint"
+    modifier.node_group.interface_update(bpy.context)
+    _keep_modifier_input_active(modifier.node_group, group_input, socket)
+    data_path = _modifier_socket_value(modifier, socket, False)
+    limits = package.properties.get("Limits", {})
+    limits = limits if isinstance(limits, dict) else {}
+    minimum = limits.get("Min", {})
+    maximum = limits.get("Max", {})
+    minimum = minimum if isinstance(minimum, dict) else {}
+    maximum = maximum if isinstance(maximum, dict) else {}
+    width = property_dimensions(package.properties)[0]
+    mirror_offset = (
+        evaluate_expression(minimum.get("X"), default=0.0)
+        + evaluate_expression(maximum.get("X"), default=width)
+    ) * 0.001
+    _add_mirror_drivers(hierarchy_root, controller, data_path, mirror_offset)
+    controller["mooblender_can_mirror"] = True
+    return True
+
+
 def _model_groups(package: PContentPackage):
     groups: dict[tuple[int, str], dict[str, object]] = {}
     stack = [package]
@@ -980,17 +1045,26 @@ def build_document(
             geometry_switch=geometry_switch,
             material_cache=material_cache,
         )
+        has_mirror = can_mirror(package.properties)
         options_panel = (
             geometry_modifier.node_group.interface.new_panel(
                 name="Options",
                 description="Optional components included with this model",
                 default_closed=False,
             )
-            if option_nodes
+            if option_nodes or has_mirror
             else None
         )
         _add_visibility_controls(
             option_nodes,
+            controller=root,
+            modifier=geometry_modifier,
+            group_input=group_input,
+            panel=options_panel,
+        )
+        _add_mirror_control(
+            package,
+            hierarchy_root=hierarchy_root,
             controller=root,
             modifier=geometry_modifier,
             group_input=group_input,
