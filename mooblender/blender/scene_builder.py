@@ -1019,8 +1019,7 @@ def _add_material_options(
     controller,
     modifier,
     group_input,
-    realize,
-    geometry_switch,
+    geometry_to_instance,
     material_cache: dict[tuple[int, int], bpy.types.Material],
 ) -> int:
     groups = _model_groups(package)
@@ -1029,9 +1028,6 @@ def _add_material_options(
         return 0
     node_group = modifier.node_group
     links = node_group.links
-    realized_geometry = geometry_switch.inputs["True"]
-    for link in list(realized_geometry.links):
-        node_group.links.remove(link)
     entries = []
     for (group_name, option_names), bundled_groups in _material_bundles(groups).items():
         applications = _material_applications(bundled_groups, materials)
@@ -1039,13 +1035,17 @@ def _add_material_options(
             entries.append((group_name, option_names, applications))
     if not entries:
         return 0
+    instance_geometry = geometry_to_instance.inputs["Geometry"]
+    source_output = instance_geometry.links[0].from_socket
+    for link in list(instance_geometry.links):
+        links.remove(link)
 
     finish_panel = node_group.interface.new_panel(
         name="Finish",
         description="Material styles available for each model part",
         default_closed=False,
     )
-    geometry = realize.outputs["Geometry"]
+    geometry = source_output
     menu_defaults = []
     used_names: set[str] = set()
     for group_name, option_names, applications in entries:
@@ -1071,7 +1071,7 @@ def _add_material_options(
         )
         socket.default_value = option_names[0]
         menu_defaults.append((socket, option_names[0], 0))
-    links.new(geometry, realized_geometry)
+    links.new(geometry, instance_geometry)
     node_group.interface_update(bpy.context)
     for socket, name, index in menu_defaults:
         _modifier_menu_value(modifier, socket, name, index)
@@ -1173,8 +1173,7 @@ def build_document(
             controller=root,
             modifier=geometry_modifier,
             group_input=group_input,
-            realize=realize,
-            geometry_switch=geometry_switch,
+            geometry_to_instance=geometry_to_instance,
             material_cache=material_cache,
         )
         has_mirror = can_mirror(package.properties)

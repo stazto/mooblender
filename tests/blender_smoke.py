@@ -229,6 +229,18 @@ def _modifier_inputs_reaching_output(node_group) -> set[str]:
     }
 
 
+def _upstream_node_types(input_socket) -> set[str]:
+    visited = set()
+    pending = [link.from_node for link in input_socket.links]
+    while pending:
+        node = pending.pop()
+        if node in visited:
+            continue
+        visited.add(node)
+        pending.extend(link.from_node for socket in node.inputs for link in socket.links)
+    return {node.bl_idname for node in visited}
+
+
 def main() -> None:
     controller = None
     registered = False
@@ -1055,6 +1067,10 @@ def main() -> None:
         false_source = geometry_switch.inputs["False"].links[0].from_node
         if false_source.bl_idname != "GeometryNodeGeometryToInstance":
             raise AssertionError("the default Geometry Nodes branch lost its mesh instances")
+        if "GeometryNodeSetMaterial" not in _upstream_node_types(
+            false_source.inputs["Geometry"]
+        ):
+            raise AssertionError("finish materials are applied only after realization")
         if any(obj.type == "EMPTY" for obj in source_collection.all_objects):
             raise AssertionError("the node source still contains helper empties")
         object_info_sources = {
