@@ -1,9 +1,10 @@
-# PMob format notes
+# PMob format reference
 
-Status: implemented for the observed public Mooble samples, with remaining
-unknowns listed below.
+Status: implemented for the record families and traits documented below.
+Unrecognized records remain unsupported rather than being interpreted by name
+or file extension alone.
 
-## Confirmed structure
+## Binary structure
 
 PMob is a little-endian recursive record tree. The file itself is the root PMob
 record; there is no separate magic signature.
@@ -12,138 +13,117 @@ Each record begins with:
 
 | Offset | Width | Meaning |
 | ---: | ---: | --- |
-| 0 | 4 | signed payload byte count |
-| 4 | 4 | signed child count |
-| 8 | 8 × count | child entries: signed type ID, absolute file offset |
-| after table | payload count | record payload |
+| `0` | 4 | Signed payload byte count |
+| `4` | 4 | Signed child count |
+| `8` | `8 × count` | Child entries: signed type ID and absolute file offset |
+| after table | payload count | Record payload |
 
-Child records may appear elsewhere in the file and are addressed by absolute
+Child records can appear elsewhere in the file and are addressed by absolute
 offset. Integers and IEEE-754 single-precision floats are little-endian. Names
-and texture strings are UTF-16LE. Matrices contain 16 floats (64 bytes).
+and texture strings are UTF-16LE. A transform matrix contains 16 floats.
 
-Implemented record families include document name/version, primitive hierarchy,
-animation times/transforms, layers, mesh lists, vertices, triangle indices,
-normals, UV coordinates, line indices, smoothing groups, material IDs, and the
-known material properties from type IDs `0x1a` through `0x38`.
+Implemented record families include document identity, primitive hierarchy,
+animation transforms, layers, meshes, vertices, triangle indices, normals, UV
+coordinates, line indices, smoothing groups, material assignments, and observed
+material properties in type IDs `0x1a` through `0x38`.
 
-The smoothing-group payload is a sequence of little-endian lists. Each list is
-encoded as a signed 32-bit vertex count followed by that many signed 32-bit
-vertex indices. A negative count, truncated list, or index outside the mesh's
-vertex array is invalid. The decompiled PMob writer confirms that these are
-vertex-index groups rather than conventional per-face smoothing-group numbers.
+## Transform convention
 
-Material color payloads are four bytes in RGBA order. This matches the
-decompiled serializer (`Color.FromArgb(buffer[3], buffer[0], buffer[1],
-buffer[2])`) and observed near-black handle payloads such as `(5, 5, 5, 255)`.
+The serialized convention is:
 
-## Confirmed transform convention
+- 16 row-major floats;
+- row-vector points (`point * matrix`);
+- translation in `M41`, `M42`, and `M43`;
+- local-to-world composition as `local * parent`; and
+- Z as the up axis in supported assets.
 
-The decompiled `Mooble.Math3D` implementation and asymmetric Blender tests agree
-on the following behavior:
+Transposing each matrix produces Blender's column-vector local matrix and normal
+`parent @ local` composition. Translation and mesh coordinates are converted
+from millimetres to metres at the Blender boundary. Linear matrix terms are not
+unit-scaled, so authored object scale is preserved.
 
-- matrices are serialized as 16 row-major floats;
-- points are row vectors (`point * matrix`);
-- translation occupies `M41`, `M42`, and `M43`;
-- local-to-world composition is `local * parent`; and
-- transposing each matrix produces Blender's equivalent column-vector local
-  matrix and standard `parent @ local` hierarchy.
+Layer primitives reference geometry by layer name. The Blender adapter creates a
+mesh datablock once and instances it for each primitive reference.
 
-Translation and mesh coordinates are converted with `0.001` at the Blender
-boundary. The linear matrix is not unit-scaled. Three sampled product PMobs use
-a root scale of 10 over centimetre-like raw vertex values; preserving that root
-scale produces their advertised metre dimensions. Ignoring it makes those
-models exactly ten times too small.
+## Geometry and smoothing
 
-Layer primitives reference shared layer geometry by name. The Blender adapter
-creates each mesh datablock once and instances it at every primitive reference.
+Mesh indices describe consecutive triangles. Texture coordinates are one UV per
+serialized vertex when present.
 
-## Confirmed and inferred geometry semantics
+The smoothing-group payload is a sequence of little-endian lists. Each list is a
+signed 32-bit vertex count followed by that many signed 32-bit indices. Negative
+counts, truncation, and out-of-range indices are invalid. These are
+vertex-membership groups, not conventional per-face smoothing-group numbers.
 
-- The composed PMob coordinate space is millimetres and uses Z as up in the
-  tested catalog products.
-- Mesh indices are interpreted as consecutive triangles.
-- Texture coordinates are interpreted as one UV per vertex.
+Producers can duplicate a position when adjacent face corners need different
+UVs, then place those indices in one smoothing group. Blender stores UVs and
+custom normals on face corners, so the importer can compact compatible smooth
+duplicates while retaining UV seams.
 
-The observed PMob producer duplicates a position when two face corners require
-different UV coordinates, then places the duplicate indices in one smoothing
-group. Its mesh conversion also uses a 45-degree maximum angle when deciding
-whether coincident vertices belong to one smooth surface while building this
-topology. Normal generation
-accumulates triangle normals at each vertex and averages the members of each
-smoothing group. These behaviors are confirmed by the decompiled serializer
-and mesh implementation; a cached 212-package corpus confirms that the files
-commonly omit serialized normals and rely on these topology rules.
+The reconstruction priority is:
 
-Blender stores UV coordinates and custom normals on face corners, so Mooblender
-can weld coincident smooth vertices without discarding UV seams. It groups
-positions within the producer's `1e-5` source-unit tolerance and keeps UVs on
-the face-corner domain. Complete serialized normals take precedence. Without
-them, explicit smoothing groups are authoritative, including coincident pairs
-omitted to retain hard edges. When both are absent, Mooblender preserves the
-authored vertex splits and generates normals only across already-shared source
-vertices. Inferring connectivity from position and angle caused nearly coplanar,
-disconnected panels such as the IB55S refrigerator front to shade as one surface.
-The importer writes the resulting normal to every face corner and enables smooth
-polygon shading. This safely removes documented UV-seam duplicates while
-retaining all triangle corners and their UV coordinates.
+1. Complete serialized normals.
+2. Explicit smoothing groups, including omissions that preserve hard edges.
+3. Authored vertex connectivity when neither source is available.
 
-PMob still stores mesh faces as triangles. As an optional Blender-side import
-step, Mooblender can reconstruct nearly coplanar triangle pairs as quads. The
-join compares UVs, sharp/seam flags, vertex colors, and materials, and uses a
-one-degree face-angle limit plus a 45-degree shape limit. This is an editable
-topology convenience, not a PMob format semantic, so it is disabled by default.
+Position and face angle alone are not enough to distinguish a UV seam from a
+disconnected hard boundary. The importer therefore does not weld authored
+splits merely because their positions are equal. Resulting normals are written
+to face corners and compatible polygons use smooth shading.
 
-Some observed meshes, including the 728 door panels, contain no serialized UV
-coordinates. Other cubic-mapped meshes contain UVs for their original size but
-are redimensioned by their parent aggregate. Their material metadata identifies
-cubic mapping and gives a physical texture width and height in millimetres.
-Mooblender therefore cube-projects every cubic-mapped mesh after its primitive
-transforms and target-size correction, stores final physical coordinates in
-metres as a Blender UV map, and converts the physical texture dimensions to UV
-scale. This gives every use of the same material the same texel density even
-when one component was resized. Serialized UVs remain authoritative for
-non-cubic mappings. Planar/fixed `MAPPING_SCALE` values are direct normalized UV
-scales (commonly `1×1`), not millimetre dimensions. The numeric mapping types
-are supported from observed files and the decompiled mapping conversion: `0`
-fixed, `1` cubic, and `2` planar; spherical variants remain unverified.
+PMob faces remain triangles. Optional Blender-side triangle-to-quad conversion
+joins only compatible, nearly coplanar pairs while checking UVs, materials,
+sharp/seam state, vertex colors, and shape quality. This is an editing
+convenience, not a PMob semantic, and is disabled by default.
 
-Observed PContent packages embed the diffuse, metallic, and transparency image
-members named by or derived from PMob materials. `SPECULAR_TEXTURE` points to
-the sampled `_METALLIC` image, so the adapter connects it to Principled
-Metallic. The diffuse image's own Alpha is multiplied by serialized material
-opacity. When present, `_TRANSPARENT` is derived from a `_DIFFUSE` name and
-multiplied as an additional mask. These channel-name rules remain an observed
-Mooble packaging convention rather than a guarantee for every PMob producer.
+## Texture mapping
 
-The `REFRACTION_FACTOR` material record is retained as a first-class neutral
-field. In the sampled catalog, ordinary materials use `1.0`, while glass and
-transparent acrylic consistently use approximately `1.4`. Values above `1.0`
-are therefore interpreted as optical IOR and identify refractive materials;
-values at or below `1.0` do not, because the corpus also contains non-glass
-finishes with a factor of `0.5`.
+Some meshes omit serialized UV coordinates. Others contain UVs for an authored
+size but are later resized by package metadata.
 
-Eevee physical transmission depends on a scene-level ray-tracing setting. With
-the default setting, thick catalog glass shells become dark reflective solids
-and hide decals behind them. Mooblender therefore retains the IOR on Principled
-but uses alpha blending as a render-setting-independent fallback. Refractive
-opacity is capped at `0.35` only when the source value would be more opaque, and
-overlapping transparent surfaces are disabled to avoid opacity accumulation.
-The fallback tint multiplies material RGB by PMob ambient intensity, retaining
-the observed smoked appearance of PE12A's white RGB with ambient `0.0`.
+For cubic mapping, material metadata supplies physical texture width and height
+in millimetres. Mooblender projects after primitive transforms and size
+correction, stores physical coordinates in metres on Blender's corner domain,
+and derives UV scale from the material dimensions. Reusing a material therefore
+retains consistent texel density across differently sized parts.
 
-`SPECULAR_POWER` is a normalized reflection level rather than a conventional
-unbounded shininess exponent. This is confirmed by the version-zero reader,
-which derives it from the average serialized specular RGB value. It maps to
-Principled Specular IOR Level; preserving a glass value of `0.0` avoids the
-strong dielectric reflection produced by Blender's default `0.5`.
+Serialized UVs remain authoritative for non-cubic mappings. Fixed and planar
+`MAPPING_SCALE` values are normalized UV scales, not millimetre dimensions.
+Observed numeric mapping types are `0` fixed, `1` cubic, and `2` planar.
+Spherical variants are not established.
 
-These interpretations need broader fixtures, especially asymmetric geometry,
-before being promoted to confirmed format guarantees.
+## Materials
+
+Material color payloads are four bytes in RGBA order. Supported packages can
+embed diffuse, metallic, and transparency images named by or derived from PMob
+material records.
+
+- The diffuse image Alpha is multiplied by serialized material opacity.
+- A separate transparency image is multiplied as an additional mask.
+- The observed specular-texture channel maps to Principled Metallic.
+- Normalized specular strength maps to Principled Specular IOR Level.
+- Refraction factors above `1.0` are treated as optical IOR in supported
+  material records.
+
+Blender transmission depends on renderer settings. To keep refractive shells
+usable in default viewport and render configurations, Mooblender preserves IOR
+and uses bounded alpha blending as a fallback. It avoids accumulating opacity
+across overlapping transparent surfaces and retains supported ambient tint.
+
+Exactly equal generated materials are reused. A material edited by the user is
+not silently replaced by a later import.
+
+## Safety validation
+
+The reader validates record bounds, child counts, offsets, string lengths,
+matrix widths, index ranges, and recursive traversal before consuming payloads.
+Malformed data raises a format error rather than producing partial geometry.
 
 ## Unknown or incomplete
 
-- meaning and topology rules for every mesh source type;
-- line-index semantics;
-- texture resolution rules outside PContent;
-- animation time units/interpolation; and
-- compatibility across PMob producer versions.
+- semantics for every mesh source type;
+- line-index rendering rules;
+- texture resolution outside PContent;
+- animation time units and interpolation;
+- spherical mapping variants; and
+- compatibility across all PMob producer versions.

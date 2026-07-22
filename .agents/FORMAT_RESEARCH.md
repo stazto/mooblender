@@ -18,7 +18,8 @@ record:
 - compression, checksums, encryption, or obfuscation when present;
 - relationships to other files or embedded resources;
 - malformed-input behavior and safe implementation limits;
-- tested sample characteristics without publishing private content; and
+- general traits supported by legally usable samples, without naming private or
+  incidental catalog products; and
 - unknown fields, unsupported versions, and competing hypotheses.
 
 Mark claims as **confirmed**, **inferred**, or **unknown**. Include byte offsets

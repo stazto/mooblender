@@ -1,8 +1,16 @@
 # Mooblender
 
-Mooblender is an open-source Blender extension for browsing the Mooble catalog
-and importing Promob models. It is written entirely in Python and does not
-depend on Promob runtime libraries.
+[Documentation](https://dantedex.github.io/mooblender/) ·
+[Source](https://github.com/dantedex/mooblender) ·
+[License](LICENSE.md)
+
+Mooblender brings supported Promob content into Blender. It combines a local
+file importer with an offline-first Mooble catalog browser and creates one clean
+scene object whose supported finishes, options, movable parts, and dimensions
+remain accessible through Geometry Nodes.
+
+The extension is open source, written entirely in Python, and does not require
+Promob, .NET, Wine, or proprietary runtime libraries inside Blender.
 
 The current development target imports `.pmob` and `.pcontent`, resolves
 Mooble aggregate packages, and creates one scene-linked object controlled by
@@ -56,8 +64,21 @@ transform hierarchy is encoded in the node graph, without helper empties.
 > below **Sync Catalog**. **Cancel Sync** safely discards incomplete work, and
 > the previous cached catalog stays available.
 
-See the [user guide](docs/user-guide.md) for catalog behavior, import options,
-and modifier controls.
+See the [documentation](https://dantedex.github.io/mooblender/) for installation, catalog navigation,
+configuration, troubleshooting, format references, and contributor workflows.
+
+## Documentation
+
+The manual is built with Sphinx and MyST Markdown:
+
+```bash
+python3 -m pip install --requirement docs/requirements.txt
+python3 -m sphinx -W --keep-going -b html docs docs/_build/html
+```
+
+GitHub Actions validates documentation changes and deploys `main` to GitHub
+Pages. Screenshot placement notes are kept as comments beside the relevant
+user-guide steps.
 
 ## Development
 
@@ -77,8 +98,8 @@ Tags use stable versions such as `v0.5.1`. The build script adds the generated
 `-devNNN` suffix to packaged development versions; source manifests and tags
 never contain that suffix.
 
-Read the [development guide](docs/development.md), [test coverage map](tests/README.md),
-and [documentation index](docs/README.md) for details.
+Read the [development guide](docs/development.md) and
+[test coverage map](tests/README.md) for details.
 
 ## Status
 

@@ -76,3 +76,14 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
 Live measurements document observations, not service guarantees. CI assertions
 use fake transports and Python-built fixtures; the optional live job checks
 only whether the configured public endpoint still responds.
+
+## Documentation
+
+- Sphinx 8.2.3 builds all public user, developer, Mooble, and format pages with
+  warnings treated as errors.
+- Structural tests keep the rendered manual independent from private agent
+  notes, require privacy-aware screenshot instructions, and verify that Pages
+  deployment consumes a successful strict documentation build.
+- The public format references describe reusable format traits and unknowns;
+  product-specific regression evidence remains in these internal validation
+  notes and executable synthetic tests.

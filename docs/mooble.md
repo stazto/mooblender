@@ -1,172 +1,130 @@
 # Mooble catalog integration
 
-Status: live protocol observation from 2026-07-21. This is not a promise that
-the service will retain the same endpoints or schema.
+Status: observed public web-service behavior. Endpoints and schemas are not a
+vendor compatibility guarantee and can change independently of Mooblender.
 
-The current Mooble planner loads a public catalog SDK from
-`https://catalog.mooble.com`. Its model explorer uses an Explorer v2 GET request
-under `/api/explorer/v2` with parameters including:
+## Explorer request
+
+The current integration uses an Explorer v2 GET request below
+`https://catalog.mooble.com/api/explorer/v2` with parameters including:
 
 - `client=mooble`;
 - `internal=Item`;
 - `pin=Departamento`;
-- `!Departamento=<category>`;
-- `region=<region>`;
+- `!Departamento=<department-id>`;
+- `region=<country-code>`;
 - optional `partnership` and `search`; and
-- `$top=<page size>`.
+- `$top=<page-size>`.
 
-The official planner country menu observed on 2026-07-22 exposes `br` (Brazil),
-`us` (United States), `ca` (Canada), `es` (Spain), `ar` (Argentina), `cn`
-(China), and `fr` (France). The `region` value controls both model availability
-and the labels returned by Mooble; department IDs remain stable across tested
-regions.
+Supported country codes are `br`, `us`, `ca`, `es`, `ar`, `cn`, and `fr`.
+Region controls model availability and server localization. Department IDs are
+treated as opaque service identifiers and are not translated.
 
-The response contains `Output.Pin.AvailableTags.Data` for hierarchical category
-navigation and `Output.Specifications.Data` for product cards. Tag records expose
-navigation URLs and counts. Specification summaries expose IDs, names,
-descriptions, brands, collections, thumbnail links, dimensions, and detail URLs.
-External millimetre dimensions are observed at `Properties.Dimension.Width`,
-`Depth`, and `Height`. Mooblender normalizes and stores them with each item.
-The card information icon opens `www.mooble.com/<country>/<localized-route>/<id>`;
-the route is `produto` for Brazil, `producto` for Spain and Argentina, and
-`product` for the other supported countries.
-Pagination is supplied as a server-generated `Links.Next` URL.
-Initial Explorer responses place product records under
-`Output.Specifications.Data`; observed `GetNext/Specs` responses instead place
-`Data`, `Links`, and `HasMore` directly at the response root. Both shapes must
-be parsed or pagination silently appears empty.
+The configured departments cover Furniture, Decor, Openings, Appliances,
+Fireplaces / Grills, Layout, Lights, Materials, and Plants.
 
-## Catalog synchronization and local queries
+## Explorer response
 
-The unfiltered department root observed on 2026-07-21 exposes nine sections:
-`Moveis` (Móveis), `Decoracao` (Decor), `Aberturas` (Construção),
-`Eletrodomesticos` (Eletros), `G5aMaaCZme` (Lareiras/Churrasqueiras), `Paredes`
-(Layout), `Luminarias` (Luzes), `Revestimentos` (Materiais), and `qm7nVNRHRi`
-(Plantas). The opaque identifiers are treated as observed service values, not
-translated or guessed names.
-As a bounded end-to-end check on the same date, synchronizing only
-Lareiras/Churrasqueiras and Plantas produced one local root with both department
-children and 41 unique items, matching their reported 28 plus 13 records.
+Initial responses expose:
 
-The sidebar exposes a source-country dropdown, a category-language dropdown,
-and one persistent checkbox for each section, with only Furniture enabled by
-default. English category localization is applied offline while writing the
-temporary snapshot and does not alter the API region or downloaded item set.
-Stable IDs take priority over source labels; unknown future IDs use a stable
-English placeholder rather than mixing languages. The published SQLite metadata
-records its source country and label language. A snapshot whose identity differs
-from the active dropdowns is not opened, preventing its item details from being
-requested with another country's context. Detail and aggregate requests retain
-the same `region` used to construct the snapshot.
+- `Output.Pin.AvailableTags.Data` for the category tree;
+- `Output.Specifications.Data` for product summaries; and
+- `Output.Specifications.Links.Next` for continuation.
 
-Mooblender contacts Explorer catalog endpoints only after
-the user selects **Sync Catalog**. The background synchronizer follows every
-selected department's root pagination and category branches with a 48-item
-request size, per-category page and cycle limits, and global category, item,
-and membership safety limits. Thumbnails and model PContent are not part of
-catalog synchronization.
+Observed continuation responses can place `Data`, `Links`, and `HasMore` at the
+response root. Both shapes normalize into the same `CatalogPage` model.
 
-A full synchronization can take a very long time, potentially many minutes
-for large department selections. The sidebar therefore displays its progress
-directly below **Sync Catalog** and keeps the previous atomic snapshot usable.
-Selected-model download progress is a separate message above the search box.
-**Cancel Sync** sets a thread-safe cancellation flag. Each worker observes it
-before and after a bounded HTTP request, and the synchronization thread removes
-the temporary SQLite database without replacing the previous snapshot.
+Category records provide stable IDs, display names, navigation URLs, hierarchy
+levels, selection state, and reported item counts. Product summaries can provide
+ID, name, description, brand, collection, thumbnail, detail URL, type, and
+external millimetre dimensions under `Properties.Dimension`.
 
-Model and thumbnail downloads have separate least-recently-used limits,
-configured in MiB in the add-on preferences. Successful cache hits refresh the
-file timestamp. Atomic writes protect their destination paths across concurrent
-workers, then prune only direct files in the same allow-listed cache group.
-Automatic management never traverses nested directories or follows links.
-**Clear Downloads** is confirmed explicitly and removes only inactive model and
-thumbnail entries; `catalog.sqlite3` remains untouched.
+The card information link uses the synchronized country and item ID. Public
+routes are localized: `produto` for Brazil, `producto` for Spain and Argentina,
+and `product` for the other supported countries.
 
-The synchronizer uses a bounded four-worker pool for independent department and
-category downloads. A category's continuation pages remain sequential because
-each next URL is supplied by the preceding response. Completed category data is
-returned to the synchronization thread, which alone validates global limits and
-writes SQLite. Therefore parallel HTTP work cannot concurrently mutate the
-database, and any worker failure still discards the temporary snapshot. Progress
-combines all active workers monotonically. In a bounded 2026-07-21 check of the
-41 combined Lareiras/Churrasqueiras and Plantas records, one worker took 4.35 s
-and four configured workers took 2.37 s; this is an observation, not a network
-performance guarantee.
+## Complete catalog synchronization
 
-Although observed continuation URLs default to 15 records, their endpoint was
-verified to accept 48 and returns the next skip value accordingly. The indexer
-normalizes that existing `$top` parameter to 48. It also compares each
-department's final unique-item count with that selected root's `SpecCount`; an
-early or misparsed end aborts the sync instead of publishing a partial index. On
-2026-07-21 this check reported 14,310 root furniture items, and a bounded live
-`kappesberg` verification returned all 310 reported matches in seven pages.
+**Sync Catalog** is the only catalog-wide network operation. It:
 
-The API summaries do not expose their department membership directly. The sync
-therefore records each category's complete ordered item-ID set while
-deduplicating model summaries in a temporary SQLite database. A synthetic local
-root contains every unique item and exposes the selected departments as its
-children, enabling global local search without flattening department browsing.
-That database replaces the previous snapshot atomically only after every
-selected category tree succeeds. A failed or interrupted synchronization leaves
-the last usable snapshot untouched.
+1. resolves each selected department root;
+2. follows its category hierarchy and continuation pages;
+3. normalizes product summaries and category memberships;
+4. writes a temporary SQLite database;
+5. validates safety limits and advertised category counts; and
+6. atomically replaces the previous snapshot.
 
-Startup opens the SQLite snapshot and makes no catalog request. Category, Back,
-search, manufacturer, and pagination actions query the local snapshot only.
-The old snapshot remains interactive while a new one synchronizes, with page,
-model, and category progress displayed separately from model-import activity.
+Independent categories use a bounded worker pool. Continuation pages within one
+category remain sequential because each response supplies the next URL. Only the
+synchronization coordinator writes SQLite, so parallel HTTP completion cannot
+mutate the database concurrently.
 
-Search never sends the query to the Explorer API. It matches all whitespace-
-separated terms, case- and accent-insensitively, against the current cached
-category's name, description, brand, collection, and ID fields. Empty search
-restores that category. A manufacturer dropdown is derived from the category's
-non-empty `Brand.Name` values. A second dropdown exposes `Collection.Name`
-values available for the selected manufacturer in that same category.
-Manufacturer and collection equality are case- and accent-insensitive and
-combine with every text term. The sidebar materializes only a preference-sized
-window of results; **Load More** expands that local window, and only visible
-cards request thumbnails.
+Cancellation is cooperative at bounded request boundaries. A cancellation,
+schema error, incomplete category, or worker failure removes the temporary file
+and leaves the prior snapshot untouched.
 
-Category branches and item memberships are all captured by synchronization.
-Opening a category for the first time is therefore the same local database read
-as revisiting it and works without Blender Online Access.
+The snapshot records source country, category-label language, enabled
+departments, source URLs, schema version, and synchronization time. A snapshot
+whose country or language differs from current preferences is not opened until
+the user synchronizes again.
 
-Fetching a specification detail URL can add `Links.Content`. Publicly visible
-shape records observed during development linked to HTTPS CDN `.pcontent`
-resources. The add-on downloads only after the user selects **Import**, validates
-the HTTPS host and size, caches the response, and passes it through the same
-PContent reader used for local files.
+## Offline-first browser
 
-Properties-only products use the same detail endpoint for their aggregate and
-material UUIDs: `GET /api/explorer/GetSpec/<uuid>`. The observed response has a
-`Type` such as `Shape` or `Material` and an HTTPS `Links.Content` PContent URL.
-Responses observed on 2026-07-21 used `Cache-Control: public, max-age=1800`.
-Mooblender caches every downloaded child by specification ID and resolves the
-tree in its model-download worker, leaving all Blender datablock creation on
-the main thread.
+Startup, category navigation, Back, search, manufacturer filtering, brand
+collection filtering, and Load More read only the SQLite snapshot. They never
+fall back to Explorer requests.
 
-## Browser interaction
+Search splits whitespace-separated terms and matches them case- and
+accent-insensitively against name, description, brand, collection, and ID. An
+empty query restores the current category. Manufacturer and collection filters
+combine with every text term.
 
-The sidebar borrows the compact workflow of the open-source
-[IKEA Browser](https://github.com/shish/blender-ikea-browser/): search, thumbnail
-cards, metadata, cache, and one-click import. Mooble additionally requires a
-hierarchical collection list, back navigation, and bounded local result pages.
-The search field is debounced locally while editing; committing it with Enter
-or selecting the magnifier therefore always displays only matching cached
-objects, including the empty-query reset case. **Sync Catalog** is deliberately
-explicit; enabling the add-on and starting Blender never triggers a catalog
-download.
+The panel materializes a preference-sized result window. **Load More** expands
+that local window. Opening a previously unseen category is still a database read
+because synchronization stores the complete selected hierarchy.
 
-## Compatibility policy
+## On-demand downloads
 
-- Network actions require Blender Online Access.
-- API URL and regional values are preferences because deployments may differ.
-- Returned URLs are treated as untrusted input and restricted to known HTTPS
-  hosts.
-- HTTP 429 and 503 responses with a valid `Retry-After` value are retried at
-  most twice. Server delays are capped at 30 seconds by default, invalid values
-  are rejected, and an unread error response is never returned to the reusable
-  connection pool.
-- No credentials or browser cookies are copied or stored.
-- Authorization failures are reported; the add-on does not attempt to bypass
-  them.
-- Parser and Blender code do not depend on the service remaining available.
+Catalog synchronization does not download every preview or model:
+
+- only visible cards request missing thumbnails;
+- preview failures do not block model import;
+- **Import** resolves the selected detail record and downloads its PContent only
+  when not cached; and
+- aggregate child specifications reuse downloads by specification ID.
+
+Detail requests retain the snapshot region. Returned URLs are validated against
+trusted HTTPS hosts and bounded response sizes before use. Package resolution
+runs in a worker; Blender datablock creation begins later on the main thread.
+
+## Cache behavior
+
+The Blender-managed cache contains:
+
+- `catalog.sqlite3` for the atomic searchable snapshot;
+- `models/` for downloaded packages and safe metadata sidecars; and
+- `thumbnails/` for on-demand previews.
+
+Models and previews use separate size targets. Cache hits refresh recency, and
+completed writes prune the oldest inactive files in their own allow-listed
+group. Active paths cannot be pruned or cleared. **Clear Downloads** removes
+models and thumbnails after confirmation but retains `catalog.sqlite3`.
+
+## Resilience and privacy
+
+- Network actions honor Blender Online Access.
+- Responses to HTTP 429 and 503 can retry at most twice with bounded
+  `Retry-After` handling.
+- Catalog publication and file downloads use same-directory temporary files and
+  atomic replacement.
+- No credentials, session cookies, or authenticated browser state are stored.
+- Authorization failures are reported rather than bypassed.
+- Parser and Blender code remain usable for local files when the service is
+  unavailable.
+
+## Compatibility boundary
+
+Explorer and detail fields are normalized before reaching Blender code. Service
+discovery, catalog persistence, binary downloads, PContent parsing, and scene
+construction remain separate layers so a web-service change does not require a
+format-parser rewrite.
