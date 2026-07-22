@@ -23,6 +23,7 @@ class HttpTransport:
         user_agent: str = "Mooblender/0.1 (+https://github.com/dantedex/mooblender)",
         allowed_hosts: tuple[str, ...] = ("catalog.mooble.com", "cdn.mooble.com"),
     ) -> None:
+        """Configure request bounds, trusted hosts, and thread-local connections."""
         self.timeout = timeout
         self.user_agent = user_agent
         self.allowed_hosts = allowed_hosts
@@ -33,6 +34,7 @@ class HttpTransport:
         ] = {}
 
     def validate_url(self, url: str) -> None:
+        """Allow credential-free HTTPS URLs only on the configured host list."""
         parsed = urlparse(url)
         if parsed.scheme != "https":
             raise TransportError("only HTTPS Mooble resources are allowed")
@@ -43,11 +45,13 @@ class HttpTransport:
             raise TransportError("credentials in resource URLs are not allowed")
 
     def _connections(self) -> dict[tuple[str, int], HTTPSConnection]:
+        """Return the reusable connection map owned by the calling thread."""
         thread_id = get_ident()
         with self._connection_lock:
             return self._thread_connections.setdefault(thread_id, {})
 
     def _connection(self, hostname: str, port: int) -> HTTPSConnection:
+        """Reuse or create the calling thread's connection to one endpoint."""
         key = (hostname, port)
         connections = self._connections()
         connection = connections.get(key)
@@ -57,11 +61,13 @@ class HttpTransport:
         return connection
 
     def _drop_connection(self, hostname: str, port: int) -> None:
+        """Remove and close a connection that cannot safely be reused."""
         connection = self._connections().pop((hostname, port), None)
         if connection is not None:
             connection.close()
 
     def close(self) -> None:
+        """Atomically detach and close every thread-local connection."""
         with self._connection_lock:
             connection_groups = tuple(self._thread_connections.values())
             self._thread_connections.clear()
@@ -76,6 +82,7 @@ class HttpTransport:
         redirects_left: int = 3,
         retry_stale: bool = True,
     ) -> tuple[HTTPResponse, str, int]:
+        """Open a validated GET with bounded redirects and one stale retry."""
         self.validate_url(url)
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").lower()
@@ -117,6 +124,7 @@ class HttpTransport:
         return response, hostname, port
 
     def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
+        """Read a successful response without exceeding its byte limit."""
         response, hostname, port = self._open(url)
         try:
             if response.status < 200 or response.status >= 300:
@@ -139,6 +147,7 @@ class HttpTransport:
         return data
 
     def get_json(self, url: str, *, max_bytes: int = 16 * 1024 * 1024) -> dict[str, Any]:
+        """Decode a bounded UTF-8 JSON response whose root must be an object."""
         data = self.get_bytes(url, max_bytes=max_bytes)
         try:
             value = json.loads(data.decode("utf-8-sig"))

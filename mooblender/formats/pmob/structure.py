@@ -23,6 +23,7 @@ class Record:
 
     @property
     def known_type(self) -> ContentType | None:
+        """Map the numeric record ID when it is part of the known enum."""
         try:
             return ContentType(self.type_id)
         except ValueError:
@@ -39,6 +40,7 @@ class StructureReader:
         max_depth: int = 128,
         max_records: int = 1_000_000,
     ) -> None:
+        """Configure parsing bounds and initialize cycle-tracking state."""
         self.data = data
         self.max_depth = max_depth
         self.max_records = max_records
@@ -46,11 +48,13 @@ class StructureReader:
         self._active_offsets: set[int] = set()
 
     def read(self) -> Record:
+        """Read the synthetic PMob root after checking its minimum header."""
         if len(self.data) < 8:
             raise PmobStructureError("PMob data is shorter than the root header")
         return self._read_record(0, int(ContentType.PMOB), 0)
 
     def _read_record(self, offset: int, type_id: int, depth: int) -> Record:
+        """Read one offset-addressed record and its descendants safely."""
         if depth > self.max_depth:
             raise PmobStructureError("PMob record nesting exceeds the safety limit")
         if offset in self._active_offsets:

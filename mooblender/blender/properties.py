@@ -27,10 +27,12 @@ CATALOG_DEPARTMENTS = (
 
 
 def _manufacturer_items(_self, _context):
+    """Provide Blender with the current dynamic manufacturer choices."""
     return _MANUFACTURER_ITEMS
 
 
 def _collection_items(_self, _context):
+    """Provide Blender with collections valid for the selected manufacturer."""
     return _COLLECTION_ITEMS
 
 
@@ -66,6 +68,7 @@ def _search_changed(_self, _context) -> None:
     revision = _SEARCH_REVISION
 
     def submit_search():
+        """Apply only the most recent edit once Blender's UI becomes idle."""
         if revision != _SEARCH_REVISION:
             return None
         try:
@@ -140,6 +143,7 @@ class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
 
 
 def _reset_browser(_self, _context) -> None:
+    """Invalidate visible state when settings alter snapshot identity or paging."""
     for window_manager in bpy.data.window_managers:
         if hasattr(window_manager, "promob_browser"):
             state = window_manager.promob_browser
@@ -163,6 +167,7 @@ def _reset_browser(_self, _context) -> None:
 
 
 def _catalog_scope_changed(_self, _context) -> None:
+    """Tell the user that scope changes take effect on the next explicit sync."""
     for window_manager in bpy.data.window_managers:
         if hasattr(window_manager, "promob_browser"):
             state = window_manager.promob_browser
@@ -262,7 +267,9 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         max=48,
         update=_reset_browser,
     )
+
     def draw(self, _context) -> None:
+        """Render connection, paging, and default mesh import preferences."""
         layout = self.layout
         layout.prop(self, "catalog_url")
         layout.prop(self, "region")

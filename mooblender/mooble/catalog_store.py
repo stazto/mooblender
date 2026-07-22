@@ -44,6 +44,8 @@ class CatalogSummary:
 
 @dataclass(frozen=True, slots=True)
 class _CategoryRequest:
+    """Queue entry retaining a category's parent and stable display order."""
+
     url: str
     parent_url: str
     position: int
@@ -51,10 +53,13 @@ class _CategoryRequest:
 
 
 class _SyncProgressTracker:
+    """Combine parallel category progress into coherent immutable snapshots."""
+
     def __init__(
         self,
         callback: Callable[[CatalogSyncProgress], None] | None,
     ) -> None:
+        """Initialize counters protected against concurrent worker updates."""
         self.callback = callback
         self.lock = Lock()
         self.completed_pages = 0
@@ -64,6 +69,7 @@ class _SyncProgressTracker:
         self.active: dict[str, tuple[int, int, str]] = {}
 
     def set_work(self, *, categories: int, outstanding: int) -> None:
+        """Update discovered and outstanding category counts atomically."""
         with self.lock:
             self.categories = categories
             self.outstanding = outstanding
@@ -75,6 +81,7 @@ class _SyncProgressTracker:
         items: int,
         category_name: str,
     ) -> None:
+        """Record intermediate pagination progress for one active category."""
         with self.lock:
             self.active[key] = (pages, items, category_name)
             snapshot = self._snapshot(category_name)
@@ -91,6 +98,7 @@ class _SyncProgressTracker:
         categories: int,
         outstanding: int,
     ) -> None:
+        """Move one category's active counters into completed totals."""
         with self.lock:
             self.active.pop(key, None)
             self.completed_pages += pages
@@ -102,6 +110,7 @@ class _SyncProgressTracker:
                 self.callback(snapshot)
 
     def _snapshot(self, category_name: str) -> CatalogSyncProgress:
+        """Combine completed totals with every currently active download."""
         return CatalogSyncProgress(
             pages=self.completed_pages + sum(value[0] for value in self.active.values()),
             categories=self.categories,
@@ -114,6 +123,7 @@ class _SyncProgressTracker:
 
 
 def _selected_category(page: CatalogPage) -> CatalogCategory | None:
+    """Choose the deepest category marked as the current page."""
     selected = [category for category in page.categories if category.selected]
     return max(selected, key=lambda category: category.level, default=None)
 
@@ -122,6 +132,7 @@ def _direct_children(
     page: CatalogPage,
     current: CatalogCategory,
 ) -> tuple[CatalogCategory, ...]:
+    """Return only immediate navigable children of the current category."""
     return tuple(
         category
         for category in page.categories
@@ -138,6 +149,7 @@ def _complete_page(
     max_pages: int,
     progress: Callable[[int, int, str], None] | None = None,
 ) -> tuple[CatalogPage, int]:
+    """Download and merge every paginated response for one category."""
     visited: set[str] = set()
     categories: dict[str, CatalogCategory] = {}
     items: dict[str, CatalogItem] = {}
@@ -199,6 +211,7 @@ class _CatalogCrawler:
         max_unique_items: int,
         max_memberships: int,
     ) -> None:
+        """Configure bounded work queues, safety limits, and the write connection."""
         self.store = store
         self.client = client
         self.connection = connection
@@ -233,6 +246,7 @@ class _CatalogCrawler:
         return self.department_item_ids
 
     def _fill_workers(self, executor: ThreadPoolExecutor) -> None:
+        """Submit unseen categories until the bounded worker pool is full."""
         while self.pending and len(self.in_flight) < self.workers:
             request = self.pending.popleft()
             request = _CategoryRequest(
@@ -253,6 +267,7 @@ class _CatalogCrawler:
                 category_name: str,
                 key: str = request.url,
             ) -> None:
+                """Attribute worker pagination progress to this request URL."""
                 self.progress.category_page(key, pages, items, category_name)
 
             future = executor.submit(
@@ -266,6 +281,7 @@ class _CatalogCrawler:
             self._update_work()
 
     def _consume(self, future: Future[tuple[CatalogPage, int]]) -> None:
+        """Serialize one completed download into SQLite and queue its children."""
         request = self.in_flight.pop(future)
         page, downloaded_pages = future.result()
         current = _selected_category(page) or CatalogCategory(
@@ -298,6 +314,7 @@ class _CatalogCrawler:
         request: _CategoryRequest,
         current: CatalogCategory,
     ) -> None:
+        """Persist the canonical selected row for the downloaded category."""
         normalized = CatalogCategory(
             id=current.id,
             name=current.name,
@@ -319,6 +336,7 @@ class _CatalogCrawler:
         current: CatalogCategory,
         page: CatalogPage,
     ) -> None:
+        """Persist immediate children and enqueue unseen category pages."""
         for position, child in enumerate(_direct_children(page, current), 1):
             child_url = self.client.with_page_size(child.url, 48)
             normalized = CatalogCategory(
@@ -340,6 +358,7 @@ class _CatalogCrawler:
                 )
 
     def _check_item_limits(self, page_items: int) -> None:
+        """Enforce separate limits for memberships and unique catalog items."""
         self.memberships += page_items
         if self.memberships > self.max_memberships:
             raise ValueError("Mooble catalog exceeds the membership safety limit")
@@ -348,6 +367,7 @@ class _CatalogCrawler:
             raise ValueError("Mooble catalog exceeds the item safety limit")
 
     def _update_work(self) -> None:
+        """Publish the crawler's current discovered and outstanding work."""
         self.progress.set_work(
             categories=len(self.visited),
             outstanding=len(self.pending) + len(self.in_flight),
@@ -358,9 +378,11 @@ class CatalogStore:
     """Read a catalog snapshot, or atomically replace it during manual sync."""
 
     def __init__(self, path: str | Path) -> None:
+        """Bind the store to one SQLite snapshot path without opening it yet."""
         self.path = Path(path)
 
     def exists(self) -> bool:
+        """Return whether a readable snapshot with the current schema exists."""
         if not self.path.is_file():
             return False
         try:
@@ -370,10 +392,12 @@ class CatalogStore:
             return False
 
     def root_url(self) -> str:
+        """Return the synthetic root URL recorded in snapshot metadata."""
         with closing(self._connect()) as connection:
             return self._metadata(connection, "root_url")
 
     def summary(self) -> CatalogSummary:
+        """Read published item/category counts and synchronization timestamp."""
         with closing(self._connect()) as connection:
             item_count = connection.execute("SELECT COUNT(*) FROM items").fetchone()[0]
             category_count = connection.execute(
@@ -387,6 +411,7 @@ class CatalogStore:
             )
 
     def page(self, url: str = "") -> CatalogPage | None:
+        """Reconstruct one cached page with direct children and item membership."""
         with closing(self._connect()) as connection:
             target = url or self._metadata(connection, "root_url")
             current_row = connection.execute(
@@ -574,12 +599,14 @@ class CatalogStore:
                 temporary_path.unlink()
 
     def _connect(self) -> sqlite3.Connection:
+        """Open the published snapshot in query-only mode."""
         connection = sqlite3.connect(self.path)
         connection.execute("PRAGMA query_only = ON")
         return connection
 
     @staticmethod
     def _create_schema(connection: sqlite3.Connection) -> None:
+        """Create the normalized schema used by a fresh temporary snapshot."""
         connection.executescript(
             """
             CREATE TABLE metadata (
@@ -626,6 +653,7 @@ class CatalogStore:
         parent_url: str,
         position: int,
     ) -> None:
+        """Insert or update one category while preserving hierarchy metadata."""
         connection.execute(
             """
             INSERT INTO categories(url, id, name, parent_url, level, item_count, position)
@@ -655,6 +683,7 @@ class CatalogStore:
         category_url: str,
         items: tuple[CatalogItem, ...],
     ) -> None:
+        """Upsert unique items and record their ordered category membership."""
         connection.executemany(
             """
             INSERT INTO items(
@@ -694,6 +723,7 @@ class CatalogStore:
 
     @staticmethod
     def _metadata(connection: sqlite3.Connection, key: str) -> str:
+        """Read a metadata value, returning an empty string when absent."""
         row = connection.execute(
             "SELECT value FROM metadata WHERE key = ?", (key,)
         ).fetchone()
@@ -701,6 +731,7 @@ class CatalogStore:
 
     @staticmethod
     def _set_metadata(connection: sqlite3.Connection, key: str, value: str) -> None:
+        """Insert or replace one metadata value in the temporary snapshot."""
         connection.execute(
             "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
             (key, value),

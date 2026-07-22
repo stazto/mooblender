@@ -39,10 +39,12 @@ _CATALOG_INDEXES: dict[str, CatalogPage] = {}
 
 
 def _catalog_store() -> CatalogStore:
+    """Open the persistent catalog database in the add-on cache directory."""
     return CatalogStore(cache_directory() / "catalog.sqlite3")
 
 
 def _browser_preferences(context):
+    """Return installed preferences or safe defaults for source-based tests."""
     try:
         return context.preferences.addons[
             "bl_ext.user_default.mooblender"
@@ -65,6 +67,7 @@ def shutdown_async_operators() -> None:
 
 
 def _online_or_report(operator) -> bool:
+    """Report Blender's disabled network access and return whether it is usable."""
     if bpy.app.online_access:
         return True
     operator.report({"ERROR"}, "Enable Online Access in Blender preferences to use Mooble")
@@ -72,6 +75,7 @@ def _online_or_report(operator) -> bool:
 
 
 def _set_page(context, page) -> None:
+    """Replace visible entries while retaining already cached preview paths."""
     state = context.window_manager.promob_browser
     _cancel_queued_thumbnails()
     state.view_revision += 1
@@ -117,7 +121,9 @@ def _set_page(context, page) -> None:
     state.local_result_total = 0
     state.local_result_limit = 0
 
+
 def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) -> None:
+    """Apply local search, manufacturer, collection, and display-limit filters."""
     state = context.window_manager.promob_browser
     preferences = _browser_preferences(context)
     _CATALOG_INDEXES[page.current_url] = page
@@ -178,6 +184,7 @@ def _apply_local_index(context, page: CatalogPage, *, limit: int | None = None) 
 
 
 def _load_local_index(context, url: str = "") -> CatalogPage | None:
+    """Load a category from memory first and then from the disk snapshot."""
     state = context.window_manager.promob_browser
     target = url or state.current_url
     if target:
@@ -196,6 +203,8 @@ def _load_local_index(context, url: str = "") -> CatalogPage | None:
 
 
 class _AsyncDownloadOperator:
+    """Connect a background future to Blender's timer-driven user interface."""
+
     error_status = "Could not load Mooble"
 
     def _start(
@@ -208,6 +217,7 @@ class _AsyncDownloadOperator:
         task_kwargs: dict | None = None,
         completion=None,
     ):
+        """Start one exclusive browser job without blocking Blender's main thread."""
         state = context.window_manager.promob_browser
         if state.is_loading:
             self.report({"WARNING"}, "Wait for the current Mooble download to finish")
@@ -226,16 +236,21 @@ class _AsyncDownloadOperator:
         return {"FINISHED"}
 
     def _completion(self, context, value):
+        """Apply the completed result; concrete operators must implement this."""
         raise NotImplementedError
 
 
 class _AsyncCompletion:
+    """Poll a future from Blender's main thread and deliver its result safely."""
+
     def __init__(self, future, completion, error_status: str) -> None:
+        """Store the future, success callback, and user-facing failure status."""
         self.future = future
         self.completion = completion
         self.error_status = error_status
 
     def __call__(self):
+        """Continue polling or finish the job and clear the loading state."""
         if not self.future.done():
             return 0.1
 
@@ -254,6 +269,7 @@ class _AsyncCompletion:
 
 
 def _redraw_view3d(context) -> None:
+    """Request a redraw so asynchronously loaded previews become visible."""
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == "VIEW_3D":
@@ -261,11 +277,15 @@ def _redraw_view3d(context) -> None:
 
 
 class _ThumbnailBatchCompletion:
+    """Install the results of a batch preview download into visible entries."""
+
     def __init__(self, item_ids: tuple[str, ...], future) -> None:
+        """Remember which visible entries belong to the shared future."""
         self.item_ids = item_ids
         self.future = future
 
     def __call__(self):
+        """Poll the preview batch and update every surviving visible entry."""
         if not self.future.done():
             return 0.1
 
@@ -339,11 +359,15 @@ def ensure_thumbnails(context, entries) -> None:
 
 
 class _CatalogSyncCompletion:
+    """Forward sync progress and atomically expose the completed catalog."""
+
     def __init__(self, future, progress_queue) -> None:
+        """Store the sync future and its thread-safe progress channel."""
         self.future = future
         self.progress_queue = progress_queue
 
     def __call__(self):
+        """Refresh progress text until the new database snapshot is ready."""
         context = bpy.context
         state = context.window_manager.promob_browser
         latest = None
@@ -395,9 +419,11 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        """Disable a second catalog sync while the first one is running."""
         return not context.window_manager.promob_browser.is_syncing
 
     def execute(self, context):
+        """Start a full snapshot sync for the selected catalog departments."""
         if not _online_or_report(self):
             return {"CANCELLED"}
         state = context.window_manager.promob_browser
@@ -432,6 +458,7 @@ class PROMOB_OT_catalog_search(bpy.types.Operator):
     bl_description = "Filter the current cached category without an API request"
 
     def execute(self, context):
+        """Recompute the visible result set solely from the local snapshot."""
         state = context.window_manager.promob_browser
         if state.is_loading:
             return {"CANCELLED"}
@@ -476,6 +503,7 @@ class PROMOB_OT_catalog_open_category(bpy.types.Operator):
     url: bpy.props.StringProperty()  # type: ignore
 
     def execute(self, context):
+        """Open a cached category and append the current category to history."""
         state = context.window_manager.promob_browser
         if not self.url:
             self.report({"WARNING"}, "This category has no navigation URL")
@@ -506,10 +534,12 @@ class PROMOB_OT_catalog_back(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        """Enable Back only when local navigation has a previous category."""
         state = context.window_manager.promob_browser
         return not state.is_loading and state.history_json not in {"", "[]"}
 
     def execute(self, context):
+        """Restore the last category without making a network request."""
         state = context.window_manager.promob_browser
         try:
             history = json.loads(state.history_json)
@@ -540,10 +570,12 @@ class PROMOB_OT_catalog_load_more(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        """Enable pagination when more local matches remain hidden."""
         state = context.window_manager.promob_browser
         return not state.is_loading and state.local_result_limit < state.local_result_total
 
     def execute(self, context):
+        """Increase the visible slice of the current local result set."""
         state = context.window_manager.promob_browser
         if state.using_local_index:
             page = _load_local_index(context)
@@ -562,6 +594,7 @@ class PROMOB_OT_catalog_load_more(bpy.types.Operator):
 
 
 def _catalog_item(entry) -> CatalogItem:
+    """Convert mutable Blender UI state into an immutable catalog value."""
     return CatalogItem(
         id=entry.item_id,
         name=entry.name,
@@ -585,6 +618,7 @@ class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
     item_id: bpy.props.StringProperty()  # type: ignore
 
     def execute(self, context):
+        """Download the selected model and schedule its main-thread import."""
         if not _online_or_report(self):
             return {"CANCELLED"}
         state = context.window_manager.promob_browser
@@ -619,6 +653,7 @@ class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
         item_id,
         convert_tris_to_quads,
     ):
+        """Build the downloaded model after its worker future completes."""
         build_document(
             document,
             context,
@@ -651,12 +686,14 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
     )
 
     def invoke(self, context, event):
+        """Initialize import options from add-on preferences before browsing."""
         self.convert_tris_to_quads = bool(
             getattr(_browser_preferences(context), "convert_tris_to_quads", False)
         )
         return ImportHelper.invoke(self, context, event)
 
     def execute(self, context):
+        """Parse a local file, resolving remote package references if required."""
         path = Path(self.filepath)
         try:
             loaded = load_path(path)
@@ -703,6 +740,7 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
 
     @staticmethod
     def _apply_file(context, loaded, *, name, convert_tris_to_quads):
+        """Build a remotely resolved local package on Blender's main thread."""
         build_document(
             loaded,
             context,

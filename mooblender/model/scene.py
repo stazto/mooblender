@@ -59,6 +59,7 @@ class Mesh:
     source_type: int | None = None
 
     def triangle_faces(self) -> list[tuple[int, int, int]]:
+        """Group the validated flat index stream into triangle faces."""
         return [
             (self.indices[index], self.indices[index + 1], self.indices[index + 2])
             for index in range(0, len(self.indices), 3)

@@ -25,6 +25,7 @@ class TransformNode:
     """Lightweight build-time transform that never becomes a Blender object."""
 
     def __init__(self, name: str, parent: TransformNode | None = None):
+        """Create an identity transform beneath an optional parent record."""
         self.name = name
         self.parent = parent
         self.location = Vector((0.0, 0.0, 0.0))
@@ -35,10 +36,12 @@ class TransformNode:
         self.metadata: dict[str, object] = {}
 
     def __setitem__(self, key: str, value: object) -> None:
+        """Attach diagnostic metadata using Blender-like item syntax."""
         self.metadata[key] = value
 
     @property
     def matrix_basis(self) -> Matrix:
+        """Compose the local translation, rotation, and scale matrix."""
         rotation = (
             self.rotation_quaternion
             if self.rotation_mode == "QUATERNION"
@@ -48,10 +51,12 @@ class TransformNode:
 
     @property
     def matrix_local(self) -> Matrix:
+        """Return the local matrix represented by this transform record."""
         return self.matrix_basis
 
     @matrix_local.setter
     def matrix_local(self, value: Matrix) -> None:
+        """Decompose a local matrix into the record's transform channels."""
         location, rotation, scale = value.decompose()
         self.location = location
         self.rotation_mode = "QUATERNION"
@@ -65,6 +70,7 @@ def _unique_name(value: str, fallback: str) -> str:
 
 
 def _entity_code(source: object) -> int:
+    """Return a process-local positive integer used as a face scope attribute."""
     return id(source) & 0x7FFFFFFF
 
 
@@ -101,6 +107,7 @@ def _create_meshes(
     entity_code: int,
     convert_tris_to_quads: bool,
 ):
+    """Create Blender mesh datablocks for every neutral document layer."""
     scale = document.unit_scale_to_meters
     material_overrides = {
         key.casefold(): value for key, value in (material_overrides or {}).items()
@@ -166,6 +173,7 @@ def _box_project_uv(
     *,
     final_transform: Matrix,
 ) -> None:
+    """Generate physical box-projected UVs after the complete source transform."""
     while mesh.uv_layers:
         mesh.uv_layers.remove(mesh.uv_layers[0])
     uv_layer = mesh.uv_layers.new(name="UVMap")
@@ -200,6 +208,7 @@ def _instantiate_primitive(
     object_parents: dict[bpy.types.Object, TransformNode],
     document_transform: Matrix | None = None,
 ):
+    """Recursively instantiate primitive records and their referenced meshes."""
     name = _unique_name(primitive.name, f"Primitive {fallback_index}")
     node = TransformNode(name, parent)
     local_transform = Matrix(
@@ -428,6 +437,7 @@ def _layer_resize_corrections(
     package: PContentPackage | None,
     geometry_scale: tuple[float, float, float],
 ) -> dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]]:
+    """Compute per-layer corrections that keep fixed hardware from stretching."""
     if package is None or package.document is None:
         return {}
     fixed_candidates = _fixed_component_layers(package)
@@ -485,6 +495,7 @@ def _remote_material(
     package: PContentPackage,
     cache: dict[tuple[int, int], bpy.types.Material],
 ):
+    """Create the first material from a resolved material specification package."""
     document = package.document
     if document is None or not document.materials:
         return None
@@ -510,6 +521,7 @@ def _document_root(
     object_parents: dict[bpy.types.Object, TransformNode],
     geometry_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ):
+    """Create or reuse one document's materials, meshes, and primitive records."""
     cache_key = id(package) if package is not None else id(document)
     meshes_by_layer = cache.get(cache_key)
     if meshes_by_layer is None:

@@ -41,6 +41,10 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
 - The C66/C69 regressions cover `Coupled` Tampo/Rodapé grouping, positive signed
   volume before and after `Reverse`, finish nodes upstream of the default model
   instance, and concise **Main**/component finish labels.
+- An AST architecture regression requires node construction to remain isolated
+  in `blender/geometry_nodes.py`; `scene_builder.py` may orchestrate it but may
+  not contain Blender node type identifiers. The same test requires docstrings
+  on every add-on Python module, class, function, and method.
 
 ## Catalog behavior
 

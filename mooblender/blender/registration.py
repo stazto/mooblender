@@ -14,6 +14,7 @@ CLASSES = properties.CLASSES + operators.CLASSES + panels.CLASSES
 
 
 def _menu_import(self, _context) -> None:
+    """Add the Promob file importer entry to Blender's File > Import menu."""
     self.layout.operator(
         operators.PROMOB_OT_import_file.bl_idname,
         text="Promob Model (.pmob, .pcontent)",

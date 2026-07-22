@@ -27,6 +27,7 @@ _COMPARE = {
 
 
 def _strip_outer_parentheses(value: str) -> str:
+    """Remove only pairs that enclose the complete expression."""
     while value.startswith("(") and value.endswith(")"):
         depth = 0
         enclosed = True
@@ -45,6 +46,7 @@ def _strip_outer_parentheses(value: str) -> str:
 
 
 def _ternary_parts(value: str) -> tuple[str, str, str] | None:
+    """Split the outermost Promob ``condition ? true : false`` expression."""
     depth = 0
     question = -1
     nested = 0
@@ -66,6 +68,7 @@ def _ternary_parts(value: str) -> tuple[str, str, str] | None:
 
 
 def _evaluate_node(node: ast.AST) -> float | str:
+    """Evaluate only the explicitly allowed Python AST expression subset."""
     if isinstance(node, ast.Expression):
         return _evaluate_node(node.body)
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -111,6 +114,7 @@ def evaluate_expression(
     values = {key.casefold(): value for key, value in (variables or {}).items()}
 
     def replace(match: re.Match[str]) -> str:
+        """Replace one dollar-delimited variable with a numeric literal."""
         value = values.get(match.group(1).casefold(), 0.0)
         return "1" if value is True else "0" if value is False else repr(float(value))
 
@@ -150,10 +154,12 @@ def evaluate_condition(
     unresolved = False
 
     def replace_variable(match: re.Match[str]) -> str:
+        """Replace one condition variable with a safe numeric literal."""
         value = values.get(match.group(1).casefold(), 0.0)
         return "1" if value is True else "0" if value is False else repr(float(value))
 
     def replace_information(match: re.Match[str]) -> str:
+        """Replace one model-information token and flag missing data."""
         nonlocal unresolved
         fields = models.get(match.group(1).strip().casefold(), {})
         key = match.group(2).strip().casefold()

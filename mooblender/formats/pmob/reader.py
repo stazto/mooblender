@@ -25,6 +25,7 @@ class PmobFormatError(ValueError):
 
 
 def _require_size(payload: bytes, multiple: int, label: str) -> None:
+    """Require fixed-width payloads to contain only complete values."""
     if len(payload) % multiple:
         raise PmobFormatError(
             f"{label} payload has {len(payload)} bytes; expected a multiple of {multiple}"
@@ -32,6 +33,7 @@ def _require_size(payload: bytes, multiple: int, label: str) -> None:
 
 
 def _ints(payload: bytes) -> list[int]:
+    """Decode a little-endian array of signed 32-bit integers."""
     _require_size(payload, 4, "integer list")
     return list(struct.unpack(f"<{len(payload) // 4}i", payload))
 
@@ -56,11 +58,13 @@ def _int_lists(payload: bytes) -> list[list[int]]:
 
 
 def _floats(payload: bytes) -> list[float]:
+    """Decode a little-endian array of 32-bit floating-point values."""
     _require_size(payload, 4, "float list")
     return list(struct.unpack(f"<{len(payload) // 4}f", payload))
 
 
 def _vectors(payload: bytes, width: int) -> list[tuple[float, ...]]:
+    """Group a flat float payload into fixed-width vectors."""
     stride = width * 4
     _require_size(payload, stride, f"{width}D vector list")
     values = _floats(payload)
@@ -68,49 +72,58 @@ def _vectors(payload: bytes, width: int) -> list[tuple[float, ...]]:
 
 
 def _matrix(payload: bytes) -> Matrix4:
+    """Decode one 4-by-4 single-precision transformation matrix."""
     if len(payload) != 64:
         raise PmobFormatError(f"matrix has {len(payload)} bytes; expected 64")
     return tuple(struct.unpack("<16f", payload))
 
 
 def _matrices(payload: bytes) -> list[Matrix4]:
+    """Decode a contiguous list of 4-by-4 transformation matrices."""
     _require_size(payload, 64, "matrix list")
     return [_matrix(payload[index:index + 64]) for index in range(0, len(payload), 64)]
 
 
 def _int(payload: bytes) -> int:
+    """Decode exactly one signed 32-bit integer."""
     if len(payload) != 4:
         raise PmobFormatError(f"integer has {len(payload)} bytes; expected 4")
     return struct.unpack("<i", payload)[0]
 
 
 def _float(payload: bytes) -> float:
+    """Decode exactly one 32-bit floating-point value."""
     if len(payload) != 4:
         raise PmobFormatError(f"float has {len(payload)} bytes; expected 4")
     return struct.unpack("<f", payload)[0]
 
 
 def _string(payload: bytes) -> str:
+    """Decode one null-padded UTF-16LE PMob string."""
     if len(payload) % 2:
         raise PmobFormatError("UTF-16LE string has an odd byte length")
     return payload.decode("utf-16-le").rstrip("\x00")
 
 
 def _color(payload: bytes) -> tuple[int, int, int, int]:
+    """Decode the four raw bytes of a PMob color value."""
     if len(payload) != 4:
         raise PmobFormatError(f"color has {len(payload)} bytes; expected 4")
     return tuple(payload)  # type: ignore[return-value]
 
 
 def _children(record: Record, kind: ContentType) -> Iterable[Record]:
+    """Iterate over direct children matching one known content type."""
     return (child for child in record.children if child.type_id == int(kind))
 
 
 def _first(record: Record, kind: ContentType) -> Record | None:
+    """Return the first direct child matching one content type."""
     return next(_children(record, kind), None)
 
 
 def _parse_animation(record: Record) -> Animation:
+    """Convert animation time and transformation child records."""
     animation = Animation()
     for child in record.children:
         if child.type_id == ContentType.ANIMATION_TIME_LIST:
@@ -121,6 +134,7 @@ def _parse_animation(record: Record) -> Animation:
 
 
 def _parse_primitive(record: Record) -> Primitive:
+    """Recursively convert a PMob primitive hierarchy."""
     primitive = Primitive()
     for child in record.children:
         kind = child.type_id
@@ -145,6 +159,7 @@ def _parse_primitive(record: Record) -> Primitive:
 
 
 def _parse_mesh(record: Record) -> Mesh:
+    """Decode and validate one neutral indexed mesh."""
     mesh = Mesh()
     integer_lists = {
         ContentType.INDICES: "indices",
@@ -191,6 +206,7 @@ def _validate_mesh(mesh: Mesh) -> None:
 
 
 def _parse_layer(record: Record) -> SceneLayer:
+    """Decode a named scene layer and all mesh records it owns."""
     layer = SceneLayer()
     name = _first(record, ContentType.NAME)
     if name:
@@ -257,6 +273,7 @@ def _material_extra(child: Record) -> object | None:
 
 
 def _parse_material(record: Record) -> Material:
+    """Decode known material channels and retain supported extra fields."""
     material = Material()
     for child in record.children:
         kind = child.type_id
@@ -273,6 +290,7 @@ def _parse_material(record: Record) -> Material:
 
 
 def _collect_unknown_types(root: Record) -> set[int]:
+    """Collect unrecognized record IDs for format research and diagnostics."""
     unknown: set[int] = set()
     stack = [root]
     while stack:

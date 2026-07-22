@@ -34,6 +34,7 @@ def fetch_model(client: MoobleClient, item: CatalogItem):
         loaded = load_path(path)
         if isinstance(loaded, PContentPackage):
             def load_aggregate(specification_id: str) -> PContentPackage:
+                """Download and parse one referenced aggregate specification."""
                 child = load_path(client.download_specification(specification_id))
                 if not isinstance(child, PContentPackage):
                     raise ValueError(
@@ -53,6 +54,7 @@ def fetch_file(client: MoobleClient, path):
         loaded = load_path(path)
         if isinstance(loaded, PContentPackage):
             def load_aggregate(specification_id: str) -> PContentPackage:
+                """Download a dependency referenced by the local root package."""
                 child = load_path(client.download_specification(specification_id))
                 if not isinstance(child, PContentPackage):
                     raise ValueError(
@@ -70,6 +72,7 @@ class BackgroundJobs:
     """Own a lazily created worker pool that can survive add-on reloads."""
 
     def __init__(self, *, max_workers: int = 2) -> None:
+        """Configure a pool that will be allocated only on first submission."""
         self._max_workers = max_workers
         self._executor: ThreadPoolExecutor | None = None
 
@@ -80,6 +83,7 @@ class BackgroundJobs:
         *args: Any,
         **kwargs: Any,
     ) -> Future[Any]:
+        """Submit work, creating the persistent executor when necessary."""
         if self._executor is None:
             self._executor = ThreadPoolExecutor(
                 max_workers=self._max_workers,
@@ -88,6 +92,7 @@ class BackgroundJobs:
         return self._executor.submit(function, *args, **kwargs)
 
     def shutdown(self) -> None:
+        """Cancel queued work and release the pool without blocking Blender."""
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None

@@ -22,9 +22,17 @@ from .transport import HttpTransport, TransportError
 class JsonTransport(Protocol):
     """Minimal injectable HTTP contract used by the Mooble client."""
 
-    def get_json(self, url: str, *, max_bytes: int = ...) -> dict[str, Any]: ...
-    def get_bytes(self, url: str, *, max_bytes: int) -> bytes: ...
-    def validate_url(self, url: str) -> None: ...
+    def get_json(self, url: str, *, max_bytes: int = ...) -> dict[str, Any]:
+        """Fetch one bounded JSON object."""
+        ...
+
+    def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
+        """Fetch one bounded binary response."""
+        ...
+
+    def validate_url(self, url: str) -> None:
+        """Reject URLs outside the transport's trusted origin policy."""
+        ...
 
 
 class MoobleError(RuntimeError):
@@ -32,18 +40,22 @@ class MoobleError(RuntimeError):
 
 
 def _mapping(value: object) -> dict[str, Any]:
+    """Normalize an unknown JSON value to a mapping or an empty mapping."""
     return value if isinstance(value, dict) else {}
 
 
 def _sequence(value: object) -> list[Any]:
+    """Normalize an unknown JSON value to a list or an empty list."""
     return value if isinstance(value, list) else []
 
 
 def _string(value: object) -> str:
+    """Normalize an unknown JSON value to a string or an empty string."""
     return value if isinstance(value, str) else ""
 
 
 def _optional_int(value: object) -> int | None:
+    """Accept a JSON integer while excluding booleans, which subclass int."""
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
@@ -72,6 +84,7 @@ class MoobleClient:
         cache_dir: str | Path | None = None,
         transport: JsonTransport | None = None,
     ) -> None:
+        """Validate settings, bound paging, and create an injectable transport."""
         normalized = base_url.rstrip("/") + "/"
         parsed = urlparse(normalized)
         if parsed.scheme != "https" or not parsed.hostname:
@@ -88,14 +101,17 @@ class MoobleClient:
         self.transport = transport or HttpTransport(allowed_hosts=allowed)
 
     def close(self) -> None:
+        """Close reusable transport resources when the implementation supports it."""
         close = getattr(self.transport, "close", None)
         if close is not None:
             close()
 
     def __enter__(self):
+        """Return this client for use as a context manager."""
         return self
 
     def __exit__(self, _exception_type, _exception, _traceback) -> None:
+        """Close transport resources when leaving a context manager."""
         self.close()
 
     def root_url(
@@ -105,6 +121,7 @@ class MoobleClient:
         search: str = "",
         page_size: int | None = None,
     ) -> str:
+        """Build the bounded Explorer URL for one department and search term."""
         requested_page_size = self.page_size if page_size is None else page_size
         params: dict[str, str | int] = {
             "client": self.client_name,
@@ -138,6 +155,7 @@ class MoobleClient:
         )
 
     def browse(self, *, category: str = "Moveis", search: str = "") -> CatalogPage:
+        """Browse a root page while preserving a longer compatible local cache."""
         url = self.root_url(category=category, search=search)
         cached = self.load_cached_page(url)
         live = self.browse_url(url)
@@ -159,6 +177,7 @@ class MoobleClient:
         return live
 
     def browse_url(self, url: str, *, cache: bool = True) -> CatalogPage:
+        """Fetch, validate, parse, and optionally cache an Explorer page."""
         try:
             self.transport.validate_url(url)
             payload = self.transport.get_json(url)
@@ -174,6 +193,7 @@ class MoobleClient:
         self._write_catalog_cache(url, page)
 
     def load_cached_page(self, url: str) -> CatalogPage | None:
+        """Restore a matching versioned catalog page or ignore invalid cache data."""
         if self.cache_dir is None:
             return None
         path = self._catalog_cache_path(url)
@@ -221,12 +241,14 @@ class MoobleClient:
         return merged
 
     def _catalog_cache_path(self, url: str) -> Path:
+        """Map a complete request URL to a deterministic private cache file."""
         key = hashlib.sha256(url.encode("utf-8")).hexdigest()
         return (self.cache_dir or Path(tempfile.gettempdir()) / "mooblender") / (
             f"catalog/{key}.json"
         )
 
     def _write_catalog_cache(self, url: str, page: CatalogPage) -> None:
+        """Serialize one parsed page without exposing arbitrary server fields."""
         if self.cache_dir is None:
             return
         payload = {
@@ -268,10 +290,12 @@ class MoobleClient:
             )
 
     def details(self, item: CatalogItem) -> ItemDetails:
+        """Load downloadable details for one catalog item."""
         detail_url = item.detail_url or urljoin(self.base_url, f"explorer/GetSpec/{item.id}")
         return self._details_url(detail_url, fallback_item=item)
 
     def specification_details(self, specification_id: str) -> ItemDetails:
+        """Load downloadable details for an aggregate specification ID."""
         if not specification_id:
             raise MoobleError("aggregate specification ID is empty")
         fallback = CatalogItem(id=specification_id, name=specification_id)
@@ -281,6 +305,7 @@ class MoobleClient:
         )
 
     def _details_url(self, detail_url: str, *, fallback_item: CatalogItem) -> ItemDetails:
+        """Validate a details response and its downloadable content URL."""
         try:
             payload = self.transport.get_json(detail_url)
         except (TransportError, ValueError) as error:
@@ -305,6 +330,7 @@ class MoobleClient:
         *,
         max_bytes: int = 256 * 1024 * 1024,
     ) -> Path:
+        """Download or reuse the cached model selected by a catalog item."""
         details = self.details(item)
         return self._download_details(details, cache_key=item.id, max_bytes=max_bytes)
 
@@ -314,6 +340,7 @@ class MoobleClient:
         *,
         max_bytes: int = 256 * 1024 * 1024,
     ) -> Path:
+        """Download or reuse the cached model for an aggregate specification."""
         details = self.specification_details(specification_id)
         return self._download_details(
             details,
@@ -328,6 +355,7 @@ class MoobleClient:
         cache_key: str,
         max_bytes: int,
     ) -> Path:
+        """Validate, download, and atomically cache content plus safe metadata."""
         suffix = Path(urlparse(details.content_url).path).suffix.lower() or ".pcontent"
         if suffix not in {".pcontent", ".pmob", ".content", ".mob"}:
             raise MoobleError(f"unsupported downloaded model extension: {suffix}")
@@ -356,6 +384,7 @@ class MoobleClient:
         *,
         max_bytes: int = 16 * 1024 * 1024,
     ) -> Path | None:
+        """Download a preview on demand, returning None for recoverable failures."""
         if not item.thumbnail_url:
             return None
         path = thumbnail_cache_path(
@@ -373,6 +402,7 @@ class MoobleClient:
         return path
 
     def _cache_path(self, group: str, key: str, suffix: str) -> Path:
+        """Create a deterministic cache path from an opaque remote identifier."""
         base = self.cache_dir or Path(tempfile.gettempdir()) / "mooblender"
         safe_key = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
         path = base / group / f"{safe_key}{suffix}"
@@ -381,6 +411,7 @@ class MoobleClient:
 
     @staticmethod
     def _atomic_write(path: Path, data: bytes) -> None:
+        """Publish bytes only after a complete flushed temporary-file write."""
         path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
         try:
@@ -396,6 +427,7 @@ class MoobleClient:
 
     @classmethod
     def _parse_page(cls, payload: dict[str, Any], *, current_url: str) -> CatalogPage:
+        """Normalize initial and continuation Explorer response shapes."""
         output = _mapping(payload.get("Output"))
         pin = _mapping(output.get("Pin"))
         available = _mapping(pin.get("AvailableTags"))
@@ -424,6 +456,7 @@ class MoobleClient:
 
     @staticmethod
     def _parse_category(raw: dict[str, Any]) -> CatalogCategory:
+        """Map one observed Explorer tag record to a catalog category."""
         return CatalogCategory(
             id=_string(raw.get("Id")),
             name=_string(raw.get("Name")),
@@ -435,6 +468,7 @@ class MoobleClient:
 
     @staticmethod
     def _parse_item(raw: dict[str, Any]) -> CatalogItem:
+        """Map one observed Explorer specification record to a catalog item."""
         links = _mapping(raw.get("Links"))
         brand = _mapping(raw.get("Brand"))
         collection = _mapping(raw.get("Collection"))

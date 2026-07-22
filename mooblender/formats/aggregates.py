@@ -14,6 +14,8 @@ class AggregateResolutionError(ValueError):
 
 @dataclass(slots=True)
 class _ResolutionContext:
+    """Track recursion limits and reuse resolved aggregate/material packages."""
+
     loader: Callable[[str], PContentPackage]
     max_depth: int
     max_entities: int
@@ -21,6 +23,7 @@ class _ResolutionContext:
     loaded_count: int = 0
 
     def _load(self, entity_id: str, *, aggregate: bool) -> PContentPackage:
+        """Load one referenced entity once while enforcing the global limit."""
         cached = self.memo.get(entity_id)
         if cached is not None:
             return cached
@@ -39,6 +42,7 @@ class _ResolutionContext:
         return loaded
 
     def _resolve_materials(self, package: PContentPackage) -> None:
+        """Resolve material IDs referenced by a package's model components."""
         package.resolved_materials.clear()
         models = package.properties.get("Models", [])
         if not isinstance(models, list):
@@ -58,6 +62,7 @@ class _ResolutionContext:
 
     @staticmethod
     def _specification_id(raw: object) -> str:
+        """Return the first usable specification ID from an aggregate record."""
         if not isinstance(raw, dict):
             return ""
         specifications = raw.get("Specifications")
@@ -74,6 +79,7 @@ class _ResolutionContext:
         depth: int,
         ancestors: frozenset[str],
     ) -> None:
+        """Resolve a package tree recursively with depth and cycle protection."""
         if depth > self.max_depth:
             raise AggregateResolutionError("PContent aggregate depth exceeds safety limit")
         self._resolve_materials(package)

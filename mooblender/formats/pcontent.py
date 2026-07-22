@@ -57,6 +57,7 @@ class ResolvedAggregate:
 
 
 def _decode_7bit_length(data: bytes) -> tuple[int, int]:
+    """Decode .NET BinaryWriter's bounded seven-bit string length prefix."""
     value = 0
     shift = 0
     for index, byte in enumerate(data[:5]):
@@ -89,6 +90,7 @@ def decode_properties(data: bytes) -> dict[str, object]:
 
 
 def _safe_member(info: zipfile.ZipInfo) -> bool:
+    """Reject absolute and parent-traversing ZIP member paths."""
     path = PurePosixPath(info.filename.replace("\\", "/"))
     return not path.is_absolute() and ".." not in path.parts
 

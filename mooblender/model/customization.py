@@ -6,6 +6,7 @@ from collections.abc import Mapping
 
 
 def _reference_model_ids(references: object) -> tuple[str, ...]:
+    """Flatten selected model IDs from the observed reference encodings."""
     if isinstance(references, Mapping):
         candidates = references.values()
     elif isinstance(references, list):

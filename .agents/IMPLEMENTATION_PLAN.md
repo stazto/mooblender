@@ -115,6 +115,12 @@ Implemented follow-up work:
   meshes remain in a scene-unlinked collection and are referenced by Object
   Info nodes. Static and controlled transforms are compiled into Transform
   Geometry nodes; no helper empties or transform drivers are created.
+- Keep aggregate/package interpretation in `scene_builder.py` and all node-tree
+  construction in `geometry_nodes.py`. Preserve this boundary with an AST
+  regression so orchestration cannot silently absorb node graph code again.
+- Require explanatory docstrings for every add-on module, class, function, and
+  method. Add intent comments around non-obvious format, concurrency, cache,
+  transform, and node-graph decisions rather than narrating trivial syntax.
 
 Remaining exit work:
 

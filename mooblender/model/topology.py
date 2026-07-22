@@ -26,6 +26,7 @@ class PreparedMesh:
 
 
 def _normalized(vector: Vector3) -> Vector3:
+    """Return a unit vector, preserving a zero vector as zero."""
     length_squared = sum(component * component for component in vector)
     if length_squared <= 0.0:
         return (0.0, 0.0, 0.0)
@@ -60,10 +61,12 @@ def _generated_normals(source: Mesh) -> list[Vector3]:
 
 
 def _near(first: Vector3, second: Vector3, tolerance: float) -> bool:
+    """Compare two points or vectors with an Euclidean tolerance."""
     return sum((a - b) ** 2 for a, b in zip(first, second, strict=True)) <= tolerance**2
 
 
 def _smooth_angle(first: Vector3, second: Vector3) -> bool:
+    """Return whether generated normals belong to the same smooth fan."""
     first = _normalized(first)
     second = _normalized(second)
     if first == (0.0, 0.0, 0.0) or second == (0.0, 0.0, 0.0):
@@ -80,15 +83,18 @@ class _DisjointSet:
 
     @classmethod
     def from_indices(cls, indices: list[int]) -> _DisjointSet:
+        """Create one initially independent set for every used source index."""
         return cls({index: index for index in indices})
 
     def find(self, index: int) -> int:
+        """Return a set root while shortening future lookup paths."""
         while self.parents[index] != index:
             self.parents[index] = self.parents[self.parents[index]]
             index = self.parents[index]
         return index
 
     def union(self, first: int, second: int) -> None:
+        """Merge two compatible source-vertex sets."""
         first_root = self.find(first)
         second_root = self.find(second)
         if first_root != second_root:
@@ -96,6 +102,7 @@ class _DisjointSet:
 
 
 def _position_bucket(position: Vector3) -> tuple[int, int, int]:
+    """Quantize a position for fast tolerance-neighbor lookup."""
     return tuple(round(component / POSITION_TOLERANCE) for component in position)
 
 
@@ -120,6 +127,7 @@ def _group_coincident_positions(
     source: Mesh,
     used_indices: list[int],
 ) -> tuple[list[list[int]], dict[int, int]]:
+    """Group used source vertices that occupy the same tolerant position."""
     groups: list[list[int]] = []
     group_by_source: dict[int, int] = {}
     buckets: dict[tuple[int, int, int], list[int]] = {}
@@ -180,6 +188,7 @@ def _averaged_normals(
     normals: list[Vector3],
     vertices: _DisjointSet,
 ) -> dict[int, Vector3]:
+    """Average source normals for each welded vertex set."""
     members_by_root: dict[int, list[int]] = {}
     for index in used_indices:
         members_by_root.setdefault(vertices.find(index), []).append(index)
@@ -197,6 +206,7 @@ def _compact_vertices(
     normals_by_root: dict[int, Vector3],
     vertices: _DisjointSet,
 ) -> tuple[list[Vector3], list[Vector3], dict[int, int]]:
+    """Build compact Blender vertices and a source-to-compact index map."""
     compact_vertices: list[Vector3] = []
     compact_normals: list[Vector3] = []
     compact_by_root: dict[int, int] = {}

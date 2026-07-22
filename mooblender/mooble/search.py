@@ -9,6 +9,7 @@ from .models import CatalogItem
 
 
 def _search_text(value: str) -> str:
+    """Normalize case and accents for human-friendly local matching."""
     normalized = unicodedata.normalize("NFKD", value.casefold())
     return "".join(character for character in normalized if not unicodedata.combining(character))
 

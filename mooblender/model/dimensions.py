@@ -61,6 +61,7 @@ def dimension_variables(
 
 
 def _dimension_value(value: object, coordinate: str, field: str) -> float:
+    """Read either coordinate-style or named-axis dimension metadata."""
     if not isinstance(value, Mapping):
         return 0.0
     return evaluate_expression(value.get(coordinate, value.get(field)))
@@ -141,6 +142,7 @@ def bounding_box_dimensions(properties: Mapping[str, object]) -> Dimension3:
 def _document_points_by_layer(
     document: PmobDocument | None,
 ) -> dict[str, list[tuple[float, float, float]]]:
+    """Collect every layer point after its complete primitive transform chain."""
     if document is None:
         return {}
     layers = {layer.name.casefold(): layer for layer in document.layers}
@@ -149,6 +151,7 @@ def _document_points_by_layer(
     }
 
     def append_layer(layer_ref: str, transforms) -> None:
+        """Transform and append all vertices belonging to one layer reference."""
         layer_name = layer_ref.casefold()
         layer = layers.get(layer_name)
         if layer is None:
@@ -161,6 +164,7 @@ def _document_points_by_layer(
                 points[layer_name].append(point)
 
     def visit(primitive: Primitive, transforms=()) -> None:
+        """Traverse the primitive hierarchy while accumulating its matrices."""
         current = transforms + (primitive.matrix,)
         if primitive.layer_ref:
             append_layer(primitive.layer_ref, current)
@@ -176,6 +180,7 @@ def _document_points_by_layer(
 
 
 def _point_dimensions(points: list[tuple[float, float, float]]) -> Dimension3:
+    """Measure axis-aligned dimensions for a point collection."""
     if not points:
         return (0.0, 0.0, 0.0)
     minimum = tuple(min(point[index] for point in points) for index in range(3))
@@ -184,6 +189,7 @@ def _point_dimensions(points: list[tuple[float, float, float]]) -> Dimension3:
 
 
 def _point_bounds(points: list[tuple[float, float, float]]) -> Bounds3 | None:
+    """Return axis-aligned minimum and maximum points when data is present."""
     if not points:
         return None
     return (

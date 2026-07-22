@@ -10,6 +10,7 @@ from .runtime import icon_for_item
 
 
 def _draw_background_status(layout, state) -> None:
+    """Keep network and background-job feedback visible above the browser."""
     if not bpy.app.online_access:
         layout.label(text="Blender is in offline mode", icon="ERROR")
         layout.label(text="The cached catalog remains available")
@@ -25,6 +26,7 @@ def _draw_background_status(layout, state) -> None:
 
 
 def _draw_catalog_scope(content, preferences, state) -> None:
+    """Draw the department checkboxes that determine the next full sync."""
     scope = content.box()
     scope.enabled = not state.is_syncing
     scope.label(text="Catalog content", icon="CHECKBOX_HLT")
@@ -43,6 +45,7 @@ def _draw_catalog_scope(content, preferences, state) -> None:
 
 
 def _draw_import_options(content, preferences, state) -> None:
+    """Draw synchronization, mesh-conversion, and snapshot summary controls."""
     sync = content.row()
     sync.enabled = not state.is_syncing and bpy.app.online_access
     sync.operator("promob.catalog_refresh", text="Sync Catalog", icon="FILE_REFRESH")
@@ -64,6 +67,7 @@ def _draw_import_options(content, preferences, state) -> None:
 
 
 def _draw_search_and_navigation(content, state) -> None:
+    """Draw local filters, navigation, status, and any actionable error."""
     search = content.row(align=True)
     search.prop(state, "query", text="", icon="VIEWZOOM")
     search.operator("promob.catalog_search", text="", icon="VIEWZOOM")
@@ -79,6 +83,7 @@ def _draw_search_and_navigation(content, state) -> None:
 
 
 def _draw_categories(content, state) -> None:
+    """Draw cached child categories while omitting the current category."""
     if not state.categories:
         return
     categories = content.box()
@@ -96,6 +101,7 @@ def _draw_categories(content, state) -> None:
 
 
 def _draw_catalog_items(content, state) -> None:
+    """Draw model cards and a bounded local pagination control."""
     grid = content.grid_flow(row_major=True, columns=0, even_columns=True)
     for item in state.items:
         box = grid.box()

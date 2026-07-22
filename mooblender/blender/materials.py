@@ -67,6 +67,7 @@ def _transparent_texture_name(diffuse_name: str | None) -> str | None:
 
 
 def _texture_node(nodes, image, *, label: str, non_color: bool = False):
+    """Create one image-texture node, or return None for a missing image."""
     if image is None:
         return None
     node = nodes.new("ShaderNodeTexImage")
