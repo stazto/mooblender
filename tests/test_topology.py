@@ -90,12 +90,36 @@ class TopologyTests(unittest.TestCase):
             ],
             indices=[0, 1, 2, 3, 4, 5],
             normals=[(0.0, 0.0, 1.0)] * 3 + [(0.0, 1.0, 0.0)] * 3,
+            smooth_groups=[[0, 3], [1, 4]],
         )
 
         topology = prepare_mesh(source)
 
         self.assertEqual(len(topology.vertices), 6)
         self.assertEqual(topology.loop_normals, source.normals)
+
+    def test_explicit_groups_preserve_omitted_hard_edges(self):
+        angle = math.radians(30.0)
+        source = Mesh(
+            vertices=[
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, math.cos(angle), math.sin(angle)),
+            ],
+            indices=[0, 1, 2, 3, 4, 5],
+            # Only the first coincident pair is explicitly smooth. Although the
+            # faces meet below 45 degrees, the second pair must stay a hard edge.
+            smooth_groups=[[0, 3]],
+        )
+
+        topology = prepare_mesh(source)
+
+        self.assertEqual(len(topology.vertices), 5)
+        self.assertEqual(topology.removed_vertex_count, 1)
+        self.assertEqual(topology.faces, [(0, 1, 2), (0, 3, 4)])
 
     def test_generates_continuous_normals_for_smoothing_groups(self):
         source = Mesh(

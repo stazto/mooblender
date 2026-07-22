@@ -79,8 +79,10 @@ of using the disabled gray appearance reserved for unused inputs.
 ## Geometry and material behavior
 
 The importer preserves PMob transforms and source units, reconstructs smoothing
-groups and compatible normal fans, compacts UV-seam duplicate vertices onto
-Blender's corner domain, and generates physical UV projection when required.
+groups and compatible normal fans, compacts safe UV-seam duplicate vertices
+onto Blender's corner domain, and generates physical UV projection when
+required. Explicit groups preserve omitted hard edges; the angular smoothing
+fallback applies only to meshes without smoothing metadata.
 Negative-determinant component transforms and whole-model reversal correct face
 winding inside Geometry Nodes, so mirroring does not invert visible normals.
 Fixed hardware remains fixed while supported editable panels stretch around its

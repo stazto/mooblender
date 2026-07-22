@@ -21,7 +21,7 @@ geometry responsible for each failure:
 | 44950/007 drawing-depth placement | `test_44950_007_positions_drawers_from_drawing_depth_not_mesh_envelope` | aggregate parent-dimension placement in `blender_smoke.py` |
 | 10122 side-attached handles | `test_10122_handle_source_dimensions_include_primitive_transforms` | `test_10122_side_normal_rotation_keeps_local_front_height_positive` |
 | 4220A/0079K shared texel density | `test_4220a_shared_material_components_retain_same_geometry_scale` | final physical UV checks in `blender_smoke.py` |
-| Duplicate vertices and smooth surfaces | `test_topology.py` and the named model regression | custom normals, UV seams, and optional quads in `blender_smoke.py` |
+| Duplicate vertices and smooth surfaces | `test_topology.py` and the named model regression | custom normals, UV seams, explicit hard edges, and optional quads in `blender_smoke.py` |
 | Porta de Giro 31 | `test_porta_de_giro_31_resolves_long_parent_dimension_variables` | long-form aggregate variables in `blender_smoke.py` |
 | Porta de Correr 21 | `test_porta_de_correr_21_distributes_three_panels_across_frame` | long-form aggregate variables in `blender_smoke.py` |
 | ELA-2 opposing lift carriages | — | `test_ela_2_opposing_side_normals_keep_both_carriages_above_anchor` |

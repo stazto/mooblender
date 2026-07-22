@@ -1,9 +1,9 @@
 """Prepare PMob topology for Blender's corner-domain UVs and normals.
 
 PMob often duplicates vertices at UV seams. The preparation pipeline groups
-coincident positions, welds only compatible normal fans, applies explicit
-smoothing groups, and finally compacts indices while keeping UVs and normals on
-the original face-corner sequence.
+coincident positions, gives serialized normals and smoothing groups precedence
+over its angular fallback, and finally compacts indices while keeping UVs and
+normals on the original face-corner sequence.
 """
 
 from __future__ import annotations
@@ -231,10 +231,11 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     """Weld matching PMob vertices without losing corner UVs or hard normals.
 
     PMob duplicates a position when a UV seam needs a second texture coordinate.
-    Its smoothing groups make the copies share a normal. Blender stores both UVs
-    and custom normals per face corner, so copies with matching positions and
-    normals can share one Blender vertex. Copies with different normals remain
-    separate and continue to define a hard edge.
+    Blender stores both UVs and custom normals per face corner, so compatible
+    copies can share one Blender vertex. Complete serialized normals are the
+    strongest evidence. Otherwise, explicit smoothing groups are authoritative:
+    a coincident pair omitted from them remains a hard edge. The 45-degree test
+    is only a fallback for meshes which provide neither form of smoothing data.
     """
     # Phase 1: establish one normal per source vertex. Generated area-weighted
     # normals are used only when PMob did not serialize a complete normal array.
@@ -245,13 +246,28 @@ def prepare_mesh(source: Mesh) -> PreparedMesh:
     # 27 neighboring cells instead of comparing every vertex with every other.
     position_groups, group_by_source = _group_coincident_positions(source, used_indices)
     vertices = _DisjointSet.from_indices(used_indices)
-    _merge_compatible_normals(
-        position_groups,
-        normals,
-        source_normals=has_source_normals,
-        vertices=vertices,
-    )
-    _merge_explicit_smoothing_groups(source, used_indices, group_by_source, vertices)
+    if has_source_normals:
+        # Serialized normals preserve both smooth UV seams and intentional hard
+        # edges. A smoothing-group entry must not override conflicting normals.
+        _merge_compatible_normals(
+            position_groups,
+            normals,
+            source_normals=True,
+            vertices=vertices,
+        )
+    elif source.smooth_groups:
+        # The presence of groups makes their omissions meaningful. Applying the
+        # angle heuristic here used to over-weld unlisted hard-edge duplicates.
+        _merge_explicit_smoothing_groups(source, used_indices, group_by_source, vertices)
+    else:
+        # Some legacy meshes omit all smoothing metadata. Retain the observed
+        # producer threshold as a conservative compatibility fallback for them.
+        _merge_compatible_normals(
+            position_groups,
+            normals,
+            source_normals=False,
+            vertices=vertices,
+        )
     # Phase 3: the disjoint-set roots define the exact welded topology. Corner
     # arrays below intentionally retain the original index order, preserving UV
     # seams even when their duplicate positions now share a Blender vertex.

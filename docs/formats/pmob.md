@@ -67,7 +67,8 @@ creates each mesh datablock once and instances it at every primitive reference.
 The observed PMob producer duplicates a position when two face corners require
 different UV coordinates, then places the duplicate indices in one smoothing
 group. Its mesh conversion also uses a 45-degree maximum angle when deciding
-whether coincident vertices belong to one smooth surface. Normal generation
+whether coincident vertices belong to one smooth surface while building this
+topology. Normal generation
 accumulates triangle normals at each vertex and averages the members of each
 smoothing group. These behaviors are confirmed by the decompiled serializer
 and mesh implementation; a cached 212-package corpus confirms that the files
@@ -75,12 +76,14 @@ commonly omit serialized normals and rely on these topology rules.
 
 Blender stores UV coordinates and custom normals on face corners, so Mooblender
 can weld coincident smooth vertices without discarding UV seams. It groups
-positions within the producer's `1e-5` source-unit tolerance, joins normal fans
-within the observed 45-degree threshold, honors explicit smoothing groups, and
-keeps incompatible fans split as hard edges. It then writes the generated
+positions within the producer's `1e-5` source-unit tolerance and keeps UVs on
+the face-corner domain. Complete serialized normals take precedence. Without
+them, explicit smoothing groups are authoritative, including coincident pairs
+omitted to retain hard edges. The observed 45-degree threshold is used only when
+both normals and groups are absent. It then writes the generated
 normal to every face corner and enables smooth polygon shading. On the sampled
-corpus this reduced 611,468 source vertices to 319,119 Blender vertices while
-retaining all triangle corners and their UV coordinates.
+corpus this safely removes UV-seam duplicates while retaining all triangle
+corners and their UV coordinates.
 
 PMob still stores mesh faces as triangles. As an optional Blender-side import
 step, Mooblender can reconstruct nearly coplanar triangle pairs as quads. The
