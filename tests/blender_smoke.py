@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -126,28 +126,62 @@ def _realized_points(controller):
 
 def _source_instance_matrix(controller, source_object):
     modifier = controller.modifiers["Mooblender"]
-    realize_socket = next(
-        item
-        for item in modifier.node_group.interface.items_tree
-        if item.item_type == "SOCKET" and item.name == "Realize Instances"
+    node_group = modifier.node_group
+
+    def socket_value(socket):
+        if not socket.links:
+            return socket.default_value
+        source = socket.links[0].from_socket
+        node = source.node
+        if node.bl_idname == "NodeGroupInput":
+            interface_inputs = getattr(
+                getattr(modifier, "properties", None), "inputs", None
+            )
+            if interface_inputs is not None and hasattr(
+                interface_inputs, source.identifier
+            ):
+                return getattr(interface_inputs, source.identifier).value
+            interface_socket = next(
+                item
+                for item in node_group.interface.items_tree
+                if item.item_type == "SOCKET" and item.identifier == source.identifier
+            )
+            return modifier.get(source.identifier, interface_socket.default_value)
+        if node.bl_idname == "ShaderNodeCombineXYZ":
+            return Vector(tuple(socket_value(node.inputs[axis]) for axis in "XYZ"))
+        if node.bl_idname == "ShaderNodeMath":
+            left = socket_value(node.inputs[0])
+            right = socket_value(node.inputs[1])
+            if node.operation == "MULTIPLY":
+                return left * right
+            if node.operation == "ADD":
+                return left + right
+        raise AssertionError(f"unsupported transform input node: {node.bl_idname}")
+
+    node = next(
+        node
+        for node in node_group.nodes
+        if node.bl_idname == "GeometryNodeObjectInfo"
+        and node.inputs["Object"].default_value == source_object
     )
-    interface_inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
-    previous = (
-        getattr(interface_inputs, realize_socket.identifier).value
-        if interface_inputs is not None
-        and hasattr(interface_inputs, realize_socket.identifier)
-        else modifier.get(realize_socket.identifier, realize_socket.default_value)
-    )
-    _set_modifier_input(modifier, realize_socket, False)
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    for instance in depsgraph.object_instances:
-        original = getattr(instance.instance_object, "original", None)
-        if instance.is_instance and original == source_object:
-            matrix = instance.matrix_world.copy()
-            _set_modifier_input(modifier, realize_socket, previous)
-            return matrix
-    _set_modifier_input(modifier, realize_socket, previous)
-    raise AssertionError(f"no Geometry Nodes instance found for {source_object.name}")
+    output = node.outputs["Geometry"]
+    matrix = Matrix.Identity(4)
+    while output.links:
+        node = output.links[0].to_node
+        if node.bl_idname == "GeometryNodeJoinGeometry":
+            break
+        if node.bl_idname == "GeometryNodeTransform":
+            translation = Vector(socket_value(node.inputs["Translation"]))
+            rotation = Euler(socket_value(node.inputs["Rotation"]), "XYZ")
+            scale = Vector(socket_value(node.inputs["Scale"]))
+            matrix = Matrix.LocRotScale(
+                translation, rotation.to_quaternion(), scale
+            ) @ matrix
+        geometry_outputs = [socket for socket in node.outputs if socket.type == "GEOMETRY"]
+        if not geometry_outputs:
+            break
+        output = geometry_outputs[0]
+    return controller.matrix_world @ matrix
 
 
 def _source_transform_labels(controller, source_object) -> set[str]:
@@ -162,10 +196,14 @@ def _source_transform_labels(controller, source_object) -> set[str]:
     output = node.outputs["Geometry"]
     while output.links:
         node = output.links[0].to_node
-        if node.bl_idname != "GeometryNodeTransform":
+        if node.bl_idname == "GeometryNodeJoinGeometry":
             break
-        labels.add(node.label)
-        output = node.outputs["Geometry"]
+        if node.bl_idname == "GeometryNodeTransform":
+            labels.add(node.label)
+        geometry_outputs = [socket for socket in node.outputs if socket.type == "GEOMETRY"]
+        if not geometry_outputs:
+            break
+        output = geometry_outputs[0]
     return labels
 
 
@@ -1015,7 +1053,7 @@ def main() -> None:
             and node.label == "Keep Instances / Realize"
         )
         false_source = geometry_switch.inputs["False"].links[0].from_node
-        if false_source.bl_idname != "GeometryNodeJoinGeometry":
+        if false_source.bl_idname != "GeometryNodeGeometryToInstance":
             raise AssertionError("the default Geometry Nodes branch lost its mesh instances")
         if any(obj.type == "EMPTY" for obj in source_collection.all_objects):
             raise AssertionError("the node source still contains helper empties")
@@ -1035,8 +1073,8 @@ def main() -> None:
             and instance.parent is not None
             and instance.parent.original == controller
         ]
-        if len(source_instances) < 2:
-            raise AssertionError("the default modifier output did not retain nested instances")
+        if len(source_instances) != 1:
+            raise AssertionError("the default modifier output did not retain its model instance")
         evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
         evaluated_mesh = evaluated.to_mesh()
         if len(evaluated_mesh.polygons) != 0:

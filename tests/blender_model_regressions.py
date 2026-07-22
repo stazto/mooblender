@@ -64,6 +64,48 @@ def _part_package(name: str = "Part") -> PContentPackage:
     )
 
 
+def _closed_part_package(name: str = "Closed part") -> PContentPackage:
+    package = _part_package(name)
+    package.document.layers[0].meshes[0] = Mesh(
+        vertices=[
+            (0, 0, 0),
+            (100, 0, 0),
+            (100, 100, 0),
+            (0, 100, 0),
+            (0, 0, 100),
+            (100, 0, 100),
+            (100, 100, 100),
+            (0, 100, 100),
+        ],
+        indices=[
+            0, 2, 1, 0, 3, 2,
+            4, 5, 6, 4, 6, 7,
+            0, 1, 5, 0, 5, 4,
+            3, 7, 6, 3, 6, 2,
+            0, 4, 7, 0, 7, 3,
+            1, 2, 6, 1, 6, 5,
+        ],
+        material_id=0,
+    )
+    return package
+
+
+def _signed_volume(controller) -> float:
+    evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh()
+    volume = sum(
+        mesh.vertices[polygon.vertices[0]].co.dot(
+            mesh.vertices[polygon.vertices[1]].co.cross(
+                mesh.vertices[polygon.vertices[2]].co
+            )
+        )
+        / 6.0
+        for polygon in mesh.polygons
+    )
+    evaluated.to_mesh_clear()
+    return volume
+
+
 class BlenderReportedModelRegressions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -134,6 +176,51 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         ).data.materials[0]
         observed = tuple(round(value, 6) for value in material.diffuse_color[:3])
         self.assertEqual(observed, (round(5 / 255, 6),) * 3)
+
+    def test_c66_mirror_and_inverted_parts_preserve_outward_face_orientation(self):
+        child = _closed_part_package("C66 door")
+        package = PContentPackage(
+            document=None,
+            properties={
+                "Dimension": {"Width": 200, "Depth": 100, "Height": 100},
+                "Limits": {
+                    "Min": {"X": 0},
+                    "Max": {"X": 200},
+                },
+                "Attributes": {"CANMIRROR": {"VALUE": "True"}},
+                "Aggregates": [
+                    {
+                        "Description": "Left door",
+                        "Dimension": {"Width": 100, "Depth": 100, "Height": 100},
+                    },
+                    {
+                        "Description": "Right door",
+                        "Dimension": {"Width": 100, "Depth": 100, "Height": 100},
+                        "Position": {"X": 200},
+                        "Inverted": True,
+                    },
+                ],
+            },
+            resolved_aggregates=[
+                ResolvedAggregate(0, "left", child),
+                ResolvedAggregate(1, "right", child),
+            ],
+        )
+        controller = self._build(package, "C66 normals")
+        modifier = controller.modifiers["Mooblender"]
+        sockets = {
+            item.name: item
+            for item in modifier.node_group.interface.items_tree
+            if item.item_type == "SOCKET"
+        }
+        _set_modifier_input(modifier, sockets["Realize Instances"], True)
+
+        baseline_volume = _signed_volume(controller)
+        self.assertGreater(baseline_volume, 0.0)
+        _set_modifier_input(modifier, sockets["Reverse"], True)
+        reversed_volume = _signed_volume(controller)
+        self.assertGreater(reversed_volume, 0.0)
+        self.assertAlmostEqual(reversed_volume, baseline_volume, places=6)
 
     def test_c67_imports_selected_door_and_exposes_optional_components(self):
         door_p1 = _part_package("C67 Door P1")

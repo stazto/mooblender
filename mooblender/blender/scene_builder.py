@@ -65,6 +65,7 @@ TransformControls = dict[
     object,
     dict[tuple[str, int], tuple[Any, float, float]],
 ]
+_TRANSFORM_PARITY_ATTRIBUTE = "mooblender_transform_parity"
 
 
 def _drive_transform(
@@ -407,6 +408,8 @@ def _geometry_nodes_controller(name: str, collection):
     links = node_group.links
     source_geometry = nodes.new("GeometryNodeJoinGeometry")
     source_geometry.label = "Transformed Source Meshes"
+    geometry_to_instance = nodes.new("GeometryNodeGeometryToInstance")
+    geometry_to_instance.label = "Materialized Model Instance"
     realize = nodes.new("GeometryNodeRealizeInstances")
     realize.label = "Optional Realization"
     geometry_switch = nodes.new("GeometryNodeSwitch")
@@ -415,8 +418,11 @@ def _geometry_nodes_controller(name: str, collection):
     group_input = nodes.new("NodeGroupInput")
     output = nodes.new("NodeGroupOutput")
     output.is_active_output = True
-    links.new(source_geometry.outputs["Geometry"], realize.inputs["Geometry"])
-    links.new(source_geometry.outputs["Geometry"], geometry_switch.inputs["False"])
+    links.new(
+        source_geometry.outputs["Geometry"], geometry_to_instance.inputs["Geometry"]
+    )
+    links.new(geometry_to_instance.outputs["Instances"], realize.inputs["Geometry"])
+    links.new(geometry_to_instance.outputs["Instances"], geometry_switch.inputs["False"])
     links.new(realize.outputs["Geometry"], geometry_switch.inputs["True"])
     links.new(group_input.outputs[realize_socket.name], geometry_switch.inputs["Switch"])
     links.new(geometry_switch.outputs["Output"], output.inputs[output_socket.name])
@@ -428,6 +434,7 @@ def _geometry_nodes_controller(name: str, collection):
         modifier,
         group_input,
         source_geometry,
+        geometry_to_instance,
         realize,
         geometry_switch,
         realize_socket,
@@ -494,6 +501,7 @@ def _compile_geometry_nodes_hierarchy(
     node_group,
     group_input,
     source_geometry,
+    geometry_to_instance,
     source_collection,
     hierarchy_root,
     transform_controls: TransformControls,
@@ -511,15 +519,25 @@ def _compile_geometry_nodes_hierarchy(
         object_info.transform_space = "ORIGINAL"
         object_info.inputs["Object"].default_value = mesh_object
         object_info.inputs["As Instance"].default_value = True
-        geometry = object_info.outputs["Geometry"]
+        leaf_realize = nodes.new("GeometryNodeRealizeInstances")
+        leaf_realize.label = "Read Source Mesh"
+        links.new(object_info.outputs["Geometry"], leaf_realize.inputs["Geometry"])
+        store_parity = nodes.new("GeometryNodeStoreNamedAttribute")
+        store_parity.data_type = "BOOLEAN"
+        store_parity.domain = "FACE"
+        store_parity.inputs["Name"].default_value = _TRANSFORM_PARITY_ATTRIBUTE
+        links.new(leaf_realize.outputs["Geometry"], store_parity.inputs["Geometry"])
+        geometry = store_parity.outputs["Geometry"]
+        transform_chain = _transform_chain(mesh_object, hierarchy_root, object_parents)
+        negative_determinant = False
 
-        for transform_object in _transform_chain(
-            mesh_object, hierarchy_root, object_parents
-        ):
+        for transform_object in transform_chain:
             channels = transform_controls.get(transform_object, {})
             translation = tuple(transform_object.location)
             rotation = _rotation_euler(transform_object)
             scale = tuple(transform_object.scale)
+            if scale[0] * scale[1] * scale[2] < 0.0:
+                negative_determinant = not negative_determinant
             is_identity = (
                 not channels
                 and translation == (0.0, 0.0, 0.0)
@@ -560,7 +578,31 @@ def _compile_geometry_nodes_hierarchy(
                         )
                 links.new(combine.outputs["Vector"], transform.inputs[channel.title()])
             geometry = transform.outputs["Geometry"]
+        store_parity.inputs["Value"].default_value = negative_determinant
         links.new(geometry, source_geometry.inputs["Geometry"])
+
+    instance_input = geometry_to_instance.inputs["Geometry"]
+    source_link = instance_input.links[0]
+    source_output = source_link.from_socket
+    links.remove(source_link)
+    parity = nodes.new("GeometryNodeInputNamedAttribute")
+    parity.data_type = "BOOLEAN"
+    parity.inputs["Name"].default_value = _TRANSFORM_PARITY_ATTRIBUTE
+    selection = parity.outputs["Attribute"]
+    reverse = transform_controls.get(hierarchy_root, {}).get(("scale", 0))
+    if reverse is not None:
+        reverse_socket, offset, factor = reverse
+        if offset == 1.0 and factor == -2.0:
+            xor = nodes.new("FunctionNodeBooleanMath")
+            xor.operation = "XOR"
+            links.new(selection, xor.inputs[0])
+            links.new(_group_input_output(group_input, reverse_socket), xor.inputs[1])
+            selection = xor.outputs[0]
+    flip_faces = nodes.new("GeometryNodeFlipFaces")
+    flip_faces.label = "Correct Mirrored Face Orientation"
+    links.new(source_output, flip_faces.inputs["Mesh"])
+    links.new(selection, flip_faces.inputs["Selection"])
+    links.new(flip_faces.outputs["Mesh"], instance_input)
 
     for mesh_object in mesh_objects:
         mesh_object.parent = None
@@ -1058,6 +1100,7 @@ def build_document(
         geometry_modifier,
         group_input,
         source_geometry,
+        geometry_to_instance,
         realize,
         geometry_switch,
         realize_socket,
@@ -1214,6 +1257,7 @@ def build_document(
         geometry_modifier.node_group,
         group_input,
         source_geometry,
+        geometry_to_instance,
         source_collection,
         hierarchy_root,
         transform_controls,
