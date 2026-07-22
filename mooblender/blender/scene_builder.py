@@ -2,19 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
-import os
-import tempfile
 import zlib
 from collections.abc import Callable
-from contextlib import suppress
-from dataclasses import asdict
-from pathlib import PurePosixPath
 from typing import Any
 
-import bmesh
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
@@ -22,27 +14,17 @@ from ..formats.pcontent import PContentPackage
 from ..model.dimensions import (
     configurable_dimensions,
     dimension_variables,
-    document_geometry_dimensions,
-    document_layer_bounds,
-    document_layer_dimensions,
     property_dimensions,
     serialized_geometry_dimensions,
 )
 from ..model.expressions import evaluate_expression
 from ..model.openings import control_name, door_motion
-from ..model.scene import Material, PmobDocument, Primitive, PrimitiveType
-from ..model.topology import prepare_mesh
-from ..model.transforms import blender_matrix_rows
-
-
-def _unique_name(value: str, fallback: str) -> str:
-    value = value.strip().replace("\x00", "")
-    return value or fallback
+from ..model.scene import PmobDocument
+from .mesh_builder import _document_root, _entity_code, _remote_material, _unique_name
 
 
 def _aggregate_orientation(normal: Vector, rotation: float) -> Quaternion:
     """Build Promob's normal frame without an ambiguous shortest-arc roll."""
-
     vertical_reference = Vector((0.0, 0.0, -1.0))
     local_x = vertical_reference - normal * vertical_reference.dot(normal)
     if local_x.length_squared <= 1e-12:
@@ -58,715 +40,6 @@ def _aggregate_orientation(normal: Vector, rotation: float) -> Quaternion:
         )
     ).transposed().to_quaternion()
     return orientation @ Quaternion((0.0, 0.0, 1.0), rotation)
-
-
-def _embedded_image(package: PContentPackage | None, source_name: str | None):
-    if package is None:
-        return None
-    data = package.resource(source_name)
-    if data is None:
-        return None
-    digest = hashlib.sha256(data).hexdigest()
-    for image in bpy.data.images:
-        if image.get("mooblender_sha256") == digest:
-            return image
-
-    suffix = PurePosixPath(source_name or "image.png").suffix.lower()
-    if suffix not in {".bmp", ".jpeg", ".jpg", ".png", ".tga", ".tif", ".tiff", ".webp"}:
-        suffix = ".img"
-    descriptor, temporary_name = tempfile.mkstemp(prefix="mooblender-", suffix=suffix)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
-        image = bpy.data.images.load(temporary_name, check_existing=False)
-        image.name = _unique_name(PurePosixPath(source_name or "Texture").name, "Texture")
-        image.pack()
-        image["mooblender_sha256"] = digest
-        image["promob_resource_name"] = source_name or ""
-        return image
-    finally:
-        with suppress(FileNotFoundError):
-            os.unlink(temporary_name)
-
-
-def _transparent_texture_name(diffuse_name: str | None) -> str | None:
-    if not diffuse_name:
-        return None
-    stem = PurePosixPath(diffuse_name).stem
-    suffix = PurePosixPath(diffuse_name).suffix
-    upper = stem.upper()
-    if upper.endswith("_DIFFUSE"):
-        return stem[: -len("_DIFFUSE")] + "_TRANSPARENT" + suffix
-    return None
-
-
-def _texture_node(nodes, image, *, label: str, non_color: bool = False):
-    if image is None:
-        return None
-    node = nodes.new("ShaderNodeTexImage")
-    node.label = label
-    node.image = image
-    if non_color:
-        image.colorspace_settings.name = "Non-Color"
-    return node
-
-
-def _connect_texture_coordinates(nodes, links, source: Material, texture_nodes) -> None:
-    texture_nodes = [node for node in texture_nodes if node is not None]
-    if not texture_nodes:
-        return
-    coordinates = nodes.new("ShaderNodeTexCoord")
-    vector_output = coordinates.outputs["UV"]
-    if source.mapping_number or source.mapping_scale or source.mapping_rotation:
-        mapping = nodes.new("ShaderNodeMapping")
-        if source.mapping_number:
-            x_scale, y_scale = source.mapping_number
-            mapping_scale = (x_scale, y_scale, 1.0)
-        elif source.mapping_scale:
-            width, height = source.mapping_scale
-            x_scale = 1000.0 / width if width > 1e-9 else 1.0
-            y_scale = 1000.0 / height if height > 1e-9 else 1.0
-            mapping_scale = (x_scale, y_scale, 1.0)
-        else:
-            mapping_scale = (1.0, 1.0, 1.0)
-        mapping.inputs["Scale"].default_value = mapping_scale
-        mapping.inputs["Rotation"].default_value[2] = math.radians(
-            source.mapping_rotation or 0.0
-        )
-        links.new(vector_output, mapping.inputs["Vector"])
-        vector_output = mapping.outputs["Vector"]
-    for node in texture_nodes:
-        links.new(vector_output, node.inputs["Vector"])
-
-
-def _socket_default(value):
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    if hasattr(value, "name"):
-        return (type(value).__name__, value.name)
-    try:
-        return tuple(value)
-    except TypeError:
-        return repr(value)
-
-
-def _material_state_digest(material) -> str:
-    node_tree = material.node_tree if material.use_nodes else None
-    nodes = []
-    links = []
-    if node_tree is not None:
-        nodes = [
-            {
-                "name": node.name,
-                "type": node.bl_idname,
-                "label": node.label,
-                "settings": {
-                    name: getattr(node, name)
-                    for name in (
-                        "blend_type",
-                        "data_type",
-                        "extension",
-                        "interpolation",
-                        "operation",
-                        "projection",
-                        "vector_type",
-                    )
-                    if hasattr(node, name)
-                },
-                "image": (
-                    node.image.get("mooblender_sha256") or node.image.name
-                    if getattr(node, "image", None) is not None
-                    else None
-                ),
-                "inputs": [
-                    (socket.identifier, _socket_default(socket.default_value))
-                    for socket in node.inputs
-                    if hasattr(socket, "default_value")
-                ],
-            }
-            for node in sorted(node_tree.nodes, key=lambda item: item.name)
-        ]
-        links = sorted(
-            (
-                link.from_node.name,
-                link.from_socket.identifier,
-                link.to_node.name,
-                link.to_socket.identifier,
-            )
-            for link in node_tree.links
-        )
-    payload = {
-        "diffuse_color": tuple(material.diffuse_color),
-        "metallic": material.metallic,
-        "roughness": material.roughness,
-        "surface_render_method": getattr(material, "surface_render_method", None),
-        "use_nodes": material.use_nodes,
-        "nodes": nodes,
-        "links": links,
-    }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-
-def _create_material(
-    source: Material,
-    index: int,
-    package: PContentPackage | None,
-):
-    digest_payload = asdict(source)
-    digest_payload.pop("name", None)
-    digest_payload["resources"] = {
-        texture_name: hashlib.sha256(data).hexdigest() if data is not None else None
-        for texture_name in (
-            source.diffuse_texture,
-            source.specular_texture,
-            source.normal_texture,
-            _transparent_texture_name(source.diffuse_texture),
-        )
-        if texture_name
-        for data in (package.resource(texture_name) if package is not None else None,)
-    }
-    digest = hashlib.sha256(
-        json.dumps(
-            digest_payload,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=repr,
-        ).encode("utf-8")
-    ).hexdigest()
-    existing = next(
-        (
-            material
-            for material in bpy.data.materials
-            if material.get("mooblender_material_sha256") == digest
-            and material.get("mooblender_material_state_sha256")
-            == _material_state_digest(material)
-        ),
-        None,
-    )
-    if existing is not None:
-        existing["promob_mapping_type"] = source.mapping_type or 0
-        return existing
-
-    name = _unique_name(source.name, f"Promob Material {index}")
-    material = bpy.data.materials.new(name)
-    red, green, blue, alpha = source.color
-    opacity = max(
-        0.0,
-        min(1.0, source.opacity if source.opacity is not None else alpha / 255.0),
-    )
-    color = (red / 255.0, green / 255.0, blue / 255.0, opacity)
-    material.diffuse_color = color
-    material.metallic = max(0.0, min(1.0, source.metallic or 0.0))
-    material.roughness = max(
-        0.0,
-        min(1.0, source.roughness if source.roughness is not None else 0.5),
-    )
-    material.use_nodes = True
-    nodes = material.node_tree.nodes
-    links = material.node_tree.links
-    principled = next((node for node in nodes if node.type == "BSDF_PRINCIPLED"), None)
-    if principled is not None:
-        principled.inputs["Base Color"].default_value = color
-        principled.inputs["Metallic"].default_value = material.metallic
-        principled.inputs["Roughness"].default_value = material.roughness
-        principled.inputs["Alpha"].default_value = opacity
-
-        diffuse = _texture_node(
-            nodes,
-            _embedded_image(package, source.diffuse_texture),
-            label="Promob Diffuse",
-        )
-        metallic = _texture_node(
-            nodes,
-            _embedded_image(package, source.specular_texture),
-            label="Promob Metallic",
-            non_color=True,
-        )
-        normal = _texture_node(
-            nodes,
-            _embedded_image(package, source.normal_texture),
-            label="Promob Normal",
-            non_color=True,
-        )
-        transparency = _texture_node(
-            nodes,
-            _embedded_image(package, _transparent_texture_name(source.diffuse_texture)),
-            label="Promob Transparency",
-            non_color=True,
-        )
-        _connect_texture_coordinates(
-            nodes,
-            links,
-            source,
-            (diffuse, metallic, normal, transparency),
-        )
-        if diffuse is not None:
-            links.new(diffuse.outputs["Color"], principled.inputs["Base Color"])
-        if metallic is not None:
-            links.new(metallic.outputs["Color"], principled.inputs["Metallic"])
-        if normal is not None:
-            normal_map = nodes.new("ShaderNodeNormalMap")
-            links.new(normal.outputs["Color"], normal_map.inputs["Color"])
-            links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
-        if transparency is not None:
-            links.new(transparency.outputs["Color"], principled.inputs["Alpha"])
-            if hasattr(material, "surface_render_method"):
-                material.surface_render_method = "DITHERED"
-
-    material["promob_material_index"] = index
-    material["mooblender_material_sha256"] = digest
-    if source.diffuse_texture:
-        material["promob_diffuse_texture"] = source.diffuse_texture
-    if source.specular_texture:
-        material["promob_specular_texture"] = source.specular_texture
-    if source.normal_texture:
-        material["promob_normal_texture"] = source.normal_texture
-    material["promob_mapping_type"] = source.mapping_type or 0
-    material["mooblender_material_state_sha256"] = _material_state_digest(material)
-    return material
-
-
-def _entity_code(source: object) -> int:
-    return id(source) & 0x7FFFFFFF
-
-
-def _join_planar_triangles(mesh) -> int:
-    """Join compatible triangle pairs while retaining seams and UV boundaries."""
-
-    editable = bmesh.new()
-    try:
-        editable.from_mesh(mesh)
-        candidates = [face for face in editable.faces if len(face.verts) == 3]
-        if candidates:
-            bmesh.ops.join_triangles(
-                editable,
-                faces=candidates,
-                cmp_seam=True,
-                cmp_sharp=True,
-                cmp_uvs=True,
-                cmp_vcols=True,
-                cmp_materials=True,
-                angle_face_threshold=math.radians(1.0),
-                angle_shape_threshold=math.radians(45.0),
-            )
-            editable.to_mesh(mesh)
-    finally:
-        editable.free()
-    mesh.update()
-    return sum(len(polygon.vertices) == 4 for polygon in mesh.polygons)
-
-
-def _create_meshes(
-    document: PmobDocument,
-    materials,
-    *,
-    material_overrides: dict[str, bpy.types.Material] | None = None,
-    entity_code: int,
-    convert_tris_to_quads: bool,
-):
-    scale = document.unit_scale_to_meters
-    material_overrides = {
-        key.casefold(): value for key, value in (material_overrides or {}).items()
-    }
-    result: dict[str, list[bpy.types.Mesh]] = {}
-    for layer_index, layer in enumerate(document.layers):
-        layer_name = _unique_name(layer.name, f"Layer {layer_index}")
-        meshes = []
-        for mesh_index, source in enumerate(layer.meshes):
-            mesh_name = f"{layer_name}_{mesh_index}"
-            topology = prepare_mesh(source)
-            vertices = [
-                tuple(component * scale for component in point) for point in topology.vertices
-            ]
-            mesh = bpy.data.meshes.new(mesh_name)
-            mesh.from_pydata(vertices, [], topology.faces)
-            mesh.update()
-            layer_attribute = mesh.attributes.new(
-                name="mooblender_layer",
-                type="INT",
-                domain="FACE",
-            )
-            layer_code = zlib.crc32(layer.name.casefold().encode("utf-8")) & 0x7FFFFFFF
-            for value in layer_attribute.data:
-                value.value = layer_code
-            entity_attribute = mesh.attributes.new(
-                name="mooblender_entity",
-                type="INT",
-                domain="FACE",
-            )
-            for value in entity_attribute.data:
-                value.value = entity_code
-            if topology.loop_uvs:
-                uv_layer = mesh.uv_layers.new(name="UVMap")
-                for loop, (u, v) in zip(mesh.loops, topology.loop_uvs, strict=True):
-                    uv_layer.data[loop.index].uv = (u, v)
-            quad_count = _join_planar_triangles(mesh) if convert_tris_to_quads else 0
-            if topology.loop_normals:
-                for polygon in mesh.polygons:
-                    polygon.use_smooth = True
-                if convert_tris_to_quads:
-                    mesh.normals_split_custom_set_from_vertices(topology.vertex_normals)
-                else:
-                    mesh.normals_split_custom_set(topology.loop_normals)
-                mesh.update()
-            override = material_overrides.get(layer.name.casefold())
-            if override is not None:
-                mesh.materials.append(override)
-            elif 0 <= source.material_id < len(materials):
-                mesh.materials.append(materials[source.material_id])
-            mesh["promob_layer"] = layer_name
-            mesh["promob_material_id"] = source.material_id
-            mesh["promob_source_vertex_count"] = len(source.vertices)
-            mesh["mooblender_welded_vertex_count"] = topology.removed_vertex_count
-            mesh["mooblender_converted_quad_count"] = quad_count
-            meshes.append(mesh)
-        result[layer.name.casefold()] = meshes
-    return result
-
-
-def _box_project_uv(
-    mesh,
-    *,
-    final_transform: Matrix,
-) -> None:
-    while mesh.uv_layers:
-        mesh.uv_layers.remove(mesh.uv_layers[0])
-    uv_layer = mesh.uv_layers.new(name="UVMap")
-    positions = [final_transform @ vertex.co for vertex in mesh.vertices]
-    normal_transform = final_transform.to_3x3().inverted_safe().transposed()
-    for polygon in mesh.polygons:
-        normal = normal_transform @ polygon.normal
-        dominant_axis = max(range(3), key=lambda axis: abs(normal[axis]))
-        uv_axes = ((1, 2), (0, 2), (0, 1))[dominant_axis]
-        for loop_index in polygon.loop_indices:
-            point = positions[mesh.loops[loop_index].vertex_index]
-            uv_layer.data[loop_index].uv = (
-                point[uv_axes[0]],
-                point[uv_axes[1]],
-            )
-
-
-def _instantiate_primitive(
-    primitive: Primitive,
-    *,
-    parent,
-    collection,
-    meshes_by_layer,
-    unit_scale: float,
-    source_id: str,
-    fallback_index: int,
-    layer_corrections: dict[
-        str,
-        tuple[tuple[float, float, float], tuple[float, float, float]],
-    ],
-    geometry_scale: tuple[float, float, float],
-    document_transform: Matrix | None = None,
-):
-    name = _unique_name(primitive.name, f"Primitive {fallback_index}")
-    node = bpy.data.objects.new(name, None)
-    node.empty_display_type = "PLAIN_AXES"
-    collection.objects.link(node)
-    node.parent = parent
-    local_transform = Matrix(
-        blender_matrix_rows(primitive.matrix, unit_scale=unit_scale)
-    )
-    node.matrix_local = local_transform
-    document_transform = (document_transform or Matrix.Identity(4)) @ local_transform
-    node["promob_primitive_type"] = (
-        primitive.kind.name if primitive.kind is not None else "UNKNOWN"
-    )
-    if primitive.layer_ref:
-        node["promob_layer_ref"] = primitive.layer_ref
-    if primitive.animation is not None:
-        node["promob_animation_times"] = primitive.animation.times
-        node["promob_animation_transforms"] = [
-            value for matrix in primitive.animation.transforms for value in matrix
-        ]
-    if source_id:
-        node["mooble_item_id"] = source_id
-
-    for mesh_index, mesh in enumerate(meshes_by_layer.get(primitive.layer_ref.casefold(), ())):
-        correction_scale, correction_location = layer_corrections.get(
-            primitive.layer_ref.casefold(),
-            ((1.0, 1.0, 1.0), (0.0, 0.0, 0.0)),
-        )
-        object_mesh = mesh
-        material = mesh.materials[0] if mesh.materials else None
-        cubic_mapping = (
-            material is not None and material.get("promob_mapping_type") == 1
-        )
-        if cubic_mapping or not mesh.uv_layers:
-            object_mesh = mesh.copy()
-            correction_transform = Matrix.Translation(correction_location) @ Matrix.Diagonal(
-                (*correction_scale, 1.0)
-            )
-            scale_transform = Matrix.Diagonal((*geometry_scale, 1.0))
-            _box_project_uv(
-                object_mesh,
-                final_transform=(
-                    scale_transform @ document_transform @ correction_transform
-                ),
-            )
-        obj = bpy.data.objects.new(f"{name}_{mesh_index}", object_mesh)
-        obj.parent = node
-        obj.scale = correction_scale
-        obj.location = correction_location
-        obj["promob_layer"] = primitive.layer_ref
-        obj["promob_material_id"] = mesh.get("promob_material_id", -1)
-        if source_id:
-            obj["mooble_item_id"] = source_id
-        collection.objects.link(obj)
-
-    for child_index, child in enumerate(primitive.children):
-        _instantiate_primitive(
-            child,
-            parent=node,
-            collection=collection,
-            meshes_by_layer=meshes_by_layer,
-            unit_scale=unit_scale,
-            source_id=source_id,
-            fallback_index=child_index,
-            layer_corrections=layer_corrections,
-            geometry_scale=geometry_scale,
-            document_transform=document_transform,
-        )
-    return node
-
-
-def _default_material_assignments(package: PContentPackage) -> dict[str, str]:
-    """Return the first/default option's layer assignments for each model group."""
-
-    assignments: dict[str, str] = {}
-    seen_groups: set[str] = set()
-    models = package.properties.get("Models", [])
-    if not isinstance(models, list):
-        return assignments
-    for model in models:
-        if not isinstance(model, dict):
-            continue
-        group_id = str(model.get("ModelDefinitionId") or model.get("Id") or "")
-        if not group_id or group_id in seen_groups:
-            continue
-        seen_groups.add(group_id)
-        components = model.get("Components", [])
-        if not isinstance(components, list):
-            continue
-        for component in components:
-            if not isinstance(component, dict):
-                continue
-            layer = str(component.get("LayerId") or "")
-            material_id = str(component.get("MaterialId") or "")
-            if layer and material_id:
-                assignments[layer] = material_id
-    return assignments
-
-
-def _layer_resize_corrections(
-    package: PContentPackage | None,
-    geometry_scale: tuple[float, float, float],
-) -> dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]]:
-    if package is None or package.document is None:
-        return {}
-    edit_states: dict[str, set[object]] = {}
-    models = package.properties.get("Models", [])
-    if isinstance(models, list):
-        for model in models:
-            if not isinstance(model, dict):
-                continue
-            components = model.get("Components", [])
-            if not isinstance(components, list):
-                continue
-            for component in components:
-                if not isinstance(component, dict):
-                    continue
-                layer = str(component.get("LayerId") or "").casefold()
-                if layer:
-                    edit_states.setdefault(layer, set()).add(component.get("Edit"))
-
-    fixed_candidates = {
-        layer for layer, states in edit_states.items() if states == {False}
-    }
-    if not fixed_candidates:
-        return {}
-    document_dimensions = document_geometry_dimensions(package.document)
-    layer_dimensions = document_layer_dimensions(package.document)
-    layer_bounds = document_layer_bounds(package.document)
-    populated_bounds = tuple(layer_bounds.values())
-    if not populated_bounds:
-        return {}
-    document_minimum = tuple(
-        min(bounds[0][axis] for bounds in populated_bounds) for axis in range(3)
-    )
-    document_maximum = tuple(
-        max(bounds[1][axis] for bounds in populated_bounds) for axis in range(3)
-    )
-    unit_scale = package.document.unit_scale_to_meters
-    corrections = {
-        layer: [[1.0, 1.0, 1.0], [0.0, 0.0, 0.0]]
-        for layer in layer_bounds
-    }
-    for axis, global_scale in enumerate(geometry_scale):
-        document_size = document_dimensions[axis]
-        if abs(global_scale - 1.0) <= 0.01 or document_size <= 1e-9:
-            continue
-        partial_fixed = [
-            layer
-            for layer in fixed_candidates
-            if layer in layer_bounds
-            and layer_dimensions[layer][axis] / document_size < 0.5
-        ]
-        if not partial_fixed:
-            continue
-        center = (document_minimum[axis] + document_maximum[axis]) / 2.0
-        fixed_low = any(
-            (layer_bounds[layer][0][axis] + layer_bounds[layer][1][axis]) / 2.0
-            <= center
-            for layer in partial_fixed
-        )
-        fixed_high = any(
-            (layer_bounds[layer][0][axis] + layer_bounds[layer][1][axis]) / 2.0
-            > center
-            for layer in partial_fixed
-        )
-        for layer, bounds in layer_bounds.items():
-            correction_scale, correction_location = corrections[layer]
-            if layer in partial_fixed:
-                correction_scale[axis] = 1.0 / global_scale
-                layer_center = (bounds[0][axis] + bounds[1][axis]) / 2.0
-                if layer_center <= center:
-                    target_anchor = (
-                        global_scale * document_minimum[axis]
-                        + bounds[0][axis]
-                        - document_minimum[axis]
-                    )
-                    translation = target_anchor - bounds[0][axis]
-                else:
-                    target_anchor = (
-                        global_scale * document_maximum[axis]
-                        - document_maximum[axis]
-                        + bounds[1][axis]
-                    )
-                    translation = target_anchor - bounds[1][axis]
-                correction_location[axis] = (
-                    translation * unit_scale / global_scale
-                )
-                continue
-            source_minimum = bounds[0][axis]
-            source_maximum = bounds[1][axis]
-            source_size = source_maximum - source_minimum
-            if source_size <= 1e-9:
-                continue
-            target_minimum = (
-                source_minimum
-                if fixed_low
-                else document_minimum[axis]
-                + global_scale * (source_minimum - document_minimum[axis])
-            )
-            target_maximum = (
-                document_minimum[axis]
-                + document_size * global_scale
-                - (document_maximum[axis] - source_maximum)
-                if fixed_high
-                else document_minimum[axis]
-                + global_scale * (source_maximum - document_minimum[axis])
-            )
-            effective_scale = (target_maximum - target_minimum) / source_size
-            translation = target_minimum - effective_scale * source_minimum
-            correction_scale[axis] = effective_scale / global_scale
-            correction_location[axis] = translation * unit_scale / global_scale
-    return {
-        layer: (tuple(scale), tuple(location))
-        for layer, (scale, location) in corrections.items()
-        if scale != [1.0, 1.0, 1.0] or location != [0.0, 0.0, 0.0]
-    }
-
-
-def _remote_material(
-    material_id: str,
-    package: PContentPackage,
-    cache: dict[tuple[int, int], bpy.types.Material],
-):
-    document = package.document
-    if document is None or not document.materials:
-        return None
-    key = (id(package), 0)
-    material = cache.get(key)
-    if material is None:
-        material = _create_material(document.materials[0], 0, package)
-        cache[key] = material
-    material["mooble_material_id"] = material_id
-    return material
-
-
-def _document_root(
-    document: PmobDocument,
-    package: PContentPackage | None,
-    *,
-    parent,
-    collection,
-    source_id: str,
-    cache: dict[int, dict[str, list[bpy.types.Mesh]]],
-    material_cache: dict[tuple[int, int], bpy.types.Material],
-    convert_tris_to_quads: bool,
-    geometry_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
-):
-    cache_key = id(package) if package is not None else id(document)
-    meshes_by_layer = cache.get(cache_key)
-    if meshes_by_layer is None:
-        materials = []
-        material_owner = package if package is not None else document
-        for index, source_material in enumerate(document.materials):
-            material_key = (id(material_owner), index)
-            material = material_cache.get(material_key)
-            if material is None:
-                material = _create_material(source_material, index, package)
-                material_cache[material_key] = material
-            materials.append(material)
-        overrides = {}
-        if package is not None:
-            for layer, material_id in _default_material_assignments(package).items():
-                material_package = package.resolved_materials.get(material_id)
-                if material_package is None:
-                    continue
-                material = _remote_material(material_id, material_package, material_cache)
-                if material is not None:
-                    overrides[layer] = material
-        meshes_by_layer = _create_meshes(
-            document,
-            materials,
-            material_overrides=overrides,
-            entity_code=_entity_code(material_owner),
-            convert_tris_to_quads=convert_tris_to_quads,
-        )
-        cache[cache_key] = meshes_by_layer
-    primitive = document.primitive
-    if primitive is None:
-        primitive = Primitive(
-            name=document.name or "root",
-            kind=PrimitiveType.GROUP,
-            children=[
-                Primitive(
-                    name=layer.name,
-                    kind=PrimitiveType.LAYER,
-                    layer_ref=layer.name,
-                )
-                for layer in document.layers
-            ],
-        )
-    return _instantiate_primitive(
-        primitive,
-        parent=parent,
-        collection=collection,
-        meshes_by_layer=meshes_by_layer,
-        unit_scale=document.unit_scale_to_meters,
-        source_id=source_id,
-        fallback_index=0,
-        layer_corrections=_layer_resize_corrections(package, geometry_scale),
-        geometry_scale=geometry_scale,
-    )
 
 
 def _raw_aggregate(package: PContentPackage, index: int) -> dict[str, object]:
@@ -1319,6 +592,136 @@ def _modifier_menu_value(modifier, socket, name: str, index: int) -> None:
     modifier[socket.identifier] = value
 
 
+def _material_bundles(groups) -> dict[tuple[str, tuple[str, ...]], list[dict]]:
+    """Consolidate package scopes that expose the same named style menu."""
+    bundles: dict[tuple[str, tuple[str, ...]], list[dict]] = {}
+    for group in groups.values():
+        options = group.get("options")
+        if not isinstance(options, list) or len(options) < 2:
+            continue
+        option_names = tuple(_menu_option_names(options))
+        group_name = str(group.get("name") or "Material")
+        bundles.setdefault((group_name, option_names), []).append(group)
+    return bundles
+
+
+def _material_applications(bundled_groups, materials):
+    """Keep only layers for which every menu option resolved a material."""
+    applications = []
+    for group in bundled_groups:
+        options = group["options"]
+        scope = int(group.get("scope", 0))
+        layers = sorted(
+            {
+                layer
+                for option in options
+                if isinstance(option, dict)
+                for layer in option.get("assignments", {})
+            }
+        )
+        usable_layers = [
+            layer
+            for layer in layers
+            if all(
+                isinstance(option, dict)
+                and materials.get((scope, option.get("assignments", {}).get(layer)))
+                is not None
+                for option in options
+            )
+        ]
+        if usable_layers:
+            applications.append((scope, options, usable_layers))
+    return applications
+
+
+def _unique_interface_name(base: str, used_names: set[str]) -> str:
+    name = base
+    suffix = 2
+    while name in used_names:
+        name = f"{base} ({suffix})"
+        suffix += 1
+    used_names.add(name)
+    return name
+
+
+def _create_style_menu(node_group, group_input, socket, option_names):
+    """Create the menu-to-index conversion shared by all matching layers."""
+    socket_name = socket.name
+    option_output = group_input.outputs[socket_name]
+    style_switch = node_group.nodes.new("GeometryNodeMenuSwitch")
+    style_switch.data_type = "INT"
+    style_switch.enum_items.clear()
+    for index, name in enumerate(option_names):
+        style_switch.enum_items.new(name)
+        style_switch.inputs[index + 1].default_value = index
+    socket.from_socket(style_switch, style_switch.inputs["Menu"])
+    # `from_socket` copies the source name ("Menu"), so restore the stable UI
+    # name after copying its enum definition.
+    socket.name = socket_name
+    node_group.links.new(option_output, style_switch.inputs["Menu"])
+    return style_switch
+
+
+def _material_selection(node_group, scope: int, layer: str):
+    """Select faces by the stable layer and source-package attributes."""
+    nodes = node_group.nodes
+    links = node_group.links
+    named_layer = nodes.new("GeometryNodeInputNamedAttribute")
+    named_layer.data_type = "INT"
+    named_layer.inputs["Name"].default_value = "mooblender_layer"
+    compare_layer = nodes.new("FunctionNodeCompare")
+    compare_layer.data_type = "INT"
+    compare_layer.operation = "EQUAL"
+    compare_layer.inputs["B"].default_value = (
+        zlib.crc32(layer.casefold().encode("utf-8")) & 0x7FFFFFFF
+    )
+    named_entity = nodes.new("GeometryNodeInputNamedAttribute")
+    named_entity.data_type = "INT"
+    named_entity.inputs["Name"].default_value = "mooblender_entity"
+    compare_entity = nodes.new("FunctionNodeCompare")
+    compare_entity.data_type = "INT"
+    compare_entity.operation = "EQUAL"
+    compare_entity.inputs["B"].default_value = scope
+    selection = nodes.new("FunctionNodeBooleanMath")
+    selection.operation = "AND"
+    links.new(named_layer.outputs["Attribute"], compare_layer.inputs["A"])
+    links.new(named_entity.outputs["Attribute"], compare_entity.inputs["A"])
+    links.new(compare_layer.outputs["Result"], selection.inputs[0])
+    links.new(compare_entity.outputs["Result"], selection.inputs[1])
+    return selection.outputs["Boolean"]
+
+
+def _material_index_switch(node_group, style_index, scope, layer, options, materials):
+    """Map one style index to the resolved material for a package layer."""
+    material_switch = node_group.nodes.new("GeometryNodeIndexSwitch")
+    material_switch.data_type = "MATERIAL"
+    while len(material_switch.index_switch_items) < len(options):
+        material_switch.index_switch_items.new()
+    while len(material_switch.index_switch_items) > len(options):
+        material_switch.index_switch_items.remove(material_switch.index_switch_items[-1])
+    for index, option in enumerate(options):
+        material_id = option["assignments"][layer]
+        material_switch.inputs[index + 1].default_value = materials[(scope, material_id)]
+    node_group.links.new(style_index, material_switch.inputs["Index"])
+    return material_switch.outputs["Output"]
+
+
+def _apply_materials(node_group, geometry, style_index, applications, materials):
+    """Append Set Material nodes for every package scope and compatible layer."""
+    for scope, options, layers in applications:
+        for layer in layers:
+            selection = _material_selection(node_group, scope, layer)
+            material = _material_index_switch(
+                node_group, style_index, scope, layer, options, materials
+            )
+            set_material = node_group.nodes.new("GeometryNodeSetMaterial")
+            node_group.links.new(selection, set_material.inputs["Selection"])
+            node_group.links.new(material, set_material.inputs["Material"])
+            node_group.links.new(geometry, set_material.inputs["Geometry"])
+            geometry = set_material.outputs["Geometry"]
+    return geometry
+
+
 def _add_material_options(
     package: PContentPackage,
     *,
@@ -1339,55 +742,13 @@ def _add_material_options(
     for link in list(realized_geometry.links):
         node_group.links.remove(link)
     geometry = realize.outputs["Geometry"]
-    controls = 0
     menu_defaults = []
-    bundles: dict[tuple[str, tuple[str, ...]], list[dict[str, object]]] = {}
-    for group in groups.values():
-        options = group.get("options")
-        if not isinstance(options, list) or len(options) < 2:
-            continue
-        option_names = tuple(_menu_option_names(options))
-        group_name = str(group.get("name") or "Material")
-        bundles.setdefault((group_name, option_names), []).append(group)
-
     used_names = {item.name for item in node_group.interface.items_tree}
-    for (group_name, option_names), bundled_groups in bundles.items():
-        applications = []
-        for group in bundled_groups:
-            options = group["options"]
-            scope = int(group.get("scope", 0))
-            layers = sorted(
-                {
-                    layer
-                    for option in options
-                    if isinstance(option, dict)
-                    for layer in option.get("assignments", {})
-                }
-            )
-            usable_layers = [
-                layer
-                for layer in layers
-                if all(
-                    isinstance(option, dict)
-                    and materials.get(
-                        (scope, option.get("assignments", {}).get(layer))
-                    )
-                    is not None
-                    for option in options
-                )
-            ]
-            if usable_layers:
-                applications.append((scope, options, usable_layers))
+    for (group_name, option_names), bundled_groups in _material_bundles(groups).items():
+        applications = _material_applications(bundled_groups, materials)
         if not applications:
             continue
-
-        base_name = f"Finish: {group_name}"
-        socket_name = base_name
-        suffix = 2
-        while socket_name in used_names:
-            socket_name = f"{base_name} ({suffix})"
-            suffix += 1
-        used_names.add(socket_name)
+        socket_name = _unique_interface_name(f"Finish: {group_name}", used_names)
         socket = node_group.interface.new_socket(
             name=socket_name,
             in_out="INPUT",
@@ -1395,76 +756,24 @@ def _add_material_options(
         )
         _make_socket_single_value(socket)
         socket.description = " / ".join(option_names)
-        option_output = group_input.outputs[socket.name]
-        style_switch = node_group.nodes.new("GeometryNodeMenuSwitch")
-        style_switch.data_type = "INT"
-        style_switch.enum_items.clear()
-        for index, name in enumerate(option_names):
-            style_switch.enum_items.new(name)
-            style_switch.inputs[index + 1].default_value = index
-        socket.from_socket(style_switch, style_switch.inputs["Menu"])
-        socket.name = socket_name
-        links.new(option_output, style_switch.inputs["Menu"])
-        for scope, options, usable_layers in applications:
-            for layer in usable_layers:
-                named_layer = node_group.nodes.new("GeometryNodeInputNamedAttribute")
-                named_layer.data_type = "INT"
-                named_layer.inputs["Name"].default_value = "mooblender_layer"
-                compare_layer = node_group.nodes.new("FunctionNodeCompare")
-                compare_layer.data_type = "INT"
-                compare_layer.operation = "EQUAL"
-                compare_layer.inputs["B"].default_value = (
-                    zlib.crc32(layer.casefold().encode("utf-8")) & 0x7FFFFFFF
-                )
-                named_entity = node_group.nodes.new("GeometryNodeInputNamedAttribute")
-                named_entity.data_type = "INT"
-                named_entity.inputs["Name"].default_value = "mooblender_entity"
-                compare_entity = node_group.nodes.new("FunctionNodeCompare")
-                compare_entity.data_type = "INT"
-                compare_entity.operation = "EQUAL"
-                compare_entity.inputs["B"].default_value = scope
-                selection = node_group.nodes.new("FunctionNodeBooleanMath")
-                selection.operation = "AND"
-                material_switch = node_group.nodes.new("GeometryNodeIndexSwitch")
-                material_switch.data_type = "MATERIAL"
-                while len(material_switch.index_switch_items) < len(options):
-                    material_switch.index_switch_items.new()
-                while len(material_switch.index_switch_items) > len(options):
-                    material_switch.index_switch_items.remove(
-                        material_switch.index_switch_items[-1]
-                    )
-                for index, option in enumerate(options):
-                    material_id = option["assignments"][layer]
-                    material_switch.inputs[index + 1].default_value = materials[
-                        (scope, material_id)
-                    ]
-                set_material = node_group.nodes.new("GeometryNodeSetMaterial")
-                links.new(named_layer.outputs["Attribute"], compare_layer.inputs["A"])
-                links.new(named_entity.outputs["Attribute"], compare_entity.inputs["A"])
-                links.new(compare_layer.outputs["Result"], selection.inputs[0])
-                links.new(compare_entity.outputs["Result"], selection.inputs[1])
-                links.new(selection.outputs["Boolean"], set_material.inputs["Selection"])
-                links.new(
-                    style_switch.outputs["Output"],
-                    material_switch.inputs["Index"],
-                )
-                links.new(
-                    material_switch.outputs["Output"],
-                    set_material.inputs["Material"],
-                )
-                links.new(geometry, set_material.inputs["Geometry"])
-                geometry = set_material.outputs["Geometry"]
+        style_switch = _create_style_menu(node_group, group_input, socket, option_names)
+        geometry = _apply_materials(
+            node_group,
+            geometry,
+            style_switch.outputs["Output"],
+            applications,
+            materials,
+        )
         socket.default_value = option_names[0]
         menu_defaults.append((socket, option_names[0], 0))
-        controls += 1
     links.new(geometry, realized_geometry)
     node_group.interface_update(bpy.context)
     for socket, name, index in menu_defaults:
         _modifier_menu_value(modifier, socket, name, index)
     node_group.interface_update(bpy.context)
-    if controls:
-        controller["mooblender_material_option_count"] = controls
-    return controls
+    if menu_defaults:
+        controller["mooblender_material_option_count"] = len(menu_defaults)
+    return len(menu_defaults)
 
 
 def build_document(
@@ -1475,6 +784,7 @@ def build_document(
     source_id: str = "",
     convert_tris_to_quads: bool = False,
 ) -> bpy.types.Object:
+    """Build one scene-linked Geometry Nodes controller from neutral source data."""
     package = source if isinstance(source, PContentPackage) else None
     document = package.document if package is not None else source
     if document is None and package is not None and not package.resolved_aggregates:

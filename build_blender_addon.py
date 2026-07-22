@@ -31,11 +31,14 @@ class BuildError(RuntimeError):
 
 @dataclass(frozen=True)
 class ExtensionMetadata:
+    """Validated identity and base version read from the Blender manifest."""
+
     extension_id: str
     version: str
 
 
 def read_metadata(source: Path) -> ExtensionMetadata:
+    """Read and validate the minimum metadata required for packaging."""
     manifest = source / "blender_manifest.toml"
     initializer = source / "__init__.py"
     if not manifest.is_file() or not initializer.is_file():
@@ -116,6 +119,7 @@ def _manifest_bytes(path: Path, version: str) -> bytes:
 
 
 def collect_source_files(source: Path) -> tuple[Path, ...]:
+    """Return deterministic, safe archive members relative to ``source``."""
     if not source.is_dir():
         raise BuildError(f"extension source directory does not exist: {source}")
 
@@ -158,6 +162,7 @@ def build_addon(
     git_tag: str | None = None,
     dev_build: int | None = None,
 ) -> Path:
+    """Build the deterministic development archive and return its path."""
     source = source.resolve()
     metadata = read_metadata(source)
     base_version = version_from_git_tag(git_tag) if git_tag else metadata.version
@@ -196,6 +201,7 @@ def build_addon(
 
 
 def main() -> int:
+    """Run the command-line extension builder."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

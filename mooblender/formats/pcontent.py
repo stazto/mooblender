@@ -13,11 +13,13 @@ from .pmob.reader import read_pmob
 
 
 class PContentFormatError(ValueError):
-    pass
+    """Raised when a PContent archive violates its format or safety limits."""
 
 
 @dataclass(slots=True)
 class PContentPackage:
+    """Parsed PContent document, metadata, resources, and resolved references."""
+
     document: PmobDocument | None
     properties: dict[str, object] = field(default_factory=dict)
     pmob_member: str = ""
@@ -28,7 +30,6 @@ class PContentPackage:
 
     def resource(self, name: str | None) -> bytes | None:
         """Return an embedded resource by full path or case-insensitive name."""
-
         if not name:
             return None
         normalized = name.replace("\\", "/").casefold()
@@ -48,6 +49,8 @@ class PContentPackage:
 
 @dataclass(slots=True)
 class ResolvedAggregate:
+    """One selected aggregate specification attached to its source index."""
+
     index: int
     specification_id: str
     package: PContentPackage
@@ -66,7 +69,6 @@ def _decode_7bit_length(data: bytes) -> tuple[int, int]:
 
 def decode_properties(data: bytes) -> dict[str, object]:
     """Decode properties.json, including the observed BinaryWriter wrapper."""
-
     if not data:
         return {}
     if data.lstrip().startswith((b"{", b"[")):
@@ -98,6 +100,7 @@ def read_pcontent(
     max_uncompressed_bytes: int = 256 * 1024 * 1024,
     max_ratio: int = 200,
 ) -> PContentPackage:
+    """Parse a bounded PContent ZIP entirely in memory."""
     try:
         archive = zipfile.ZipFile(BytesIO(data))
     except (zipfile.BadZipFile, OSError) as error:

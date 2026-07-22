@@ -18,7 +18,6 @@ def blender_matrix_rows(
     part is intentionally not unit-scaled: observed PMob root transforms use a
     scale of 10 to convert centimetre-like mesh coordinates to millimetres.
     """
-
     if len(source) != 16:
         raise ValueError("a PMob transform must contain 16 values")
     return (
@@ -31,7 +30,6 @@ def blender_matrix_rows(
 
 def transform_point_row_vector(point: tuple[float, float, float], matrix: Matrix4):
     """Apply a source matrix using the convention confirmed in Mooble.Math3D."""
-
     x, y, z = point
     return (
         x * matrix[0] + y * matrix[4] + z * matrix[8] + matrix[12],

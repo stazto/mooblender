@@ -25,7 +25,6 @@ def filter_catalog_items(
     Matching is case- and accent-insensitive across the fields shown in the
     browser. An empty query restores the complete cached index.
     """
-
     terms = tuple(_search_text(term) for term in query.split() if term.strip())
     normalized_manufacturer = _search_text(manufacturer.strip())
     normalized_collection = _search_text(collection.strip())

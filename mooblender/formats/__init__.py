@@ -10,10 +10,11 @@ from .pmob.reader import read_pmob
 
 
 class UnsupportedPromobFormat(ValueError):
-    pass
+    """Raised when a file extension has no verified reader."""
 
 
 def load_path(path: str | Path):
+    """Load a supported Promob container from disk into the neutral model."""
     source = Path(path)
     extension = source.suffix.lower()
     if extension == ".pmob":

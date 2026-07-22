@@ -1,3 +1,5 @@
+"""Shared Blender runtime resources for clients, caches, and previews."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +13,7 @@ _previews = None
 
 
 def preview_collection():
+    """Return the lazily allocated Blender preview collection."""
     global _previews
     if _previews is None:
         _previews = bpy.utils.previews.new()
@@ -18,6 +21,7 @@ def preview_collection():
 
 
 def clear_previews() -> None:
+    """Release every loaded preview and reset the shared collection."""
     global _previews
     if _previews is not None:
         bpy.utils.previews.remove(_previews)
@@ -25,11 +29,13 @@ def clear_previews() -> None:
 
 
 def cache_directory() -> Path:
+    """Return Mooblender's Blender-managed cache directory."""
     root = bpy.utils.user_resource("DATAFILES", path="mooblender", create=True)
     return Path(root) / "cache"
 
 
 def client_from_context(context) -> MoobleClient:
+    """Build a client from the active add-on preferences and cache path."""
     preferences = context.preferences.addons[
         "bl_ext.user_default.mooblender"
     ].preferences
@@ -43,6 +49,7 @@ def client_from_context(context) -> MoobleClient:
 
 
 def icon_for_item(item) -> int:
+    """Load a cached thumbnail and return its Blender icon identifier."""
     if not item.thumbnail_path:
         return 0
     path = Path(bpy.path.abspath(item.thumbnail_path))

@@ -199,50 +199,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
 - Interpret PMob colors as RGBA and reuse an existing generated material only
   when its source resources and current Blender node state are exactly equal.
 
-Validated evidence: a random six-category corpus contained three standalone
-renderable products and three properties-only aggregates. A sampled 2.30 m
-tower resolved 11 unique entity packages into 20 aggregate instances, including
-four doors, one drawer, and four base/foot instances. It has no unmaterialed
-source meshes and evaluates to approximately 0.70 × 0.552 × 2.30 m closed. The
-exact `Armário Geladeira 80cm 2 Portas (728)` sample evaluates to 0.80 × 0.330 ×
-0.425 m with both doors, independent cabinet/door finishes, and working opening
-drivers named `Esq` and `Dir`. The exact `Prateleira Editável 15mm (PE27-15)`
-sample exposes bounded Largura and Profundidade controls and resizes each axis
-independently. Closed/open bounds, parameter resizing, and finish switching
-were checked in Blender 4.5 and 5.2 LTS. The general smoke fixture passes both
-releases and covers independent openings, optional controls, configurable
-root and nested-instance dimensions, default remote materials, and
-same-layer-name finish isolation.
-The smoke fixture also rejects duplicate interface entries, verifies all
-user-facing inputs are single values rather than fields, consolidates repeated
-material definitions, and confirms the controller still evaluates to mesh
-geometry after those controls are built.
-Cached R678 validation now exposes only its door-opening control and renders its
-near-black handle with equal RGB channels. Cached 728 validation keeps both
-handles at about 30 mm high, stretches each door panel to about 370 mm, and
-generates physically scaled UVs for its source panels, which contain no UV
-records.
-Cached placement validation also keeps the SUP01.0003 cabinet within its 878 mm
-height with one condition-selected drawer body per front, positions the
-44950/007 tool-cart drawers from its 570 mm drawing depth rather than its 645 mm
-mesh envelope, and orients the 10122 bed's handles inside their 149 mm drawer
-fronts.
-Cached 4220A/0079K validation gives the internal body and both drawers a
-UV-to-world edge ratio of 1.0 before their shared 150 mm material mapping, so
-all three use the same 6.6667 texture repetitions per metre.
-Cached door validation reconstructs the 800 × 2099 mm leaf and correctly placed
-handle inside `Porta de Giro 31`, and distributes all three 330.67 × 2195 mm
-panels across the 980 mm frame of `Porta de Correr 21`. These packages use the
-long-form parent dimension variables that previously collapsed their panels.
-Cached ELA-2 validation places both opposing lift carriages within the same
-depth range and from 12 mm to about 739 mm above the base; shortest-arc normal
-alignment previously rolled the left carriage 715 mm below it.
-A 212-package cached topology corpus contains 611,468 PMob vertices and no
-serialized mesh normals. Nested smoothing groups plus inferred 45-degree
-normal fans compact this to 319,119 Blender vertices while preserving triangle
-corners, UV seams, and incompatible hard-edge fans. Synthetic unit and Blender
-smoke fixtures independently verify smooth-group decoding, seam UV retention,
-custom corner normals, and hard-edge separation.
+Reproducible observations for the named models, geometry corpus, and catalog
+benchmark are summarized in [`VALIDATION.md`](VALIDATION.md). The executable
+mapping from reported regressions to synthetic tests lives in
+[`../tests/README.md`](../tests/README.md).
 
 ## Milestone 4 — Identify and implement `.content`
 
@@ -289,8 +249,7 @@ Remaining work:
 
 - Add type checking to CI and expand the headless Blender fixture corpus.
 - Validate the generated archive with Blender's extension tooling.
-- Add user documentation, troubleshooting, privacy notes, and a compatibility
-  matrix by format version.
+- Add troubleshooting guidance and a compatibility matrix by format version.
 - Review all fixtures and screenshots for redistribution rights.
 - Run security tests for archives, offsets/counts, URLs, cache paths, JSON size,
   and decompression limits.

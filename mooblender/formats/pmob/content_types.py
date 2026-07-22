@@ -1,9 +1,13 @@
+"""Numeric record identifiers observed in PMob binary trees."""
+
 from __future__ import annotations
 
 from enum import IntEnum
 
 
 class ContentType(IntEnum):
+    """Known PMob record identifiers recovered from producer behavior."""
+
     MESH = 0x00
     MESH_LIST = 0x01
     VERTICES = 0x02

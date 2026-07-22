@@ -38,7 +38,6 @@ def dimension_variables(
     parent: Dimension3 | None = None,
 ) -> dict[str, float]:
     """Return the short and long dimension names used by Mooble formulas."""
-
     width, depth, height = dimensions
     values = {
         "W": width,
@@ -79,7 +78,6 @@ def configurable_dimensions(
     spellings keeps this parser tied to semantics instead of one serializer.
     Values remain in Promob millimetres at this Blender-independent boundary.
     """
-
     insertion = properties.get("InsertDimension")
     if not isinstance(insertion, Mapping):
         return ()
@@ -111,6 +109,7 @@ def property_dimensions(
     variables: Mapping[str, float | bool] | None = None,
     fallback: Dimension3 = (0.0, 0.0, 0.0),
 ) -> Dimension3:
+    """Evaluate one dimension object with optional formula variables."""
     raw = properties.get(field, {})
     if not isinstance(raw, dict):
         return fallback
@@ -121,6 +120,7 @@ def property_dimensions(
 
 
 def bounding_box_dimensions(properties: Mapping[str, object]) -> Dimension3:
+    """Return non-negative dimensions from serialized geometry bounds."""
     raw = properties.get("GeometryBoundingBox", {})
     if not isinstance(raw, dict):
         return (0.0, 0.0, 0.0)
@@ -194,7 +194,6 @@ def _point_bounds(points: list[tuple[float, float, float]]) -> Bounds3 | None:
 
 def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
     """Measure PMob geometry after applying its serialized primitive transforms."""
-
     points_by_layer = _document_points_by_layer(document)
     return _point_dimensions(
         [point for points in points_by_layer.values() for point in points]
@@ -203,7 +202,6 @@ def document_geometry_dimensions(document: PmobDocument | None) -> Dimension3:
 
 def document_layer_dimensions(document: PmobDocument | None) -> dict[str, Dimension3]:
     """Measure each PMob layer after applying its primitive transforms."""
-
     return {
         name: _point_dimensions(points)
         for name, points in _document_points_by_layer(document).items()
@@ -212,7 +210,6 @@ def document_layer_dimensions(document: PmobDocument | None) -> dict[str, Dimens
 
 def document_layer_bounds(document: PmobDocument | None) -> dict[str, Bounds3]:
     """Return transformed minimum/maximum coordinates for each PMob layer."""
-
     result = {}
     for name, points in _document_points_by_layer(document).items():
         bounds = _point_bounds(points)
@@ -233,7 +230,6 @@ def serialized_geometry_dimensions(
     current ``DrawingDimension``. Aggregate target dimensions must scale from
     the latter (or its geometry bounding box), not from the logical defaults.
     """
-
     measured = document_geometry_dimensions(document)
     drawing = property_dimensions(properties, "DrawingDimension")
     bounds = bounding_box_dimensions(properties)

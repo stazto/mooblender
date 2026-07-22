@@ -6,6 +6,7 @@ project at `https://github.com/dantedex/mooblender`.
 - `PROJECT.md` defines the product scope and acceptance criteria.
 - `ARCHITECTURE.md` defines the intended Python package boundaries.
 - `IMPLEMENTATION_PLAN.md` tracks the phased implementation and validation plan.
+- `VALIDATION.md` records reproducible evidence behind completed regressions.
 - `FORMAT_RESEARCH.md` defines how file-format and service behavior are
   documented.
 

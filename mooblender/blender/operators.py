@@ -1,3 +1,5 @@
+"""Blender operators for cached catalog navigation and model imports."""
+
 import json
 from functools import partial
 from pathlib import Path
@@ -52,6 +54,7 @@ def _browser_preferences(context):
 
 
 def shutdown_async_operators() -> None:
+    """Cancel pending UI callbacks and shut down background worker pools."""
     callbacks = tuple(_ACTIVE_POLLS) + tuple(_ACTIVE_THUMBNAILS.values())
     for callback in callbacks:
         if bpy.app.timers.is_registered(callback):
@@ -294,7 +297,6 @@ class _ThumbnailBatchCompletion:
 
 def _cancel_queued_thumbnails() -> None:
     """Cancel preview batches that have not started before changing views."""
-
     for callback in set(_ACTIVE_THUMBNAILS.values()):
         if not callback.future.cancel():
             continue
@@ -306,6 +308,7 @@ def _cancel_queued_thumbnails() -> None:
 
 
 def ensure_thumbnails(context, entries) -> None:
+    """Schedule previews only for visible entries without a cached thumbnail."""
     if not bpy.app.online_access:
         return
     pending = [
@@ -384,6 +387,8 @@ class _CatalogSyncCompletion:
 
 
 class PROMOB_OT_catalog_refresh(bpy.types.Operator):
+    """Synchronize selected Mooble departments into the local snapshot."""
+
     bl_idname = "promob.catalog_refresh"
     bl_label = "Sync Catalog"
     bl_description = "Download and atomically replace the complete local catalog"
@@ -420,6 +425,8 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
 
 
 class PROMOB_OT_catalog_search(bpy.types.Operator):
+    """Apply search and brand filters to the current cached category."""
+
     bl_idname = "promob.catalog_search"
     bl_label = "Search cached Mooble catalog"
     bl_description = "Filter the current cached category without an API request"
@@ -438,6 +445,7 @@ class PROMOB_OT_catalog_search(bpy.types.Operator):
 
 
 def load_catalog_on_startup():
+    """Restore the local snapshot from Blender's startup timer."""
     try:
         context = bpy.context
         state = context.window_manager.promob_browser
@@ -460,6 +468,8 @@ def load_catalog_on_startup():
 
 
 class PROMOB_OT_catalog_open_category(bpy.types.Operator):
+    """Open one category already stored in the local catalog snapshot."""
+
     bl_idname = "promob.catalog_open_category"
     bl_label = "Open Mooble category"
 
@@ -489,6 +499,8 @@ class PROMOB_OT_catalog_open_category(bpy.types.Operator):
 
 
 class PROMOB_OT_catalog_back(bpy.types.Operator):
+    """Return to the previous category in local navigation history."""
+
     bl_idname = "promob.catalog_back"
     bl_label = "Back"
 
@@ -521,6 +533,8 @@ class PROMOB_OT_catalog_back(bpy.types.Operator):
 
 
 class PROMOB_OT_catalog_load_more(bpy.types.Operator):
+    """Expose another bounded batch of the current local query results."""
+
     bl_idname = "promob.catalog_load_more"
     bl_label = "Load More"
 
@@ -561,6 +575,8 @@ def _catalog_item(entry) -> CatalogItem:
 
 
 class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
+    """Download and import one selected catalog item asynchronously."""
+
     bl_idname = "promob.catalog_import"
     bl_label = "Import"
     bl_description = "Download and import this Mooble model"
@@ -614,6 +630,8 @@ class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
 
 
 class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
+    """Import a supported local Promob file through Blender's file browser."""
+
     bl_idname = "import_scene.promob"
     bl_label = "Import Promob model"
     bl_options = {"UNDO"}

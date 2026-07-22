@@ -9,7 +9,10 @@ Blender and remote services.
 mooblender/                  # Public repository root
 ├── mooblender/             # Installable Blender extension
 │   ├── __init__.py         # Extension entry point and registration
-│   ├── blender/            # Operators, sidebar, and scene adapter
+│   ├── blender/            # UI, runtime, and Blender adapters
+│   │   ├── scene_builder.py # Geometry Nodes and aggregate orchestration
+│   │   ├── mesh_builder.py # Mesh, topology, UV, and primitive construction
+│   │   └── materials.py    # Images, node materials, and material reuse
 │   ├── formats/            # Pure-Python readers and file dispatch
 │   │   ├── pmob/           # PMob structure and semantic readers
 │   │   └── pcontent.py     # Safe PContent container reader
@@ -38,6 +41,9 @@ Mooble Explorer ──> explicit background sync ──> atomic SQLite snapshot
 
 Format readers own byte-level validation and return a shared, Blender-neutral
 model. The Blender adapter owns coordinate conversion and datablock creation.
+Within that adapter, `scene_builder` orchestrates one import, `mesh_builder`
+creates geometry and source hierarchy, and `materials` owns image and shader
+datablocks. UI operators schedule work but do not implement format semantics.
 The Mooble client owns HTTP behavior and passes downloaded bytes through the
 same format readers as local files.
 

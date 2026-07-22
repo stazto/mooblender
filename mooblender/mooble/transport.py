@@ -10,10 +10,12 @@ from urllib.parse import urljoin, urlparse
 
 
 class TransportError(RuntimeError):
-    pass
+    """Raised for rejected URLs, HTTP failures, and bounded-read violations."""
 
 
 class HttpTransport:
+    """Thread-local reusable HTTPS transport restricted to trusted hosts."""
+
     def __init__(
         self,
         *,

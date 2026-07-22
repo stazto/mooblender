@@ -20,13 +20,15 @@ from .transport import HttpTransport, TransportError
 
 
 class JsonTransport(Protocol):
+    """Minimal injectable HTTP contract used by the Mooble client."""
+
     def get_json(self, url: str, *, max_bytes: int = ...) -> dict[str, Any]: ...
     def get_bytes(self, url: str, *, max_bytes: int) -> bytes: ...
     def validate_url(self, url: str) -> None: ...
 
 
 class MoobleError(RuntimeError):
-    pass
+    """Raised when a Mooble response cannot satisfy the client contract."""
 
 
 def _mapping(value: object) -> dict[str, Any]:
@@ -47,7 +49,6 @@ def _optional_int(value: object) -> int | None:
 
 def thumbnail_cache_path(cache_dir: str | Path, item: CatalogItem) -> Path:
     """Return the deterministic disk-cache location for an item's preview."""
-
     suffix = Path(urlparse(item.thumbnail_url).path).suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
         suffix = ".img"
@@ -56,6 +57,8 @@ def thumbnail_cache_path(cache_dir: str | Path, item: CatalogItem) -> Path:
 
 
 class MoobleClient:
+    """Bounded client for catalog browsing, details, models, and previews."""
+
     DEFAULT_BASE_URL = "https://catalog.mooble.com/api/"
 
     def __init__(
@@ -119,7 +122,6 @@ class MoobleClient:
     @staticmethod
     def with_page_size(url: str, page_size: int) -> str:
         """Normalize a server-provided catalog URL to a bounded page size."""
-
         if not url:
             return ""
         parts = urlsplit(url)
@@ -169,7 +171,6 @@ class MoobleClient:
 
     def cache_catalog_page(self, url: str, page: CatalogPage) -> None:
         """Persist a completely assembled catalog page atomically."""
-
         self._write_catalog_cache(url, page)
 
     def load_cached_page(self, url: str) -> CatalogPage | None:
@@ -201,7 +202,6 @@ class MoobleClient:
 
     def extend_cached_page(self, base_url: str, page: CatalogPage) -> CatalogPage:
         """Append a pagination response to its catalog's persistent cache."""
-
         base = self.load_cached_page(base_url)
         if base is None:
             base = CatalogPage(current_url=base_url)

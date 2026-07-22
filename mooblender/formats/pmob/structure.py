@@ -9,11 +9,13 @@ from .content_types import ContentType
 
 
 class PmobStructureError(ValueError):
-    pass
+    """Raised when the low-level PMob record tree is structurally invalid."""
 
 
 @dataclass(slots=True)
 class Record:
+    """One decoded PMob record with its raw payload and child records."""
+
     type_id: int
     payload: bytes = b""
     children: list[Record] = field(default_factory=list)
@@ -28,6 +30,8 @@ class Record:
 
 
 class StructureReader:
+    """Bounds-checked recursive reader for PMob offset-based record trees."""
+
     def __init__(
         self,
         data: bytes,
@@ -91,4 +95,5 @@ class StructureReader:
 
 
 def read_structure(data: bytes) -> Record:
+    """Read and validate the root PMob record from bytes."""
     return StructureReader(data).read()

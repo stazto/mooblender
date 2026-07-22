@@ -1,220 +1,85 @@
 # Mooblender
 
-Mooblender is an early open-source Blender extension for browsing the
-Mooble catalog and importing Promob models.
+Mooblender is an open-source Blender extension for browsing the Mooble catalog
+and importing Promob models. It is written entirely in Python and does not
+depend on Promob runtime libraries.
 
-## Current implementation
+The current development target imports `.pmob` and `.pcontent`, resolves
+Mooble aggregate packages, and creates one scene-linked object controlled by
+Geometry Nodes. `.content` and `.mob` remain research targets until their
+formats are identified from reproducible samples.
 
-- Pure-Python, bounds-checked `.pmob` parser.
-- Safe in-memory `.pcontent` ZIP reader, including its observed
-  BinaryWriter-prefixed `properties.json` member.
-- Recursive Mooble aggregate resolution for properties-only furniture packages,
-  including selected child specifications and remote finish materials.
-- Blender import operator for `.pmob` and `.pcontent`.
-- Mooble sidebar with search, hierarchical collection navigation, thumbnails,
-  pagination, download caching, and one-click import.
-- Blender-independent tests for the PMob, PContent, and Mooble layers.
+## Highlights
 
-`.content` and `.mob` appear in the product roadmap but are intentionally
-rejected until their formats are identified from reproducible samples.
+- Local, bounds-checked PMob and PContent readers.
+- Full selected-department catalog synchronization into an atomic SQLite cache.
+- Offline category browsing, text search, manufacturer filtering, and
+  brand-collection filtering after synchronization.
+- On-demand model and thumbnail downloads with persistent caches.
+- Geometry Nodes controls for supported finishes, doors, drawers, and editable
+  insertion dimensions.
+- Transform, smoothing, hard-edge, UV, material, and aggregate reconstruction
+  covered by synthetic regression tests.
 
-## Install and use
+## Install
 
-The extension targets Blender 4.5 or newer. Build an installable, reproducible
-ZIP from the repository root:
+Mooblender supports Blender 4.5 LTS and 5.2 LTS. Build the extension archive
+from the repository root:
 
 ```bash
 python3 build_blender_addon.py
 ```
 
-The archive is written to `dist/mooblender-<version>.zip`. It contains the
-contents of the inner `mooblender/` extension directory at its root, as Blender
-expects.
+Install the generated `dist/mooblender-<version>.zip` through Blender's
+Extensions preferences. Enable Blender's **Online Access** setting to use the
+Mooble catalog.
 
-## Versioning and releases
-
-Git tags contain only the target version, using `vMAJOR.MINOR.PATCH`, for
-example `v0.1.0`. A `-devNNN` suffix is never placed in a tag or the source
-manifest. The build script adds it automatically, using the zero-padded GitHub
-Actions run number in CI or the Git commit count locally.
-
-Git tags are authoritative for the target version. Pushing a matching `v*` tag
-runs the complete CI suite, builds `MAJOR.MINOR.PATCH-devNNN`, injects that
-generated version into the packaged Blender manifest, and creates a GitHub
-prerelease with the ZIP attached.
-
-To reproduce a tagged build locally:
-
-```bash
-python3 build_blender_addon.py --git-tag v0.1.0 --dev-build 1
-```
-
-After enabling it:
+## Quick start
 
 1. Open the **Mooble** tab in the 3D View sidebar.
-2. Enable Blender's **Online Access** setting when using Mooble.
-3. Choose the catalog sections you want, select **Sync Catalog**, then browse a
-   collection or search the local snapshot and select **Import**.
-4. For local files, use **File → Import → Promob Model**.
+2. Select the catalog departments to retain and choose **Sync Catalog**.
+3. Browse or search the local snapshot, then choose **Import** on a model.
+4. To import a local file, use **File → Import → Promob Model**.
 
-Enable **Convert triangles to quads** under **Import options** when you want
-compatible planar triangle pairs reconstructed as quads. The same option is
-available in the local-file import dialog. It is disabled by default and does
-not join across UV seams, sharp edges, material boundaries, or non-planar
-surface changes.
+Synchronization is the only catalog-wide network action. Browsing and search
+use the last complete local snapshot; thumbnails and selected models download
+only when needed. Each import creates one visible controller object while its
+source hierarchy remains in an unlinked collection referenced by Geometry
+Nodes.
 
-Each import creates one visible object with a Geometry Nodes modifier. Its
-source collection remains a nested instance hierarchy by default. A top-level
-**Realize Instances** checkbox converts that hierarchy to mesh geometry when a
-downstream workflow needs it; non-default material overrides operate on this
-realized branch. Material menus follow the checkbox at the top of the modifier,
-while independent door/drawer controls live in a **Doors and Drawers** panel
-and editable sizes live in a separate **Parameters** panel. Each
-recognized door or drawer gets its own 0–1 input, named from its
-Mooble component metadata; models without movable components get no opening
-inputs. Ordinal or directional names retain their type, such as
-**Drawer: 1ª** or **Door: Esq**. Alternate Promob records that address the same
-movable aggregate share that component's one control instead of creating
-duplicate drivers. Door, drawer, dimension, realization, and finish inputs are
-connected single values, not geometry
-fields, so Blender keeps them editable in the modifier.
-Editable insertion dimensions become distance inputs such as
-**Largura** and **Profundidade**, with the source limits preserved. Child
-packages marked `Constant` remain fixed and do not expose misleading controls.
-Named **Finish** menus select the styles exposed by the source model; identical
-style menus reused by package scopes are consolidated into one input.
-Nested editable components receive scoped labels such as
-**Prateleira: Largura**, so repeated package instances remain independent.
-Default remote finishes are applied before any selection, and finish controls
-are scoped to their source package so same-named cabinet and door layers do not
-overwrite one another. PMob RGBA colors retain their source channel order, and
-exactly equal, unmodified materials are reused across imports.
-When a resizable panel contains fixed hardware, Mooblender preserves the
-hardware boundary while stretching the remaining panel span. Cubic-mapped
-meshes receive a size-aware physical UV projection after all static transforms,
-so the same material retains the same texel density on resized and unresized
-components. Observed Promob texture dimensions control that common scale.
-Aggregate visibility expressions, attachment normals, and current drawing
-dimensions are respected when placing nested components. Both short and
-long-form Mooble dimension variables are supported, including `PW` and
-`PARENTWIDTH` (and their depth/height counterparts).
-The source meshes and transform helpers are retained in a private collection
-referenced by the Geometry Nodes graph, but that collection is not linked to
-the scene. The controller is linked directly to the active Blender collection,
-so importing does not create a visible wrapper collection in the Outliner.
-PMob UV-seam duplicates are compacted because Blender keeps UVs per face
-corner. Explicit smoothing groups and the producer's observed 45-degree smooth
-angle reconstruct continuous custom normals, while incompatible normal fans
-remain split as hard edges. The original and welded vertex counts are retained
-on each generated mesh for diagnostics. Optional triangle-to-quad conversion
-runs after that topology preparation and records its converted quad count on
-the generated mesh.
-
-**Sync Catalog** is the only catalog-network action. Checkboxes in the sidebar
-select Móveis, Decor, Construção, Eletros, Lareiras/Churrasqueiras, Layout,
-Luzes, Materiais, and Plantas independently; only Móveis is enabled by default.
-Synchronization downloads the complete model index and category tree for every
-enabled section into a temporary SQLite database, then atomically replaces the
-previous on-disk snapshot after every page succeeds. Existing catalog data
-stays fully usable while synchronization runs. A furniture-only sync can take
-several minutes for the currently reported 14,000-plus records and their
-category memberships, but it does not block Blender's main thread. Up to four
-department/category branches download concurrently; SQLite writes remain on
-one thread and pagination within each branch remains ordered.
-
-Startup performs no catalog request. It opens the last successful snapshot
-from Blender's user data directory. Search, category navigation, manufacturer
-filtering, Back, and Load More query only that snapshot and therefore work
-offline without requesting catalog pages.
-
-Search is case- and accent-insensitive and runs entirely against that local
-index. The local root combines every enabled department, while opening a
-department or subcategory scopes subsequent searches and filters to that
-branch. Committing the
-search field or selecting its magnifier updates the cards; committing an empty
-field restores the unfiltered category. Only one bounded result batch becomes
-UI cards at a time. A manufacturer menu contains the brands available in that
-category, and a Brand Collection menu narrows itself to collections from the
-selected manufacturer. Both combine with the text query. **Load More** expands
-the local matches without contacting Mooble. Thumbnails are fetched only for
-materialized cards that do not already have a cached preview. Cached paths are
-restored immediately, queued work from an old view is cancelled when possible,
-and newly visible cards can proceed past a stale in-flight batch. Each uncached
-card shows a loading symbol until its preview arrives. Catalog synchronization
-never disables browsing; model import remains isolated from it. Blender data is
-only created on its main thread.
-
-The browser talks only to configured HTTPS Mooble hosts and caches selected
-models and thumbnails in Blender's user data directory. It does not store
-credentials or bypass access controls.
-
-## Blender compatibility
-
-Mooblender supports Blender 4.5 LTS and 5.2 LTS. The extension manifest keeps
-`blender_version_min = "4.5.0"` and intentionally has no maximum. The add-on
-uses the `bl_ext.user_default.mooblender` Blender Extensions identifier.
+See the [user guide](docs/user-guide.md) for catalog behavior, import options,
+and modifier controls.
 
 ## Development
 
-Run the Blender-independent suite from the repository root:
+Run the offline tests and quality checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
+ruff check .
 ```
 
-CI additionally launches the add-on in official Blender 4.5.0 and 5.2.0
-binaries. The smoke and named model-regression suites register the add-on and
-build disposable geometry, UVs, materials, modifiers, and aggregate transforms
-through the real Blender Python API.
-Each exact Blender installation is cached separately by operating system,
-architecture, version, and cache-layout revision, so later runs skip the large
-download and extraction.
+CI repeats the offline suite on supported Python versions and runs Blender
+integration tests against Blender 4.5 and 5.2. Binary fixtures are not
+committed; tests construct PMob records, archives, and images from Python
+`bytes` and standard-library builders.
 
-All format and image fixtures are generated from Python `bytes` values or
-standard-library builders. No binary test assets are committed. The full
-regression-to-test map is in [`tests/README.md`](tests/README.md).
+Tags use stable versions such as `v0.1.0`. The build script adds the generated
+`-devNNN` suffix to packaged development versions; source manifests and tags
+never contain that suffix.
 
-The normal suite is entirely offline. An opt-in live check verifies the
-observed Mooble catalog endpoint:
+Read the [development guide](docs/development.md), [test coverage map](tests/README.md),
+and [documentation index](docs/README.md) for details.
 
-```bash
-MOOBLENDER_LIVE_TESTS=1 python3 -m unittest tests.test_mooble_live -v
-```
+## Status
 
-See [`.agents/IMPLEMENTATION_PLAN.md`](.agents/IMPLEMENTATION_PLAN.md) for the
-phased roadmap and [`docs/mooble.md`](docs/mooble.md) for the observed catalog
-protocol.
-
-## Repository structure
-
-```text
-mooblender/          # repository root
-├── .agents/         # public contributor context and implementation plan
-├── .github/         # continuous integration workflow
-├── build_blender_addon.py
-├── mooblender/      # installable Blender extension and Python package
-├── docs/            # format and protocol documentation
-├── tests/           # Blender-independent tests
-└── pyproject.toml   # development-tool configuration
-```
-
-## Status and limitations
-
-The current scene builder preserves PMob primitive hierarchy and transforms,
-reuses referenced layer meshes, converts observed units correctly, builds
-Principled materials from embedded textures, reconstructs Mooble aggregates,
-and exposes supported opening and finish choices through Geometry Nodes.
-Observed `InsertDimension` ranges are also exposed as axis-specific Geometry
-Nodes controls. Fixed hardware embedded in resizable panels and missing panel
-UVs are handled for the observed 728 packaging pattern. PMob smoothing groups,
-UV-seam compaction, generated corner normals, and hard-edge preservation are
-implemented from the observed producer behavior.
-Unverified PMob animation timing, some mapping modes, alternative non-default
-aggregate specifications, and all
-`.content`/`.mob` behavior remain planned work.
+The PMob and Mooble formats are only implemented where behavior has been
+observed and reproduced. Unsupported semantics are documented rather than
+guessed. Current format evidence and open questions live in
+[`docs/formats/`](docs/formats/) and [`docs/mooble.md`](docs/mooble.md).
 
 ## License
 
-The original source in this project is licensed under GPL-3.0-or-later. Promob,
-Mooble, and downloaded catalog assets remain the property of their respective
-owners; users are responsible for ensuring they may access and use each asset.
+Original source in this repository is licensed under GPL-3.0-or-later. Promob,
+Mooble, and catalog assets remain the property of their respective owners;
+users are responsible for ensuring they may access and use downloaded assets.

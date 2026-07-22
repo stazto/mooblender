@@ -1,3 +1,5 @@
+"""Register and unregister all Blender-facing Mooblender components."""
+
 from __future__ import annotations
 
 from contextlib import suppress
@@ -19,6 +21,7 @@ def _menu_import(self, _context) -> None:
 
 
 def register_addon() -> None:
+    """Register classes, properties, menus, and the startup catalog timer."""
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.WindowManager.promob_browser = bpy.props.PointerProperty(
@@ -29,6 +32,7 @@ def register_addon() -> None:
 
 
 def unregister_addon() -> None:
+    """Release timers, workers, previews, menus, properties, and classes."""
     if bpy.app.timers.is_registered(operators.load_catalog_on_startup):
         bpy.app.timers.unregister(operators.load_catalog_on_startup)
     with suppress(RuntimeError):

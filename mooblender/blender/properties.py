@@ -1,3 +1,5 @@
+"""Blender properties and preferences used by the Mooble browser."""
+
 from __future__ import annotations
 
 import bpy
@@ -33,6 +35,7 @@ def _collection_items(_self, _context):
 
 
 def set_manufacturer_items(brands) -> None:
+    """Replace the dynamic manufacturer enumeration with normalized labels."""
     _MANUFACTURER_ITEMS[:] = [
         (ALL_MANUFACTURERS, "All manufacturers", "Do not filter by manufacturer"),
         *((brand, brand, f"Show only models by {brand}") for brand in brands),
@@ -40,6 +43,7 @@ def set_manufacturer_items(brands) -> None:
 
 
 def set_collection_items(collections) -> None:
+    """Replace the dynamic brand-collection enumeration."""
     _COLLECTION_ITEMS[:] = [
         (ALL_COLLECTIONS, "All collections", "Do not filter by brand collection"),
         *((name, name, f"Show only models in {name}") for name in collections),
@@ -47,6 +51,7 @@ def set_collection_items(collections) -> None:
 
 
 def selected_catalog_departments(preferences) -> tuple[str, ...]:
+    """Return department identifiers enabled in the add-on preferences."""
     return tuple(
         department_id
         for property_name, department_id, _label, default in CATALOG_DEPARTMENTS
@@ -56,7 +61,6 @@ def selected_catalog_departments(preferences) -> tuple[str, ...]:
 
 def _search_changed(_self, _context) -> None:
     """Debounce text edits and apply them against the local catalog index."""
-
     global _SEARCH_REVISION
     _SEARCH_REVISION += 1
     revision = _SEARCH_REVISION
@@ -77,6 +81,8 @@ def _search_changed(_self, _context) -> None:
 
 
 class PROMOB_PG_catalog_category(bpy.types.PropertyGroup):
+    """Blender representation of one category card in the current page."""
+
     category_id: bpy.props.StringProperty()  # type: ignore
     name: bpy.props.StringProperty()  # type: ignore
     url: bpy.props.StringProperty()  # type: ignore
@@ -86,6 +92,8 @@ class PROMOB_PG_catalog_category(bpy.types.PropertyGroup):
 
 
 class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
+    """Blender representation of one materialized catalog result card."""
+
     item_id: bpy.props.StringProperty()  # type: ignore
     name: bpy.props.StringProperty()  # type: ignore
     description: bpy.props.StringProperty()  # type: ignore
@@ -100,6 +108,8 @@ class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
 
 
 class PROMOB_PG_browser_state(bpy.types.PropertyGroup):
+    """Per-window browser state persisted in Blender's WindowManager."""
+
     query: bpy.props.StringProperty(name="Search", update=_search_changed)  # type: ignore
     manufacturer: bpy.props.EnumProperty(  # type: ignore
         name="Manufacturer",
@@ -161,6 +171,8 @@ def _catalog_scope_changed(_self, _context) -> None:
 
 
 class PROMOB_AP_preferences(bpy.types.AddonPreferences):
+    """Network, catalog-scope, and import defaults for Mooblender."""
+
     bl_idname = "bl_ext.user_default.mooblender"
 
     catalog_url: bpy.props.StringProperty(  # type: ignore

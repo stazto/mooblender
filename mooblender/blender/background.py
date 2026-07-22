@@ -15,6 +15,7 @@ def fetch_thumbnails(
     client: MoobleClient,
     items: tuple[CatalogItem, ...],
 ) -> dict[str, Any]:
+    """Download one visible thumbnail batch and close its worker client."""
     if not items:
         return {}
     workers = min(4, len(items))
@@ -27,6 +28,7 @@ def fetch_thumbnails(
 
 
 def fetch_model(client: MoobleClient, item: CatalogItem):
+    """Download, parse, and recursively resolve one catalog model."""
     try:
         path = client.download_model(item)
         loaded = load_path(path)
@@ -46,6 +48,7 @@ def fetch_model(client: MoobleClient, item: CatalogItem):
 
 
 def fetch_file(client: MoobleClient, path):
+    """Parse a local file and download only aggregate dependencies it references."""
     try:
         loaded = load_path(path)
         if isinstance(loaded, PContentPackage):

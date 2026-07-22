@@ -21,7 +21,7 @@ from .structure import PmobStructureError, Record, read_structure
 
 
 class PmobFormatError(ValueError):
-    pass
+    """Raised when PMob semantic fields are malformed or inconsistent."""
 
 
 def _require_size(payload: bytes, multiple: int, label: str) -> None:
@@ -38,7 +38,6 @@ def _ints(payload: bytes) -> list[int]:
 
 def _int_lists(payload: bytes) -> list[list[int]]:
     """Decode PMob's repeated ``count, count × int32`` list encoding."""
-
     groups = []
     offset = 0
     while offset < len(payload):
@@ -147,25 +146,34 @@ def _parse_primitive(record: Record) -> Primitive:
 
 def _parse_mesh(record: Record) -> Mesh:
     mesh = Mesh()
+    integer_lists = {
+        ContentType.INDICES: "indices",
+        ContentType.LINE_INDICES: "line_indices",
+    }
+    vector_fields = {
+        ContentType.VERTICES: ("vertices", 3),
+        ContentType.NORMALS: ("normals", 3),
+        ContentType.TEXT_COORDS: ("texture_coordinates", 2),
+    }
     for child in record.children:
         kind = child.type_id
-        if kind == ContentType.MATERIAL_ID:
-            mesh.material_id = _int(child.payload)
-        elif kind == ContentType.VERTICES:
-            mesh.vertices = _vectors(child.payload, 3)  # type: ignore[assignment]
-        elif kind == ContentType.INDICES:
-            mesh.indices = _ints(child.payload)
-        elif kind == ContentType.NORMALS:
-            mesh.normals = _vectors(child.payload, 3)  # type: ignore[assignment]
-        elif kind == ContentType.TEXT_COORDS:
-            mesh.texture_coordinates = _vectors(child.payload, 2)  # type: ignore[assignment]
+        if kind in vector_fields:
+            field, width = vector_fields[kind]
+            setattr(mesh, field, _vectors(child.payload, width))
+        elif kind in integer_lists:
+            setattr(mesh, integer_lists[kind], _ints(child.payload))
         elif kind == ContentType.SMOOTH_GROUPS:
             mesh.smooth_groups = _int_lists(child.payload)
-        elif kind == ContentType.LINE_INDICES:
-            mesh.line_indices = _ints(child.payload)
-        elif kind == ContentType.MESH_SOURCE_TYPE:
-            mesh.source_type = _int(child.payload)
+        elif kind in {ContentType.MATERIAL_ID, ContentType.MESH_SOURCE_TYPE}:
+            field = "material_id" if kind == ContentType.MATERIAL_ID else "source_type"
+            setattr(mesh, field, _int(child.payload))
 
+    _validate_mesh(mesh)
+    return mesh
+
+
+def _validate_mesh(mesh: Mesh) -> None:
+    """Reject inconsistent indices and per-vertex fields before scene conversion."""
     if len(mesh.indices) % 3:
         raise PmobFormatError("mesh index count is not divisible by three")
     if any(index < 0 or index >= len(mesh.vertices) for index in mesh.indices):
@@ -180,7 +188,6 @@ def _parse_mesh(record: Record) -> Mesh:
         for index in group
     ):
         raise PmobFormatError("smoothing group contains an out-of-range vertex index")
-    return mesh
 
 
 def _parse_layer(record: Record) -> SceneLayer:
@@ -198,66 +205,70 @@ def _parse_layer(record: Record) -> SceneLayer:
     return layer
 
 
+_MATERIAL_FIELDS = {
+    ContentType.NAME: ("name", _string),
+    ContentType.COLOR: ("color", _color),
+    ContentType.SPECULAR_COLOR: ("specular_color", _color),
+    ContentType.AMBIENT_INTENSITY: ("ambient", _float),
+    ContentType.SPECULAR_POWER: ("specular_power", _float),
+    ContentType.REFLECTION_MAX: ("reflection_max", _float),
+    ContentType.REFLECTION_MIN: ("reflection_min", _float),
+    ContentType.OPACITY: ("opacity", _float),
+    ContentType.METALLIC: ("metallic", _float),
+    ContentType.ROUGHNESS: ("roughness", _float),
+    ContentType.DIFFUSE_TEXTURE: ("diffuse_texture", _string),
+    ContentType.SPECULAR_TEXTURE: ("specular_texture", _string),
+    ContentType.NORMAL_TEXTURE: ("normal_texture", _string),
+    ContentType.MAPPING_TYPE: ("mapping_type", _int),
+    ContentType.MAPPING_ROTATION: ("mapping_rotation", _float),
+}
+_MATERIAL_VECTOR_FIELDS = {
+    ContentType.MAPPING_SCALE: "mapping_scale",
+    ContentType.MAPPING_NUMBER: "mapping_number",
+}
+_MATERIAL_FLOAT_EXTRAS = {
+    ContentType.BORDER_WIDTH,
+    ContentType.DIFFUSE,
+    ContentType.CRAND,
+    ContentType.EMISSION,
+    ContentType.TRANSLUCENCY,
+    ContentType.FRESNEL_TERM,
+    ContentType.REFRACTION_FACTOR,
+}
+_MATERIAL_BOOL_EXTRAS = {
+    ContentType.MIRROR,
+    ContentType.CONSERVE_ENERGY,
+    ContentType.APPLY_TEXTURE_IN_FRAMES,
+}
+
+
+def _material_extra(child: Record) -> object | None:
+    """Decode the heterogeneous material fields retained as neutral extras."""
+    kind = child.type_id
+    if kind in _MATERIAL_FLOAT_EXTRAS:
+        return _float(child.payload)
+    if kind in _MATERIAL_BOOL_EXTRAS:
+        if len(child.payload) != 1:
+            raise PmobFormatError("boolean material field is not one byte")
+        return bool(child.payload[0])
+    if kind == ContentType.BORDER_COLOR:
+        return _color(child.payload)
+    return None
+
+
 def _parse_material(record: Record) -> Material:
     material = Material()
-    extras: dict[str, object] = {}
     for child in record.children:
         kind = child.type_id
-        if kind == ContentType.NAME:
-            material.name = _string(child.payload)
-        elif kind == ContentType.COLOR:
-            material.color = _color(child.payload)
-        elif kind == ContentType.SPECULAR_COLOR:
-            material.specular_color = _color(child.payload)
-        elif kind == ContentType.AMBIENT_INTENSITY:
-            material.ambient = _float(child.payload)
-        elif kind == ContentType.SPECULAR_POWER:
-            material.specular_power = _float(child.payload)
-        elif kind == ContentType.REFLECTION_MAX:
-            material.reflection_max = _float(child.payload)
-        elif kind == ContentType.REFLECTION_MIN:
-            material.reflection_min = _float(child.payload)
-        elif kind == ContentType.OPACITY:
-            material.opacity = _float(child.payload)
-        elif kind == ContentType.METALLIC:
-            material.metallic = _float(child.payload)
-        elif kind == ContentType.ROUGHNESS:
-            material.roughness = _float(child.payload)
-        elif kind == ContentType.DIFFUSE_TEXTURE:
-            material.diffuse_texture = _string(child.payload)
-        elif kind == ContentType.SPECULAR_TEXTURE:
-            material.specular_texture = _string(child.payload)
-        elif kind == ContentType.NORMAL_TEXTURE:
-            material.normal_texture = _string(child.payload)
-        elif kind == ContentType.MAPPING_TYPE:
-            material.mapping_type = _int(child.payload)
-        elif kind == ContentType.MAPPING_SCALE:
-            material.mapping_scale = _vectors(child.payload, 2)[0]  # type: ignore[assignment]
-        elif kind == ContentType.MAPPING_NUMBER:
-            material.mapping_number = _vectors(child.payload, 2)[0]  # type: ignore[assignment]
-        elif kind == ContentType.MAPPING_ROTATION:
-            material.mapping_rotation = _float(child.payload)
-        elif kind in {
-            ContentType.BORDER_WIDTH,
-            ContentType.DIFFUSE,
-            ContentType.CRAND,
-            ContentType.EMISSION,
-            ContentType.TRANSLUCENCY,
-            ContentType.FRESNEL_TERM,
-            ContentType.REFRACTION_FACTOR,
-        }:
-            extras[ContentType(kind).name.lower()] = _float(child.payload)
-        elif kind in {
-            ContentType.MIRROR,
-            ContentType.CONSERVE_ENERGY,
-            ContentType.APPLY_TEXTURE_IN_FRAMES,
-        }:
-            if len(child.payload) != 1:
-                raise PmobFormatError("boolean material field is not one byte")
-            extras[ContentType(kind).name.lower()] = bool(child.payload[0])
-        elif kind == ContentType.BORDER_COLOR:
-            extras["border_color"] = _color(child.payload)
-    material.extras = extras
+        if kind in _MATERIAL_FIELDS:
+            field, decoder = _MATERIAL_FIELDS[kind]
+            setattr(material, field, decoder(child.payload))
+        elif kind in _MATERIAL_VECTOR_FIELDS:
+            setattr(material, _MATERIAL_VECTOR_FIELDS[kind], _vectors(child.payload, 2)[0])
+        else:
+            extra = _material_extra(child)
+            if extra is not None:
+                material.extras[ContentType(kind).name.lower()] = extra
     return material
 
 
@@ -273,6 +284,7 @@ def _collect_unknown_types(root: Record) -> set[int]:
 
 
 def read_pmob(data: bytes) -> PmobDocument:
+    """Decode one bounded PMob byte tree into the neutral scene model."""
     try:
         root = read_structure(data)
     except PmobStructureError as error:

@@ -11,7 +11,6 @@ from .expressions import evaluate_expression
 
 def service_name(service: Mapping[str, object], fallback: str) -> str:
     """Return the component name shown by Mooble, preferring pt-BR metadata."""
-
     localizations = service.get("Localizations", ())
     if isinstance(localizations, list):
         for localization in localizations:
@@ -27,7 +26,6 @@ def service_name(service: Mapping[str, object], fallback: str) -> str:
 
 def control_name(service: Mapping[str, object], fallback: str) -> str:
     """Return a recognizable modifier label for one opening component."""
-
     name = service_name(service, fallback)
     service_type = str(service.get("Type", "")).strip()
     kind = service_type.casefold()
@@ -53,7 +51,6 @@ def door_motion(
     aggregate placement, so the hinge X and rotation handedness must be mapped
     back to the unmirrored child coordinates before creating the Blender pivot.
     """
-
     variables: dict[str, float | bool] = {
         **dimension_variables(dimensions),
         "I": inverted,

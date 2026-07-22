@@ -100,6 +100,7 @@ def evaluate_expression(
     *,
     default: float = 0.0,
 ) -> float:
+    """Safely evaluate the supported numeric subset of PContent expressions."""
     if isinstance(expression, (int, float)) and not isinstance(expression, bool):
         return float(expression)
     if not isinstance(expression, str) or not expression.strip():
