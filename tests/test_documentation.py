@@ -152,6 +152,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("actions/upload-artifact@v7", workflow)
         self.assertIn("actions/download-artifact@v8", workflow)
         self.assertIn("inputs.release_tag", workflow)
+        self.assertGreaterEqual(workflow.count("GH_TOKEN: ${{ github.token }}"), 2)
 
         push_section = workflow.split("pull_request:", maxsplit=1)[0]
         self.assertNotIn("paths:", push_section)
