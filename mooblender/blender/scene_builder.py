@@ -1,9 +1,15 @@
-"""Conversion from neutral Promob models to Blender datablocks."""
+"""Convert neutral Promob packages into one Blender scene object.
+
+The scene builder resolves package-level meaning: selected aggregates,
+dimensions, visibility, placement, openings, and source mesh ownership.  It
+stores that information in lightweight :class:`TransformNode` records and then
+hands the result to :mod:`geometry_nodes`, which owns all procedural graph
+construction.
+"""
 
 from __future__ import annotations
 
 import math
-import zlib
 from collections.abc import Callable
 from typing import Any
 
@@ -25,20 +31,33 @@ from ..model.dimensions import (
 from ..model.expressions import evaluate_condition, evaluate_expression
 from ..model.openings import control_name, door_motion
 from ..model.scene import PmobDocument
-from .mesh_builder import (
-    TransformNode,
-    _document_root,
-    _entity_code,
-    _remote_material,
-    _unique_name,
+from .geometry_nodes import (
+    TransformControls,
+    add_dimension_controls,
+    add_material_options,
+    add_mirror_control,
+    add_visibility_controls,
+    compile_hierarchy,
+    create_controller,
+    make_socket_single_value,
+    record_transform_control,
+    set_modifier_value,
 )
+from .mesh_builder import TransformNode, _document_root, _unique_name
 
 
 def _aggregate_orientation(normal: Vector, rotation: float) -> Quaternion:
-    """Build Promob's normal frame without an ambiguous shortest-arc roll."""
+    """Build Promob's attachment frame without an ambiguous shortest-arc roll.
+
+    Promob supplies the local positive-Z direction but not the remaining roll
+    around that axis.  Projecting a stable global vertical reference onto the
+    attachment plane produces deterministic X/Y axes for opposing side parts.
+    """
     vertical_reference = Vector((0.0, 0.0, -1.0))
     local_x = vertical_reference - normal * vertical_reference.dot(normal)
     if local_x.length_squared <= 1e-12:
+        # Top/bottom normals are parallel to the reference, so use global X as
+        # the only non-degenerate deterministic fallback.
         local_x = Vector((1.0, 0.0, 0.0))
     else:
         local_x.normalize()
@@ -54,32 +73,12 @@ def _aggregate_orientation(normal: Vector, rotation: float) -> Quaternion:
 
 
 def _raw_aggregate(package: PContentPackage, index: int) -> dict[str, object]:
+    """Return one raw aggregate dictionary, or an empty mapping if malformed."""
     aggregates = package.properties.get("Aggregates", [])
     if not isinstance(aggregates, list) or not 0 <= index < len(aggregates):
         return {}
     value = aggregates[index]
     return value if isinstance(value, dict) else {}
-
-
-TransformControls = dict[
-    object,
-    dict[tuple[str, int], tuple[Any, float, float]],
-]
-_TRANSFORM_PARITY_ATTRIBUTE = "mooblender_transform_parity"
-
-
-def _drive_transform(
-    controls: TransformControls,
-    target,
-    channel: str,
-    axis: int,
-    socket,
-    *,
-    offset: float = 0.0,
-    factor: float = 1.0,
-) -> None:
-    """Record ``offset + factor * socket`` for later Geometry Nodes compilation."""
-    controls.setdefault(target, {})[(channel, axis)] = (socket, offset, factor)
 
 
 def _apply_open_services(
@@ -91,9 +90,11 @@ def _apply_open_services(
     controlled_paths: set[tuple[int, ...]],
     transform_controls: TransformControls,
 ) -> int:
+    """Translate Promob door/drawer services into independent node controls."""
     services = package.properties.get("OpenServices", [])
     if not isinstance(services, list):
         return 0
+
     applied = 0
     for service in services:
         if not isinstance(service, dict):
@@ -101,25 +102,29 @@ def _apply_open_services(
         raw_path = service.get("AggregatePath", [])
         if not isinstance(raw_path, list):
             continue
+
         # Observed paths alternate aggregate-container index and selected
-        # definition index, for example [2, 0] addresses aggregate 2 using its
-        # first/default specification. Our resolved tree stores container
-        # indices because only the selected specification becomes geometry.
+        # definition index.  For example, [2, 0] addresses aggregate 2 using
+        # its first/default specification.  The resolved tree stores only the
+        # container indices because only one selected definition has geometry.
         path = prefix + tuple(
             value
             for offset, value in enumerate(raw_path)
             if offset % 2 == 0 and isinstance(value, int)
         )
         if path in controlled_paths:
+            # Several metadata records can describe the same movable part.
+            # The first valid service owns its one user-facing control.
             continue
-        data = aggregate_nodes.get(path)
-        if data is None:
+        aggregate = aggregate_nodes.get(path)
+        if aggregate is None:
             continue
-        motion = data["motion"]
-        content = data["content"]
-        dimensions = data["dimensions"]
+
+        motion = aggregate["motion"]
+        content = aggregate["content"]
+        dimensions = aggregate["dimensions"]
         width, depth, height = dimensions
-        inverted = bool(data["inverted"])
+        inverted = bool(aggregate["inverted"])
         variables: dict[str, float | bool] = {
             **dimension_variables(dimensions),
             "I": inverted,
@@ -127,6 +132,7 @@ def _apply_open_services(
         }
         service_type = str(service.get("Type", "")).casefold()
         maximum = evaluate_expression(service.get("Max"), variables)
+
         if service_type == "door":
             pivot, angle = door_motion(
                 service,
@@ -135,13 +141,16 @@ def _apply_open_services(
             )
             if abs(angle) <= 1e-12:
                 continue
-            socket, control_name = opening_control(
+            socket, display_name = opening_control(
                 service,
-                data["placement"].name,
+                aggregate["placement"].name,
             )
+
+            # Rotate around a local pivot by translating into pivot space,
+            # applying the controlled Z rotation, and translating back.
             motion.location = tuple(value * 0.001 for value in pivot)
             content.location = tuple(-value * 0.001 for value in pivot)
-            _drive_transform(
+            record_transform_control(
                 transform_controls,
                 motion,
                 "rotation",
@@ -150,14 +159,16 @@ def _apply_open_services(
                 factor=angle,
             )
         elif service_type == "drawer":
+            # Promob's positive opening distance points opposite Blender's
+            # cabinet-local Y direction.
             distance = maximum * -0.001
             if abs(distance) <= 1e-12:
                 continue
-            socket, control_name = opening_control(
+            socket, display_name = opening_control(
                 service,
-                data["placement"].name,
+                aggregate["placement"].name,
             )
-            _drive_transform(
+            record_transform_control(
                 transform_controls,
                 motion,
                 "translation",
@@ -167,17 +178,71 @@ def _apply_open_services(
             )
         else:
             continue
-        motion["mooblender_open_service"] = control_name
+
+        # Metadata remains on the temporary record while the hierarchy is
+        # compiled.  It is useful for diagnostics but creates no Blender empty.
+        motion["mooblender_open_service"] = display_name
         motion["mooblender_open_service_type"] = str(service.get("Type", ""))
         controlled_paths.add(path)
         applied += 1
     return applied
 
 
+def _package_dimensions(
+    package: PContentPackage,
+    current_dimensions: tuple[float, float, float] | None,
+) -> tuple[float, float, float]:
+    """Choose the dimensions used by expressions in one package scope."""
+    if current_dimensions is not None:
+        return current_dimensions
+
+    logical = property_dimensions(package.properties)
+    drawing = property_dimensions(package.properties, "DrawingDimension")
+    serialized = serialized_geometry_dimensions(
+        package.properties,
+        document=package.document,
+        fallback=logical,
+    )
+    # Drawing dimensions describe the authored coordinate system and are most
+    # reliable for parent formulas.  Missing axes fall back to logical metadata
+    # and finally to measured serialized geometry.
+    return tuple(
+        authored
+        if abs(authored) > 1e-9
+        else declared
+        if abs(declared) > 1e-9
+        else measured
+        for authored, declared, measured in zip(
+            drawing,
+            logical,
+            serialized,
+            strict=True,
+        )
+    )
+
+
+def _configurable_dimensions(
+    package: PContentPackage,
+    defaults: tuple[float, float, float],
+    enabled: bool,
+):
+    """Return only editable axes whose default lies inside the declared range."""
+    if not enabled:
+        return ()
+    return tuple(
+        dimension
+        for dimension in configurable_dimensions(
+            package.properties,
+            defaults=defaults,
+        )
+        if dimension.minimum <= dimension.default <= dimension.maximum
+    )
+
+
 def _build_package_tree(
     package: PContentPackage,
     *,
-    parent,
+    parent: TransformNode,
     collection,
     source_id: str,
     cache: dict[int, dict[str, list[bpy.types.Mesh]]],
@@ -192,64 +257,44 @@ def _build_package_tree(
     document_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
     control_label: str = "",
     dimension_controls_enabled: bool = True,
-):
+) -> None:
+    """Build temporary transform records and source meshes for one package."""
     model_information = selected_model_information(package.properties)
-    logical_dimensions = property_dimensions(package.properties)
-    drawing_dimensions = property_dimensions(
-        package.properties,
-        "DrawingDimension",
-    )
-    serialized_dimensions = serialized_geometry_dimensions(
-        package.properties,
-        document=package.document,
-        fallback=logical_dimensions,
-    )
-    parent_dimensions = current_dimensions or tuple(
-        drawing
-        if abs(drawing) > 1e-9
-        else logical
-        if abs(logical) > 1e-9
-        else serialized
-        for drawing, logical, serialized in zip(
-            drawing_dimensions,
-            logical_dimensions,
-            serialized_dimensions,
-            strict=True,
-        )
-    )
+    parent_dimensions = _package_dimensions(package, current_dimensions)
     package_parent = parent
-    dimensions = (
-        tuple(
-            dimension
-            for dimension in configurable_dimensions(
-                package.properties,
-                defaults=parent_dimensions,
-            )
-            if dimension.minimum <= dimension.default <= dimension.maximum
-        )
-        if dimension_controls_enabled
-        else ()
+
+    editable_dimensions = _configurable_dimensions(
+        package,
+        parent_dimensions,
+        dimension_controls_enabled,
     )
-    if dimension_nodes is not None and dimensions:
+    if dimension_nodes is not None and editable_dimensions:
         label = _unique_name(
             control_label or (package.document.name if package.document else ""),
             "Entity",
         )
         package_parent = TransformNode(f"{label} Parameters", parent)
-        package_parent["mooblender_configurable_dimensions"] = len(dimensions)
+        package_parent["mooblender_configurable_dimensions"] = len(
+            editable_dimensions
+        )
         dimension_nodes.append(
             {
                 "label": control_label,
                 "object": package_parent,
-                "dimensions": dimensions,
+                "dimensions": editable_dimensions,
             }
         )
+
     if package.document is not None:
         document_parent = package_parent
         if document_scale != (1.0, 1.0, 1.0):
+            # Keep document redimensioning separate from aggregate placement.
+            # This prevents nested aggregate coordinates from being scaled a
+            # second time when only the child mesh envelope must stretch.
             document_name = _unique_name(package.document.name, "Aggregate")
             document_parent = TransformNode(
-                f"{document_name} Geometry Scale", package_parent
+                f"{document_name} Geometry Scale",
+                package_parent,
             )
             document_parent.scale = document_scale
             document_parent["mooblender_geometry_scale"] = document_scale
@@ -265,6 +310,7 @@ def _build_package_tree(
             object_parents=object_parents,
             geometry_scale=document_scale,
         )
+
     for resolved in package.resolved_aggregates:
         raw = _raw_aggregate(package, resolved.index)
         child = resolved.package
@@ -279,6 +325,7 @@ def _build_package_tree(
             fallback=default_dimensions,
         )
         variables.update(dimension_variables(target_dimensions))
+
         visible_condition = raw.get("VisibleCondition")
         if visible_condition is not None and not evaluate_condition(
             visible_condition,
@@ -286,13 +333,16 @@ def _build_package_tree(
             model_information,
         ):
             continue
+
         position = raw.get("Position", {})
         position = position if isinstance(position, dict) else {}
         location = tuple(
             evaluate_expression(position.get(axis), variables) * 0.001
             for axis in ("X", "Y", "Z")
         )
-        rotation = math.radians(evaluate_expression(position.get("Rotation"), variables))
+        axial_rotation = math.radians(
+            evaluate_expression(position.get("Rotation"), variables)
+        )
         raw_normal = raw.get("Normal", {})
         raw_normal = raw_normal if isinstance(raw_normal, dict) else {}
         normal = Vector(
@@ -305,30 +355,38 @@ def _build_package_tree(
             normal = Vector((0.0, 0.0, 1.0))
         else:
             normal.normalize()
-        orientation = _aggregate_orientation(normal, rotation)
+
         inverted = raw.get("Inverted") is True
         geometry_dimensions = serialized_geometry_dimensions(
             child.properties,
             document=child.document,
             fallback=default_dimensions,
         )
-        scale = [
-            target / geometry if geometry else 1.0
-            for target, geometry in zip(
+        geometry_scale = tuple(
+            target / measured if measured else 1.0
+            for target, measured in zip(
                 target_dimensions,
                 geometry_dimensions,
                 strict=True,
             )
-        ]
+        )
+
         fallback = f"Aggregate {resolved.index}"
-        name = _unique_name(str(raw.get("Description") or raw.get("Id") or ""), fallback)
+        name = _unique_name(
+            str(raw.get("Description") or raw.get("Id") or ""),
+            fallback,
+        )
         placement = TransformNode(name, package_parent)
         placement.location = location
         placement.rotation_mode = "QUATERNION"
-        placement.rotation_quaternion = orientation
+        placement.rotation_quaternion = _aggregate_orientation(
+            normal,
+            axial_rotation,
+        )
         placement.scale.x = -1.0 if inverted else 1.0
         placement["mooble_specification_id"] = resolved.specification_id
         placement["promob_aggregate_index"] = resolved.index
+
         if option_nodes is not None and is_optional_aggregate(raw):
             option_nodes.append(
                 {
@@ -338,6 +396,9 @@ def _build_package_tree(
                 }
             )
 
+        # The extra motion/content pair provides a clean pivot space for doors
+        # and an independent translation space for drawers.  They are Python
+        # records only and become Transform Geometry nodes during compilation.
         motion = TransformNode(f"{name} Opening", placement)
         content = TransformNode(f"{name} Content", motion)
         path = prefix + (resolved.index,)
@@ -348,6 +409,7 @@ def _build_package_tree(
             "dimensions": target_dimensions,
             "inverted": inverted,
         }
+
         _build_package_tree(
             child,
             parent=content,
@@ -358,726 +420,145 @@ def _build_package_tree(
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
             option_nodes=option_nodes,
+            object_parents=object_parents,
             convert_tris_to_quads=convert_tris_to_quads,
             prefix=path,
             current_dimensions=target_dimensions,
-            document_scale=tuple(scale),
+            document_scale=geometry_scale,
             control_label=name,
             dimension_controls_enabled=(
                 dimension_controls_enabled and raw.get("Constant") is not True
             ),
-            object_parents=object_parents,
         )
 
 
-def _modifier_socket_value(modifier, socket, value):
-    interface_values = getattr(getattr(modifier, "properties", None), "inputs", None)
-    if interface_values is not None and hasattr(interface_values, socket.identifier):
-        socket_value = getattr(interface_values, socket.identifier)
-        socket_value.value = value
-        return socket_value.path_from_id("value")
-    modifier[socket.identifier] = value
-    return modifier.path_from_id(f'["{socket.identifier}"]')
+def _opening_control_factory(controller_nodes):
+    """Return a callback that lazily creates unique opening controls."""
+    control_name_counts: dict[str, int] = {}
+    opening_panel = None
 
-
-def _geometry_nodes_controller(name: str, collection):
-    mesh = bpy.data.meshes.new(f"{name} Geometry")
-    controller = bpy.data.objects.new(name, mesh)
-    collection.objects.link(controller)
-    modifier = controller.modifiers.new(name="Mooblender", type="NODES")
-    node_group = bpy.data.node_groups.new(f"{name} Controls", "GeometryNodeTree")
-    modifier.node_group = node_group
-
-    output_socket = node_group.interface.new_socket(
-        name="Geometry",
-        in_out="OUTPUT",
-        socket_type="NodeSocketGeometry",
-    )
-    realize_socket = node_group.interface.new_socket(
-        name="Realize Instances",
-        description=(
-            "Convert the transformed model instance to editable mesh geometry"
-        ),
-        in_out="INPUT",
-        socket_type="NodeSocketBool",
-    )
-    _make_socket_single_value(realize_socket)
-    realize_socket.default_value = False
-    nodes = node_group.nodes
-    links = node_group.links
-    source_geometry = nodes.new("GeometryNodeJoinGeometry")
-    source_geometry.label = "Transformed Source Meshes"
-    geometry_to_instance = nodes.new("GeometryNodeGeometryToInstance")
-    geometry_to_instance.label = "Materialized Model Instance"
-    realize = nodes.new("GeometryNodeRealizeInstances")
-    realize.label = "Optional Realization"
-    geometry_switch = nodes.new("GeometryNodeSwitch")
-    geometry_switch.input_type = "GEOMETRY"
-    geometry_switch.label = "Keep Instances / Realize"
-    group_input = nodes.new("NodeGroupInput")
-    output = nodes.new("NodeGroupOutput")
-    output.is_active_output = True
-    links.new(
-        source_geometry.outputs["Geometry"], geometry_to_instance.inputs["Geometry"]
-    )
-    links.new(geometry_to_instance.outputs["Instances"], realize.inputs["Geometry"])
-    links.new(geometry_to_instance.outputs["Instances"], geometry_switch.inputs["False"])
-    links.new(realize.outputs["Geometry"], geometry_switch.inputs["True"])
-    links.new(group_input.outputs[realize_socket.name], geometry_switch.inputs["Switch"])
-    links.new(geometry_switch.outputs["Output"], output.inputs[output_socket.name])
-    node_group.interface_update(bpy.context)
-    _modifier_socket_value(modifier, realize_socket, False)
-    controller["mooblender_instances_realized_by_default"] = False
-    return (
-        controller,
-        modifier,
-        group_input,
-        source_geometry,
-        geometry_to_instance,
-        realize,
-        geometry_switch,
-        realize_socket,
-    )
-
-
-def _make_socket_single_value(socket) -> None:
-    socket.structure_type = "SINGLE"
-
-
-def _group_input_output(group_input, socket):
-    """Resolve an interface socket by identifier, allowing names in other panels."""
-    return next(
-        output for output in group_input.outputs if output.identifier == socket.identifier
-    )
-
-
-def _rotation_euler(obj) -> tuple[float, float, float]:
-    if obj.rotation_mode == "QUATERNION":
-        return tuple(obj.rotation_quaternion.to_euler("XYZ"))
-    if obj.rotation_mode == "AXIS_ANGLE":
-        return tuple(obj.matrix_basis.to_euler("XYZ"))
-    return tuple(obj.rotation_euler)
-
-
-def _affine_control_output(node_group, group_input, driven):
-    socket, offset, factor = driven
-    output = _group_input_output(group_input, socket)
-    if factor != 1.0:
-        multiply = node_group.nodes.new("ShaderNodeMath")
-        multiply.operation = "MULTIPLY"
-        multiply.inputs[1].default_value = factor
-        multiply.hide = True
-        node_group.links.new(output, multiply.inputs[0])
-        output = multiply.outputs[0]
-    if offset:
-        add = node_group.nodes.new("ShaderNodeMath")
-        add.operation = "ADD"
-        add.inputs[1].default_value = offset
-        add.hide = True
-        node_group.links.new(output, add.inputs[0])
-        output = add.outputs[0]
-    return output
-
-
-def _transform_chain(
-    obj,
-    hierarchy_root,
-    object_parents: dict[bpy.types.Object, TransformNode],
-) -> list[object]:
-    chain = []
-    current = obj
-    while current is not None:
-        chain.append(current)
-        if current == hierarchy_root:
-            break
-        current = object_parents.get(current) if current == obj else current.parent
-    if not chain or chain[-1] != hierarchy_root:
-        raise ValueError(f"source mesh {obj.name!r} is outside the import hierarchy")
-    return chain
-
-
-def _compile_geometry_nodes_hierarchy(
-    node_group,
-    group_input,
-    source_geometry,
-    geometry_to_instance,
-    source_collection,
-    hierarchy_root,
-    transform_controls: TransformControls,
-    object_parents: dict[bpy.types.Object, TransformNode],
-) -> None:
-    """Compile build-time transform records into a self-contained node graph."""
-    nodes = node_group.nodes
-    links = node_group.links
-    source_objects = list(source_collection.all_objects)
-    mesh_objects = [obj for obj in source_objects if obj.type == "MESH"]
-
-    for mesh_object in mesh_objects:
-        object_info = nodes.new("GeometryNodeObjectInfo")
-        object_info.label = mesh_object.name
-        object_info.transform_space = "ORIGINAL"
-        object_info.inputs["Object"].default_value = mesh_object
-        object_info.inputs["As Instance"].default_value = True
-        leaf_realize = nodes.new("GeometryNodeRealizeInstances")
-        leaf_realize.label = "Read Source Mesh"
-        links.new(object_info.outputs["Geometry"], leaf_realize.inputs["Geometry"])
-        store_parity = nodes.new("GeometryNodeStoreNamedAttribute")
-        store_parity.data_type = "BOOLEAN"
-        store_parity.domain = "FACE"
-        store_parity.inputs["Name"].default_value = _TRANSFORM_PARITY_ATTRIBUTE
-        links.new(leaf_realize.outputs["Geometry"], store_parity.inputs["Geometry"])
-        geometry = store_parity.outputs["Geometry"]
-        transform_chain = _transform_chain(mesh_object, hierarchy_root, object_parents)
-        negative_determinant = False
-
-        for transform_object in transform_chain:
-            channels = transform_controls.get(transform_object, {})
-            translation = tuple(transform_object.location)
-            rotation = _rotation_euler(transform_object)
-            scale = tuple(transform_object.scale)
-            if scale[0] * scale[1] * scale[2] < 0.0:
-                negative_determinant = not negative_determinant
-            is_identity = (
-                not channels
-                and translation == (0.0, 0.0, 0.0)
-                and rotation == (0.0, 0.0, 0.0)
-                and scale == (1.0, 1.0, 1.0)
+    def create_opening_control(
+        service: dict[str, object],
+        fallback: str,
+    ) -> tuple[Any, str]:
+        """Create or reuse the Doors and Drawers panel for one service."""
+        nonlocal opening_panel
+        modifier = controller_nodes.modifier
+        node_group = modifier.node_group
+        if opening_panel is None:
+            opening_panel = node_group.interface.new_panel(
+                name="Doors and Drawers",
+                description="Independent opening controls for movable components",
+                default_closed=False,
             )
-            if is_identity:
-                continue
-            transform = nodes.new("GeometryNodeTransform")
-            transform.label = transform_object.name
-            transform.inputs["Translation"].default_value = translation
-            transform.inputs["Rotation"].default_value = rotation
-            transform.inputs["Scale"].default_value = scale
-            links.new(geometry, transform.inputs["Geometry"])
 
-            defaults = {
-                "translation": translation,
-                "rotation": rotation,
-                "scale": scale,
-            }
-            for channel in defaults:
-                driven_axes = {
-                    axis: driven
-                    for (name, axis), driven in channels.items()
-                    if name == channel
-                }
-                if not driven_axes:
-                    continue
-                combine = nodes.new("ShaderNodeCombineXYZ")
-                combine.hide = True
-                for axis, axis_name in enumerate(("X", "Y", "Z")):
-                    combine.inputs[axis_name].default_value = defaults[channel][axis]
-                    driven = driven_axes.get(axis)
-                    if driven is not None:
-                        links.new(
-                            _affine_control_output(node_group, group_input, driven),
-                            combine.inputs[axis_name],
-                        )
-                links.new(combine.outputs["Vector"], transform.inputs[channel.title()])
-            geometry = transform.outputs["Geometry"]
-        store_parity.inputs["Value"].default_value = negative_determinant
-        links.new(geometry, source_geometry.inputs["Geometry"])
-
-    instance_input = geometry_to_instance.inputs["Geometry"]
-    source_link = instance_input.links[0]
-    source_output = source_link.from_socket
-    links.remove(source_link)
-    parity = nodes.new("GeometryNodeInputNamedAttribute")
-    parity.data_type = "BOOLEAN"
-    parity.inputs["Name"].default_value = _TRANSFORM_PARITY_ATTRIBUTE
-    selection = parity.outputs["Attribute"]
-    reverse = transform_controls.get(hierarchy_root, {}).get(("scale", 0))
-    if reverse is not None:
-        reverse_socket, offset, factor = reverse
-        if offset == 1.0 and factor == -2.0:
-            xor = nodes.new("FunctionNodeBooleanMath")
-            xor.operation = "XOR"
-            links.new(selection, xor.inputs[0])
-            links.new(_group_input_output(group_input, reverse_socket), xor.inputs[1])
-            selection = xor.outputs[0]
-    flip_faces = nodes.new("GeometryNodeFlipFaces")
-    flip_faces.label = "Correct Mirrored Face Orientation"
-    links.new(source_output, flip_faces.inputs["Mesh"])
-    links.new(selection, flip_faces.inputs["Selection"])
-    links.new(flip_faces.outputs["Mesh"], instance_input)
-
-    for mesh_object in mesh_objects:
-        mesh_object.parent = None
-        mesh_object.matrix_basis = Matrix.Identity(4)
-    node_group.interface_update(bpy.context)
-
-
-def _add_dimension_controls(
-    dimension_nodes: list[dict[str, Any]],
-    *,
-    controller,
-    modifier,
-    group_input,
-    panel,
-    transform_controls: TransformControls,
-) -> int:
-    if not dimension_nodes:
-        return 0
-
-    node_group = modifier.node_group
-    used_names = {
-        item.name for item in node_group.interface.items_tree if item.parent == panel
-    }
-    defaults = []
-    controls = 0
-    for data in dimension_nodes:
-        label = str(data["label"])
-        target = data["object"]
-        for dimension in data["dimensions"]:
-            base = f"{label}: {dimension.name}" if label else dimension.name
-            name = base
-            suffix = 2
-            while name in used_names:
-                name = f"{base} ({suffix})"
-                suffix += 1
-            used_names.add(name)
-            socket = node_group.interface.new_socket(
-                name=name,
-                in_out="INPUT",
-                socket_type="NodeSocketFloat",
-                parent=panel,
-            )
-            _make_socket_single_value(socket)
-            socket.subtype = "DISTANCE"
-            socket.default_value = dimension.default * 0.001
-            socket.min_value = dimension.minimum * 0.001
-            socket.max_value = dimension.maximum * 0.001
-            socket.description = (
-                f"Mooble range: {dimension.minimum:g}–{dimension.maximum:g} mm"
-            )
-            defaults.append((socket, dimension.default * 0.001, target, dimension.axis))
-            controls += 1
-
-    node_group.interface_update(bpy.context)
-    for socket, value, target, axis in defaults:
-        _modifier_socket_value(modifier, socket, value)
-        _drive_transform(
-            transform_controls,
-            target,
-            "scale",
-            axis,
-            socket,
-            factor=1.0 / value,
-        )
-    node_group.interface_update(bpy.context)
-    if controls:
-        controller["mooblender_dimension_control_count"] = controls
-    return controls
-
-
-def _add_visibility_controls(
-    option_nodes: list[dict[str, Any]],
-    *,
-    controller,
-    modifier,
-    group_input,
-    panel,
-    transform_controls: TransformControls,
-) -> int:
-    """Expose independently selectable aggregates as single-value switches."""
-    if not option_nodes:
-        return 0
-    node_group = modifier.node_group
-    used_names = {
-        item.name for item in node_group.interface.items_tree if item.parent == panel
-    }
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for data in option_nodes:
-        grouped.setdefault(str(data["label"]), []).append(data)
-    controls = 0
-    for label, components in grouped.items():
-        name = _unique_interface_name(label, used_names)
+        base_name = control_name(service, fallback)
+        count = control_name_counts.get(base_name, 0) + 1
+        control_name_counts[base_name] = count
+        display_name = base_name if count == 1 else f"{base_name} ({count})"
         socket = node_group.interface.new_socket(
-            name=name,
+            name=display_name,
             in_out="INPUT",
-            socket_type="NodeSocketBool",
-            parent=panel,
+            socket_type="NodeSocketFloat",
+            parent=opening_panel,
         )
-        _make_socket_single_value(socket)
-        socket.default_value = True
-        socket.description = f"Show or hide {label}"
+        make_socket_single_value(socket)
+        socket.default_value = 0.0
+        socket.min_value = 0.0
+        socket.max_value = 1.0
+        socket.description = f"Open {base_name}"
         node_group.interface_update(bpy.context)
-        _modifier_socket_value(modifier, socket, True)
-        for data in components:
-            for axis, scale in enumerate(data["default_scale"]):
-                _drive_transform(
-                    transform_controls,
-                    data["object"],
-                    "scale",
-                    axis,
-                    socket,
-                    factor=scale,
-                )
-        controls += 1
-    node_group.interface_update(bpy.context)
-    controller["mooblender_option_control_count"] = controls
-    return controls
+        set_modifier_value(modifier, socket, 0.0)
+        return socket, display_name
+
+    return create_opening_control
 
 
-def _add_mirror_control(
+def _add_package_controls(
     package: PContentPackage,
-    *,
-    hierarchy_root,
-    controller,
-    modifier,
-    group_input,
-    panel,
+    controller_nodes,
+    hierarchy_root: TransformNode,
+    aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
+    dimension_nodes: list[dict[str, Any]],
+    option_nodes: list[dict[str, Any]],
     transform_controls: TransformControls,
-) -> bool:
-    """Create a whole-model X mirror control when source metadata permits it."""
-    if not can_mirror(package.properties):
-        return False
-    socket = modifier.node_group.interface.new_socket(
-        name="Reverse",
-        in_out="INPUT",
-        socket_type="NodeSocketBool",
-        parent=panel,
-    )
-    _make_socket_single_value(socket)
-    socket.default_value = False
-    socket.description = "Mirror the complete model while preserving its footprint"
-    modifier.node_group.interface_update(bpy.context)
-    _modifier_socket_value(modifier, socket, False)
-    limits = package.properties.get("Limits", {})
-    limits = limits if isinstance(limits, dict) else {}
-    minimum = limits.get("Min", {})
-    maximum = limits.get("Max", {})
-    minimum = minimum if isinstance(minimum, dict) else {}
-    maximum = maximum if isinstance(maximum, dict) else {}
-    width = property_dimensions(package.properties)[0]
-    mirror_offset = (
-        evaluate_expression(minimum.get("X"), default=0.0)
-        + evaluate_expression(maximum.get("X"), default=width)
-    ) * 0.001
-    _drive_transform(
-        transform_controls,
-        hierarchy_root,
-        "scale",
-        0,
-        socket,
-        offset=1.0,
-        factor=-2.0,
-    )
-    _drive_transform(
-        transform_controls,
-        hierarchy_root,
-        "translation",
-        0,
-        socket,
-        factor=mirror_offset,
-    )
-    controller["mooblender_can_mirror"] = True
-    return True
-
-
-def _model_groups(package: PContentPackage):
-    groups: dict[tuple[int, str], dict[str, object]] = {}
-    stack = [package]
-    visited: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if id(current) in visited:
-            continue
-        visited.add(id(current))
-        models = current.properties.get("Models", [])
-        if isinstance(models, list):
-            for model in models:
-                if not isinstance(model, dict):
-                    continue
-                group_id = str(model.get("ModelDefinitionId") or model.get("Id") or "")
-                if not group_id:
-                    continue
-                group = groups.setdefault(
-                    (id(current), group_id),
-                    {
-                        "name": str(model.get("ModelDefinitionName") or group_id),
-                        "options": [],
-                        "materials": {},
-                        "scope": _entity_code(current),
-                    },
-                )
-                option_id = str(model.get("Id") or model.get("Name") or "")
-                options = group["options"]
-                if isinstance(options, list) and not any(
-                    isinstance(item, dict) and item.get("id") == option_id
-                    for item in options
-                ):
-                    components = model.get("Components", [])
-                    assignments = {
-                        str(component.get("LayerId")): str(component.get("MaterialId"))
-                        for component in components
-                        if isinstance(component, dict)
-                        and component.get("LayerId")
-                        and component.get("MaterialId")
-                    } if isinstance(components, list) else {}
-                    options.append(
-                        {
-                            "id": option_id,
-                            "name": str(model.get("Name") or option_id),
-                            "assignments": assignments,
-                        }
-                    )
-                materials = group["materials"]
-                if isinstance(materials, dict):
-                    materials.update(current.resolved_materials)
-        stack.extend(item.package for item in current.resolved_aggregates)
-    return groups
-
-
-def _create_remote_materials(groups, cache):
-    result = {}
-    for group in groups.values():
-        scope = int(group.get("scope", 0))
-        materials = group.get("materials", {})
-        if not isinstance(materials, dict):
-            continue
-        for material_id, package in materials.items():
-            key = (scope, material_id)
-            if key in result or not isinstance(package, PContentPackage):
-                continue
-            material = _remote_material(material_id, package, cache)
-            if material is not None:
-                result[key] = material
-    return result
-
-
-def _menu_option_names(options: list[dict[str, object]]) -> list[str]:
-    names: list[str] = []
-    counts: dict[str, int] = {}
-    for index, option in enumerate(options):
-        base = str(option.get("name") or option.get("id") or f"Style {index + 1}")
-        count = counts.get(base, 0) + 1
-        counts[base] = count
-        names.append(base if count == 1 else f"{base} ({count})")
-    return names
-
-
-def _modifier_menu_value(modifier, socket, name: str, index: int) -> None:
-    interface_values = getattr(getattr(modifier, "properties", None), "inputs", None)
-    if interface_values is not None and hasattr(interface_values, socket.identifier):
-        getattr(interface_values, socket.identifier).value = name
-        return
-    try:
-        items = modifier.id_properties_ui(socket.identifier).as_dict().get("items", ())
-        value = next(item[-1] for item in items if item[0] == name)
-    except (KeyError, StopIteration, TypeError):
-        value = index
-    modifier[socket.identifier] = value
-
-
-def _material_bundles(groups) -> dict[tuple[str, tuple[str, ...]], list[dict]]:
-    """Consolidate package scopes that expose the same named style menu."""
-    bundles: dict[tuple[str, tuple[str, ...]], list[dict]] = {}
-    for group in groups.values():
-        options = group.get("options")
-        if not isinstance(options, list) or len(options) < 2:
-            continue
-        option_names = tuple(_menu_option_names(options))
-        group_name = str(group.get("name") or "Material")
-        bundles.setdefault((group_name, option_names), []).append(group)
-    return bundles
-
-
-def _finish_part_name(group_name: str, fallback: str) -> str:
-    """Turn generic finish-definition names into concise part labels."""
-    words = group_name.strip().split()
-    if words and words[0].casefold() == "acabamento":
-        words.pop(0)
-    if words and words[-1].casefold() == "finish":
-        words.pop()
-    return " ".join(words) or fallback
-
-
-def _material_applications(bundled_groups, materials):
-    """Keep only layers for which every menu option resolved a material."""
-    applications = []
-    for group in bundled_groups:
-        options = group["options"]
-        scope = int(group.get("scope", 0))
-        layers = sorted(
-            {
-                layer
-                for option in options
-                if isinstance(option, dict)
-                for layer in option.get("assignments", {})
-            }
-        )
-        usable_layers = [
-            layer
-            for layer in layers
-            if all(
-                isinstance(option, dict)
-                and materials.get((scope, option.get("assignments", {}).get(layer)))
-                is not None
-                for option in options
-            )
-        ]
-        if usable_layers:
-            applications.append((scope, options, usable_layers))
-    return applications
-
-
-def _unique_interface_name(base: str, used_names: set[str]) -> str:
-    name = base
-    suffix = 2
-    while name in used_names:
-        name = f"{base} ({suffix})"
-        suffix += 1
-    used_names.add(name)
-    return name
-
-
-def _create_style_menu(node_group, group_input, socket, option_names):
-    """Create the menu-to-index conversion shared by all matching layers."""
-    socket_name = socket.name
-    option_output = _group_input_output(group_input, socket)
-    style_switch = node_group.nodes.new("GeometryNodeMenuSwitch")
-    style_switch.data_type = "INT"
-    style_switch.enum_items.clear()
-    for index, name in enumerate(option_names):
-        style_switch.enum_items.new(name)
-        style_switch.inputs[index + 1].default_value = index
-    socket.from_socket(style_switch, style_switch.inputs["Menu"])
-    # `from_socket` copies the source name ("Menu"), so restore the stable UI
-    # name after copying its enum definition.
-    socket.name = socket_name
-    node_group.links.new(option_output, style_switch.inputs["Menu"])
-    return style_switch
-
-
-def _material_selection(node_group, scope: int, layer: str):
-    """Select faces by the stable layer and source-package attributes."""
-    nodes = node_group.nodes
-    links = node_group.links
-    named_layer = nodes.new("GeometryNodeInputNamedAttribute")
-    named_layer.data_type = "INT"
-    named_layer.inputs["Name"].default_value = "mooblender_layer"
-    compare_layer = nodes.new("FunctionNodeCompare")
-    compare_layer.data_type = "INT"
-    compare_layer.operation = "EQUAL"
-    compare_layer.inputs["B"].default_value = (
-        zlib.crc32(layer.casefold().encode("utf-8")) & 0x7FFFFFFF
-    )
-    named_entity = nodes.new("GeometryNodeInputNamedAttribute")
-    named_entity.data_type = "INT"
-    named_entity.inputs["Name"].default_value = "mooblender_entity"
-    compare_entity = nodes.new("FunctionNodeCompare")
-    compare_entity.data_type = "INT"
-    compare_entity.operation = "EQUAL"
-    compare_entity.inputs["B"].default_value = scope
-    selection = nodes.new("FunctionNodeBooleanMath")
-    selection.operation = "AND"
-    links.new(named_layer.outputs["Attribute"], compare_layer.inputs["A"])
-    links.new(named_entity.outputs["Attribute"], compare_entity.inputs["A"])
-    links.new(compare_layer.outputs["Result"], selection.inputs[0])
-    links.new(compare_entity.outputs["Result"], selection.inputs[1])
-    return selection.outputs["Boolean"]
-
-
-def _material_index_switch(node_group, style_index, scope, layer, options, materials):
-    """Map one style index to the resolved material for a package layer."""
-    material_switch = node_group.nodes.new("GeometryNodeIndexSwitch")
-    material_switch.data_type = "MATERIAL"
-    while len(material_switch.index_switch_items) < len(options):
-        material_switch.index_switch_items.new()
-    while len(material_switch.index_switch_items) > len(options):
-        material_switch.index_switch_items.remove(material_switch.index_switch_items[-1])
-    for index, option in enumerate(options):
-        material_id = option["assignments"][layer]
-        material_switch.inputs[index + 1].default_value = materials[(scope, material_id)]
-    node_group.links.new(style_index, material_switch.inputs["Index"])
-    return material_switch.outputs["Output"]
-
-
-def _apply_materials(node_group, geometry, style_index, applications, materials):
-    """Append Set Material nodes for every package scope and compatible layer."""
-    for scope, options, layers in applications:
-        for layer in layers:
-            selection = _material_selection(node_group, scope, layer)
-            material = _material_index_switch(
-                node_group, style_index, scope, layer, options, materials
-            )
-            set_material = node_group.nodes.new("GeometryNodeSetMaterial")
-            node_group.links.new(selection, set_material.inputs["Selection"])
-            node_group.links.new(material, set_material.inputs["Material"])
-            node_group.links.new(geometry, set_material.inputs["Geometry"])
-            geometry = set_material.outputs["Geometry"]
-    return geometry
-
-
-def _add_material_options(
-    package: PContentPackage,
-    *,
-    controller,
-    modifier,
-    group_input,
-    geometry_to_instance,
     material_cache: dict[tuple[int, int], bpy.types.Material],
-) -> int:
-    groups = _model_groups(package)
-    materials = _create_remote_materials(groups, material_cache)
-    if not materials:
-        return 0
-    node_group = modifier.node_group
-    links = node_group.links
-    entries = []
-    for (group_name, option_names), bundled_groups in _material_bundles(groups).items():
-        applications = _material_applications(bundled_groups, materials)
-        if applications:
-            entries.append((group_name, option_names, applications))
-    if not entries:
-        return 0
-    instance_geometry = geometry_to_instance.inputs["Geometry"]
-    source_output = instance_geometry.links[0].from_socket
-    for link in list(instance_geometry.links):
-        links.remove(link)
-
-    finish_panel = node_group.interface.new_panel(
-        name="Finish",
-        description="Material styles available for each model part",
-        default_closed=False,
+) -> None:
+    """Create every modifier panel and bind it to package transform records."""
+    add_material_options(
+        package,
+        controller_nodes=controller_nodes,
+        material_cache=material_cache,
     )
-    geometry = source_output
-    menu_defaults = []
-    used_names: set[str] = set()
-    for group_name, option_names, applications in entries:
-        socket_name = _unique_interface_name(
-            _finish_part_name(group_name, "Main"),
-            used_names,
+
+    has_mirror = can_mirror(package.properties)
+    options_panel = (
+        controller_nodes.modifier.node_group.interface.new_panel(
+            name="Options",
+            description="Optional components included with this model",
+            default_closed=False,
         )
-        socket = node_group.interface.new_socket(
-            name=socket_name,
-            in_out="INPUT",
-            socket_type="NodeSocketMenu",
-            parent=finish_panel,
+        if option_nodes or has_mirror
+        else None
+    )
+    add_visibility_controls(
+        option_nodes,
+        controller_nodes=controller_nodes,
+        panel=options_panel,
+        transform_controls=transform_controls,
+    )
+    add_mirror_control(
+        package,
+        hierarchy_root=hierarchy_root,
+        controller_nodes=controller_nodes,
+        panel=options_panel,
+        transform_controls=transform_controls,
+    )
+
+    # Opening services can live at any resolved package depth.  Pairing each
+    # package with its aggregate-index prefix maps local paths back into the
+    # one global transform-record dictionary.
+    open_services = 0
+    controlled_paths: set[tuple[int, ...]] = set()
+    create_opening_control = _opening_control_factory(controller_nodes)
+    stack = [(package, ())]
+    visited: set[tuple[int, tuple[int, ...]]] = set()
+    while stack:
+        current, prefix = stack.pop()
+        marker = (id(current), prefix)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        open_services += _apply_open_services(
+            current,
+            prefix=prefix,
+            opening_control=create_opening_control,
+            aggregate_nodes=aggregate_nodes,
+            controlled_paths=controlled_paths,
+            transform_controls=transform_controls,
         )
-        _make_socket_single_value(socket)
-        socket.description = " / ".join(option_names)
-        style_switch = _create_style_menu(node_group, group_input, socket, option_names)
-        geometry = _apply_materials(
-            node_group,
-            geometry,
-            style_switch.outputs["Output"],
-            applications,
-            materials,
+        stack.extend(
+            (item.package, prefix + (item.index,))
+            for item in current.resolved_aggregates
         )
-        socket.default_value = option_names[0]
-        menu_defaults.append((socket, option_names[0], 0))
-    links.new(geometry, instance_geometry)
-    node_group.interface_update(bpy.context)
-    for socket, name, index in menu_defaults:
-        _modifier_menu_value(modifier, socket, name, index)
-    node_group.interface_update(bpy.context)
-    if menu_defaults:
-        controller["mooblender_material_option_count"] = len(menu_defaults)
-    return len(menu_defaults)
+    if open_services:
+        controller_nodes.controller["mooblender_open_service_count"] = open_services
+
+    parameters_panel = (
+        controller_nodes.modifier.node_group.interface.new_panel(
+            name="Parameters",
+            description="Configurable dimensions and other model parameters",
+            default_closed=False,
+        )
+        if dimension_nodes
+        else None
+    )
+    add_dimension_controls(
+        dimension_nodes,
+        controller_nodes=controller_nodes,
+        panel=parameters_panel,
+        transform_controls=transform_controls,
+    )
 
 
 def build_document(
@@ -1097,69 +578,28 @@ def build_document(
     document_name = document.name if document is not None else ""
     name = _unique_name(collection_name or document_name, "Promob Import")
     destination = context.collection or context.scene.collection
-    source_collection = bpy.data.collections.new(f"{name} Source")
-    (
-        root,
-        geometry_modifier,
-        group_input,
-        source_geometry,
-        geometry_to_instance,
-        realize,
-        geometry_switch,
-        realize_socket,
-    ) = _geometry_nodes_controller(
-        name,
-        destination,
-    )
-    hierarchy_root = TransformNode(f"{name} Hierarchy")
-    target_collection = source_collection
-    control_name_counts: dict[str, int] = {}
-    opening_panel = None
 
-    def opening_control(
-        service: dict[str, object],
-        fallback: str,
-    ) -> tuple[Any, str]:
-        nonlocal opening_panel
-        if opening_panel is None:
-            opening_panel = geometry_modifier.node_group.interface.new_panel(
-                name="Doors and Drawers",
-                description="Independent opening controls for movable components",
-                default_closed=False,
-            )
-        base = control_name(service, fallback)
-        count = control_name_counts.get(base, 0) + 1
-        control_name_counts[base] = count
-        name = base if count == 1 else f"{base} ({count})"
-        socket = geometry_modifier.node_group.interface.new_socket(
-            name=name,
-            in_out="INPUT",
-            socket_type="NodeSocketFloat",
-            parent=opening_panel,
-        )
-        _make_socket_single_value(socket)
-        socket.default_value = 0.0
-        socket.min_value = 0.0
-        socket.max_value = 1.0
-        socket.description = f"Open {base}"
-        geometry_modifier.node_group.interface_update(bpy.context)
-        _modifier_socket_value(geometry_modifier, socket, 0.0)
-        return socket, name
+    # Only the controller is linked to the active scene.  Source meshes live in
+    # an unlinked collection and are referenced by Object Info nodes.
+    source_collection = bpy.data.collections.new(f"{name} Source")
+    controller_nodes = create_controller(name, destination)
+    hierarchy_root = TransformNode(f"{name} Hierarchy")
 
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]] = {}
     dimension_nodes: list[dict[str, Any]] = []
     option_nodes: list[dict[str, Any]] = []
     transform_controls: TransformControls = {}
     object_parents: dict[bpy.types.Object, TransformNode] = {}
-    cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
+    mesh_cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
+
     if package is not None:
         _build_package_tree(
             package,
             parent=hierarchy_root,
-            collection=target_collection,
+            collection=source_collection,
             source_id=source_id,
-            cache=cache,
+            cache=mesh_cache,
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
@@ -1167,108 +607,46 @@ def build_document(
             object_parents=object_parents,
             convert_tris_to_quads=convert_tris_to_quads,
         )
-        _add_material_options(
+        _add_package_controls(
             package,
-            controller=root,
-            modifier=geometry_modifier,
-            group_input=group_input,
-            geometry_to_instance=geometry_to_instance,
-            material_cache=material_cache,
-        )
-        has_mirror = can_mirror(package.properties)
-        options_panel = (
-            geometry_modifier.node_group.interface.new_panel(
-                name="Options",
-                description="Optional components included with this model",
-                default_closed=False,
-            )
-            if option_nodes or has_mirror
-            else None
-        )
-        _add_visibility_controls(
-            option_nodes,
-            controller=root,
-            modifier=geometry_modifier,
-            group_input=group_input,
-            panel=options_panel,
-            transform_controls=transform_controls,
-        )
-        _add_mirror_control(
-            package,
-            hierarchy_root=hierarchy_root,
-            controller=root,
-            modifier=geometry_modifier,
-            group_input=group_input,
-            panel=options_panel,
-            transform_controls=transform_controls,
-        )
-        open_services = 0
-        controlled_paths: set[tuple[int, ...]] = set()
-        stack = [(package, ())]
-        visited: set[tuple[int, tuple[int, ...]]] = set()
-        while stack:
-            current, prefix = stack.pop()
-            marker = (id(current), prefix)
-            if marker in visited:
-                continue
-            visited.add(marker)
-            open_services += _apply_open_services(
-                current,
-                prefix=prefix,
-                opening_control=opening_control,
-                aggregate_nodes=aggregate_nodes,
-                controlled_paths=controlled_paths,
-                transform_controls=transform_controls,
-            )
-            stack.extend(
-                (item.package, prefix + (item.index,))
-                for item in current.resolved_aggregates
-            )
-        if open_services:
-            root["mooblender_open_service_count"] = open_services
-        parameters_panel = (
-            geometry_modifier.node_group.interface.new_panel(
-                name="Parameters",
-                description="Configurable dimensions and other model parameters",
-                default_closed=False,
-            )
-            if dimension_nodes
-            else None
-        )
-        _add_dimension_controls(
+            controller_nodes,
+            hierarchy_root,
+            aggregate_nodes,
             dimension_nodes,
-            controller=root,
-            modifier=geometry_modifier,
-            group_input=group_input,
-            panel=parameters_panel,
-            transform_controls=transform_controls,
+            option_nodes,
+            transform_controls,
+            material_cache,
         )
     elif document is not None:
         _document_root(
             document,
             None,
             parent=hierarchy_root,
-            collection=target_collection,
+            collection=source_collection,
             source_id=source_id,
-            cache=cache,
+            cache=mesh_cache,
             material_cache=material_cache,
             convert_tris_to_quads=convert_tris_to_quads,
             object_parents=object_parents,
         )
-    _compile_geometry_nodes_hierarchy(
-        geometry_modifier.node_group,
-        group_input,
-        source_geometry,
-        geometry_to_instance,
+
+    # Graph compilation is deliberately last: every socket-driven transform
+    # must be known before the Transform Geometry nodes are generated.
+    compile_hierarchy(
+        controller_nodes,
         source_collection,
         hierarchy_root,
         transform_controls,
         object_parents,
     )
+
+    controller = controller_nodes.controller
     source_collection["mooblender_node_source"] = True
-    root["promob_version"] = document.version if document is not None else 0
+    controller["promob_version"] = document.version if document is not None else 0
     if source_id:
-        root["mooble_item_id"] = source_id
-    root["mooblender_convert_tris_to_quads"] = convert_tris_to_quads
-    root["mooblender_realize_instances_socket"] = realize_socket.identifier
-    return root
+        controller["mooble_item_id"] = source_id
+    controller["mooblender_convert_tris_to_quads"] = convert_tris_to_quads
+    controller["mooblender_realize_instances_socket"] = (
+        controller_nodes.realize_socket.identifier
+    )
+    return controller

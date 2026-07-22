@@ -10,7 +10,8 @@ mooblender/                  # Public repository root
 ├── mooblender/             # Installable Blender extension
 │   ├── __init__.py         # Extension entry point and registration
 │   ├── blender/            # UI, runtime, and Blender adapters
-│   │   ├── scene_builder.py # Geometry Nodes and aggregate orchestration
+│   │   ├── scene_builder.py # Aggregate interpretation and import orchestration
+│   │   ├── geometry_nodes.py # Node graph, controls, transforms, and finishes
 │   │   ├── mesh_builder.py # Mesh, topology, UV, and primitive construction
 │   │   └── materials.py    # Images, node materials, and material reuse
 │   ├── formats/            # Pure-Python readers and file dispatch
@@ -41,9 +42,11 @@ Mooble Explorer ──> explicit background sync ──> atomic SQLite snapshot
 
 Format readers own byte-level validation and return a shared, Blender-neutral
 model. The Blender adapter owns coordinate conversion and datablock creation.
-Within that adapter, `scene_builder` orchestrates one import, `mesh_builder`
-creates geometry and build-time transform records, and `materials` owns image and shader
-datablocks. UI operators schedule work but do not implement format semantics.
+Within that adapter, `scene_builder` interprets aggregate metadata and
+orchestrates one import, `geometry_nodes` exclusively constructs the procedural
+graph and modifier interface, `mesh_builder` creates geometry and build-time
+transform records, and `materials` owns image and shader datablocks. UI
+operators schedule work but do not implement format semantics.
 The Mooble client owns HTTP behavior and passes downloaded bytes through the
 same format readers as local files.
 
@@ -51,8 +54,9 @@ Geometry Nodes imports expose exactly one scene-linked controller object.
 Source mesh objects live in an unlinked collection with identity object
 transforms and are referenced individually by Object Info nodes. Lightweight
 Python records represent the source hierarchy only while importing;
-`scene_builder` compiles each ordered local transform into Transform Geometry
-nodes and then discards those records. Static placement, opening pivots,
+`scene_builder` passes that interpreted hierarchy to `geometry_nodes`, which
+compiles each ordered local transform into Transform Geometry nodes and then
+discards those records. Static placement, opening pivots,
 dimensions, optional-part visibility, and whole-model reversal therefore run
 inside the node group. No helper empty datablocks or transform drivers are
 created. An explicit top-level **Realize Instances** input selects the realized
