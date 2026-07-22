@@ -199,11 +199,21 @@ class BlenderReportedModelRegressions(unittest.TestCase):
                         "Position": {"X": 200},
                         "Inverted": True,
                     },
+                    {"Description": "Tampo", "Coupled": True},
+                    {"Description": "Rodapé", "Coupled": True},
+                    {
+                        "Description": "Rodapé",
+                        "Position": {"X": 100},
+                        "Coupled": True,
+                    },
                 ],
             },
             resolved_aggregates=[
                 ResolvedAggregate(0, "left", child),
                 ResolvedAggregate(1, "right", child),
+                ResolvedAggregate(2, "top", child),
+                ResolvedAggregate(3, "base-left", child),
+                ResolvedAggregate(4, "base-right", child),
             ],
         )
         controller = self._build(package, "C66 normals")
@@ -213,6 +223,15 @@ class BlenderReportedModelRegressions(unittest.TestCase):
             for item in modifier.node_group.interface.items_tree
             if item.item_type == "SOCKET"
         }
+        option_names = {
+            item.name
+            for item in modifier.node_group.interface.items_tree
+            if item.item_type == "SOCKET"
+            and item.parent is not None
+            and item.parent.name == "Options"
+        }
+        self.assertEqual(option_names, {"Tampo", "Rodapé", "Reverse"})
+        self.assertEqual(controller["mooblender_option_control_count"], 2)
         _set_modifier_input(modifier, sockets["Realize Instances"], True)
 
         baseline_volume = _signed_volume(controller)

@@ -52,6 +52,7 @@ class CustomizationTests(unittest.TestCase):
 
     def test_only_nonconstant_concurrent_aggregates_are_optional(self):
         self.assertTrue(is_optional_aggregate({"Concurrent": True}))
+        self.assertTrue(is_optional_aggregate({"Coupled": True}))
         self.assertFalse(
             is_optional_aggregate({"Concurrent": True, "Constant": True})
         )

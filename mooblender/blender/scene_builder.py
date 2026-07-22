@@ -689,9 +689,12 @@ def _add_visibility_controls(
     used_names = {
         item.name for item in node_group.interface.items_tree if item.parent == panel
     }
-    controls = 0
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for data in option_nodes:
-        name = _unique_interface_name(str(data["label"]), used_names)
+        grouped.setdefault(str(data["label"]), []).append(data)
+    controls = 0
+    for label, components in grouped.items():
+        name = _unique_interface_name(label, used_names)
         socket = node_group.interface.new_socket(
             name=name,
             in_out="INPUT",
@@ -700,18 +703,19 @@ def _add_visibility_controls(
         )
         _make_socket_single_value(socket)
         socket.default_value = True
-        socket.description = f"Show or hide {data['label']}"
+        socket.description = f"Show or hide {label}"
         node_group.interface_update(bpy.context)
         _modifier_socket_value(modifier, socket, True)
-        for axis, scale in enumerate(data["default_scale"]):
-            _drive_transform(
-                transform_controls,
-                data["object"],
-                "scale",
-                axis,
-                socket,
-                factor=scale,
-            )
+        for data in components:
+            for axis, scale in enumerate(data["default_scale"]):
+                _drive_transform(
+                    transform_controls,
+                    data["object"],
+                    "scale",
+                    axis,
+                    socket,
+                    factor=scale,
+                )
         controls += 1
     node_group.interface_update(bpy.context)
     controller["mooblender_option_control_count"] = controls

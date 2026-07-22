@@ -60,7 +60,10 @@ def selected_model_information(
 def is_optional_aggregate(aggregate: Mapping[str, object]) -> bool:
     """Return whether Promob marks an aggregate as independently selectable."""
     return (
-        aggregate.get("Concurrent") is True
+        (
+            aggregate.get("Concurrent") is True
+            or aggregate.get("Coupled") is True
+        )
         and aggregate.get("Constant") is not True
         and aggregate.get("AlwaysVisible") is not True
     )
