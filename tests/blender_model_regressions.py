@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import mooblender  # noqa: E402
 from mooblender.blender.scene_builder import (  # noqa: E402
     _aggregate_orientation,
+    _finish_part_name,
     build_document,
 )
 from mooblender.formats.pcontent import PContentPackage, ResolvedAggregate  # noqa: E402
@@ -128,6 +129,11 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         self.controllers.append(controller)
         bpy.context.view_layer.update()
         return controller
+
+    def test_finish_names_use_main_or_the_available_component_name(self):
+        self.assertEqual(_finish_part_name("Acabamento", "Main"), "Main")
+        self.assertEqual(_finish_part_name("Acabamento Tampo", "Main"), "Tampo")
+        self.assertEqual(_finish_part_name("Door finish", "Main"), "Door")
 
     def test_r678_constant_door_only_exposes_opening_and_keeps_black_handle(self):
         child = _part_package("R678 Handle")

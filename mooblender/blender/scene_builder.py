@@ -1050,7 +1050,7 @@ def _add_material_options(
     used_names: set[str] = set()
     for group_name, option_names, applications in entries:
         socket_name = _unique_interface_name(
-            _finish_part_name(group_name, controller.name),
+            _finish_part_name(group_name, "Main"),
             used_names,
         )
         socket = node_group.interface.new_socket(
