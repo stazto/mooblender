@@ -21,7 +21,7 @@ class BuildAddonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             archive_path = build_addon(DEFAULT_SOURCE, Path(temporary_directory), dev_build=1)
 
-            self.assertEqual(archive_path.name, "mooblender-0.1.0-dev001.zip")
+            self.assertEqual(archive_path.name, "mooblender-0.5.0-dev001.zip")
             with zipfile.ZipFile(archive_path) as archive:
                 names = archive.namelist()
 

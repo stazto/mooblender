@@ -46,7 +46,7 @@ archive root. Source manifests and Git tags use `MAJOR.MINOR.PATCH` and
 To reproduce a tagged development build:
 
 ```bash
-python3 build_blender_addon.py --git-tag v0.1.0 --dev-build 1
+python3 build_blender_addon.py --git-tag v0.5.0 --dev-build 1
 ```
 
 Pushing a matching `v*` tag runs CI, publishes the generated ZIP, and creates a

@@ -1,7 +1,8 @@
 # Implementation plan
 
 This plan turns the product goals into independently verifiable milestones.
-The status labels describe the first `v0.1.0` development target.
+The status labels originated with the first `v0.1.0` development target and
+remain the implementation record for the `v0.5.0` release line.
 
 ## Architecture and delivery principles
 

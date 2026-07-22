@@ -72,7 +72,7 @@ integration tests against Blender 4.5 and 5.2. Binary fixtures are not
 committed; tests construct PMob records, archives, and images from Python
 `bytes` and standard-library builders.
 
-Tags use stable versions such as `v0.1.0`. The build script adds the generated
+Tags use stable versions such as `v0.5.0`. The build script adds the generated
 `-devNNN` suffix to packaged development versions; source manifests and tags
 never contain that suffix.
 
