@@ -262,6 +262,8 @@ def main() -> None:
             raise AssertionError("Mooblender browser started in a loading state")
         if bpy.ops.promob.catalog_cancel.poll():
             raise AssertionError("catalog cancellation is enabled without an active sync")
+        if bpy.ops.promob.catalog_info.get_rna_type().properties.get("item_id") is None:
+            raise AssertionError("catalog information operator is not registered")
 
         # Cancellation remains entirely asynchronous: the operator sets a
         # thread-safe flag, while the timer callback restores UI state only
@@ -359,6 +361,9 @@ def main() -> None:
                             name="Armário Ônix",
                             brand="CHF Móveis",
                             collection="Ônix",
+                            width_mm=800.0,
+                            depth_mm=520.0,
+                            height_mm=2200.0,
                         ),
                         *tuple(
                             CatalogItem(id=f"item-{index}", name=f"Item {index}")
@@ -374,6 +379,9 @@ def main() -> None:
                             name="Armário Ônix",
                             brand="CHF Móveis",
                             collection="Ônix",
+                            width_mm=800.0,
+                            depth_mm=520.0,
+                            height_mm=2200.0,
                         ),
                     ),
                     current_url="https://catalog.mooble.com/kitchen",
@@ -425,6 +433,12 @@ def main() -> None:
                 raise AssertionError("local catalog search did not finish")
             if [item.item_id for item in state.items] != ["onix"]:
                 raise AssertionError("local catalog search did not show only matches")
+            if (
+                state.items[0].width_mm,
+                state.items[0].depth_mm,
+                state.items[0].height_mm,
+            ) != (800.0, 520.0, 2200.0):
+                raise AssertionError("catalog card discarded cached external dimensions")
             state.query = ""
             if bpy.ops.promob.catalog_search() != {"FINISHED"}:
                 raise AssertionError("empty local catalog search did not finish")

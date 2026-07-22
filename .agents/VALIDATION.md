@@ -53,6 +53,8 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
   translation, and an English-only fallback for unknown future categories.
 - Blender smoke tests verify both dropdowns register on 4.5 and 5.2, while
   structural panel tests keep them adjacent to department selection.
+- Synthetic Explorer and SQLite tests preserve external W/D/H values, format a
+  consistent millimetre label, and require a local information action per card.
 - A bounded live sample of the two smallest observed departments persisted both
   roots and all 41 reported unique items in one snapshot.
 - The same sample took 4.35 seconds with one worker and 2.37 seconds with four

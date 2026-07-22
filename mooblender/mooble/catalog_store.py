@@ -29,7 +29,7 @@ from .localization import (
 )
 from .models import CatalogCategory, CatalogItem, CatalogPage
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 LOCAL_ROOT_URL = "mooblender://catalog/root"
 
 
@@ -534,11 +534,15 @@ class CatalogStore:
                     thumbnail_url=row[5],
                     detail_url=row[6],
                     item_type=row[7],
+                    width_mm=row[8],
+                    depth_mm=row[9],
+                    height_mm=row[10],
                 )
                 for row in connection.execute(
                     """
                     SELECT i.id, i.name, i.description, i.brand, i.collection_name,
-                           i.thumbnail_url, i.detail_url, i.item_type
+                           i.thumbnail_url, i.detail_url, i.item_type,
+                           i.width_mm, i.depth_mm, i.height_mm
                     FROM category_items AS ci
                     JOIN items AS i ON i.id = ci.item_id
                     WHERE ci.category_url = ?
@@ -720,7 +724,10 @@ class CatalogStore:
                 collection_name TEXT NOT NULL,
                 thumbnail_url TEXT NOT NULL,
                 detail_url TEXT NOT NULL,
-                item_type TEXT NOT NULL
+                item_type TEXT NOT NULL,
+                width_mm REAL NOT NULL,
+                depth_mm REAL NOT NULL,
+                height_mm REAL NOT NULL
             );
             CREATE TABLE categories (
                 url TEXT PRIMARY KEY,
@@ -787,8 +794,9 @@ class CatalogStore:
             """
             INSERT INTO items(
                 id, name, description, brand, collection_name,
-                thumbnail_url, detail_url, item_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                thumbnail_url, detail_url, item_type,
+                width_mm, depth_mm, height_mm
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
                 description=excluded.description,
@@ -796,7 +804,13 @@ class CatalogStore:
                 collection_name=excluded.collection_name,
                 thumbnail_url=excluded.thumbnail_url,
                 detail_url=excluded.detail_url,
-                item_type=excluded.item_type
+                item_type=excluded.item_type,
+                width_mm=CASE WHEN excluded.width_mm > 0
+                    THEN excluded.width_mm ELSE items.width_mm END,
+                depth_mm=CASE WHEN excluded.depth_mm > 0
+                    THEN excluded.depth_mm ELSE items.depth_mm END,
+                height_mm=CASE WHEN excluded.height_mm > 0
+                    THEN excluded.height_mm ELSE items.height_mm END
             """,
             (
                 (
@@ -808,6 +822,9 @@ class CatalogStore:
                     item.thumbnail_url,
                     item.detail_url,
                     item.item_type,
+                    item.width_mm,
+                    item.depth_mm,
+                    item.height_mm,
                 )
                 for item in items
             ),

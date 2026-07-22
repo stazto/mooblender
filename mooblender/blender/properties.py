@@ -102,6 +102,9 @@ class PROMOB_PG_catalog_item(bpy.types.PropertyGroup):
     thumbnail_failed: bpy.props.BoolProperty(default=False, options={"HIDDEN"})  # type: ignore
     detail_url: bpy.props.StringProperty()  # type: ignore
     item_type: bpy.props.StringProperty()  # type: ignore
+    width_mm: bpy.props.FloatProperty(default=0.0, options={"HIDDEN"})  # type: ignore
+    depth_mm: bpy.props.FloatProperty(default=0.0, options={"HIDDEN"})  # type: ignore
+    height_mm: bpy.props.FloatProperty(default=0.0, options={"HIDDEN"})  # type: ignore
 
 
 class PROMOB_PG_browser_state(bpy.types.PropertyGroup):

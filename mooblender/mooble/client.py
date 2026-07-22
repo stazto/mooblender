@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 from contextlib import suppress
@@ -61,6 +62,14 @@ def _string(value: object) -> str:
 def _optional_int(value: object) -> int | None:
     """Accept a JSON integer while excluding booleans, which subclass int."""
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _positive_number(value: object) -> float:
+    """Normalize one finite positive JSON number or return an unavailable zero."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    number = float(value)
+    return number if math.isfinite(number) and number > 0.0 else 0.0
 
 
 def thumbnail_cache_path(cache_dir: str | Path, item: CatalogItem) -> Path:
@@ -286,6 +295,9 @@ class MoobleClient:
                     "thumbnail_url": item.thumbnail_url,
                     "detail_url": item.detail_url,
                     "item_type": item.item_type,
+                    "width_mm": item.width_mm,
+                    "depth_mm": item.depth_mm,
+                    "height_mm": item.height_mm,
                 }
                 for item in page.items
             ],
@@ -528,6 +540,9 @@ class MoobleClient:
         links = _mapping(raw.get("Links"))
         brand = _mapping(raw.get("Brand"))
         collection = _mapping(raw.get("Collection"))
+        # Explorer includes external dimensions in each summary. Capture them
+        # here so cards never need to call the model detail endpoint.
+        dimensions = _mapping(_mapping(raw.get("Properties")).get("Dimension"))
         return CatalogItem(
             id=_string(raw.get("Id")),
             name=_string(raw.get("Name")),
@@ -539,4 +554,7 @@ class MoobleClient:
             ),
             detail_url=_string(raw.get("DetailUrl")),
             item_type=_string(raw.get("Type")),
+            width_mm=_positive_number(dimensions.get("Width")),
+            depth_mm=_positive_number(dimensions.get("Depth")),
+            height_mm=_positive_number(dimensions.get("Height")),
         )

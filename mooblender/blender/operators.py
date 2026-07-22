@@ -7,6 +7,7 @@ in-memory view of the persistent catalog.
 """
 
 import json
+import textwrap
 from concurrent.futures import CancelledError
 from functools import partial
 from pathlib import Path
@@ -28,6 +29,7 @@ from ..mooble.localization import (
     CATEGORY_LANGUAGE_SOURCE,
     catalog_country_name,
 )
+from ..mooble.models import format_external_dimensions
 from ..mooble.search import filter_catalog_items
 from .background import (
     JOBS,
@@ -137,6 +139,9 @@ def _set_page(context, page) -> None:
         entry.thumbnail_url = item.thumbnail_url
         entry.detail_url = item.detail_url
         entry.item_type = item.item_type
+        entry.width_mm = item.width_mm
+        entry.depth_mm = item.depth_mm
+        entry.height_mm = item.height_mm
         thumbnail_path, thumbnail_failed = thumbnails.get(item.id, ("", False))
         if not thumbnail_path and item.thumbnail_url:
             cached_path = thumbnail_cache_path(cache_directory(), item)
@@ -759,7 +764,74 @@ def _catalog_item(entry) -> CatalogItem:
         thumbnail_url=entry.thumbnail_url,
         detail_url=entry.detail_url,
         item_type=entry.item_type,
+        width_mm=entry.width_mm,
+        depth_mm=entry.depth_mm,
+        height_mm=entry.height_mm,
     )
+
+
+class PROMOB_OT_catalog_info(bpy.types.Operator):
+    """Show cached metadata for one catalog card without a network request."""
+
+    bl_idname = "promob.catalog_info"
+    bl_label = "Model Information"
+    bl_description = "Show locally cached model information and external dimensions"
+
+    item_id: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    item_name: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    description: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    brand: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    collection_name: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+    dimensions: bpy.props.StringProperty(options={"HIDDEN"})  # type: ignore
+
+    def invoke(self, context, _event):
+        """Copy the visible card into the dialog so later redraws stay stable."""
+        state = context.window_manager.promob_browser
+        entry = next((item for item in state.items if item.item_id == self.item_id), None)
+        if entry is None:
+            self.report({"ERROR"}, "Selected Mooble model is no longer visible")
+            return {"CANCELLED"}
+        self.item_name = entry.name
+        self.description = entry.description
+        self.brand = entry.brand
+        self.collection_name = entry.collection_name
+        self.dimensions = format_external_dimensions(
+            entry.width_mm,
+            entry.depth_mm,
+            entry.height_mm,
+        )
+        return context.window_manager.invoke_props_dialog(self, width=420)
+
+    def draw(self, _context) -> None:
+        """Render concise catalog metadata in a read-only local dialog."""
+        layout = self.layout
+        layout.label(text=self.item_name, icon="OBJECT_DATA")
+        if self.description and self.description != self.item_name:
+            description = layout.box()
+            description.label(text="Description", icon="TEXT")
+            for line in textwrap.wrap(
+                self.description,
+                width=56,
+                break_long_words=False,
+                break_on_hyphens=False,
+            ):
+                description.label(text=line)
+        details = layout.box()
+        if self.brand:
+            details.label(text=f"Manufacturer: {self.brand}", icon="BOOKMARKS")
+        if self.collection_name:
+            details.label(
+                text=f"Brand collection: {self.collection_name}",
+                icon="OUTLINER_COLLECTION",
+            )
+        if self.dimensions:
+            details.label(text=f"External dimensions: {self.dimensions}", icon="DRIVER_DISTANCE")
+        else:
+            details.label(text="External dimensions unavailable", icon="QUESTION")
+
+    def execute(self, _context):
+        """Close the informational dialog without changing Blender data."""
+        return {"FINISHED"}
 
 
 class PROMOB_OT_catalog_import(_AsyncDownloadOperator, bpy.types.Operator):
@@ -913,6 +985,7 @@ CLASSES = (
     PROMOB_OT_catalog_open_category,
     PROMOB_OT_catalog_back,
     PROMOB_OT_catalog_load_more,
+    PROMOB_OT_catalog_info,
     PROMOB_OT_catalog_import,
     PROMOB_OT_import_file,
 )

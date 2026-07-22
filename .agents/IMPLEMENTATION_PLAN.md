@@ -103,6 +103,8 @@ Implemented follow-up work:
 - Source country controls only the Explorer `region` and downloaded item set.
   Category language controls only labels written to SQLite; English localization
   uses stable IDs and never falls back to mixed source-language text.
+- Catalog item rows retain external W/D/H millimetres from Explorer summaries;
+  cards display them and expose a read-only local information dialog.
 - A bounded live sync of the two smallest non-furniture departments,
   Lareiras/Churrasqueiras and Plantas, persisted both roots and all 41 reported
   unique items in one snapshot.

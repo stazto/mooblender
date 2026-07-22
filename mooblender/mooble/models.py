@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+
+def _millimetre_text(value: float) -> str:
+    """Format catalog millimetres compactly without hiding fractional values."""
+    if value.is_integer():
+        return f"{value:,.0f}"
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+
+def format_external_dimensions(width_mm: float, depth_mm: float, height_mm: float) -> str:
+    """Return a consistent W/D/H card label, or empty text when incomplete."""
+    values = (float(width_mm), float(depth_mm), float(height_mm))
+    if not all(math.isfinite(value) and value > 0.0 for value in values):
+        return ""
+    width, depth, height = (_millimetre_text(value) for value in values)
+    return f"W {width} × D {depth} × H {height} mm"
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +46,9 @@ class CatalogItem:
     thumbnail_url: str = ""
     detail_url: str = ""
     item_type: str = ""
+    width_mm: float = 0.0
+    depth_mm: float = 0.0
+    height_mm: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

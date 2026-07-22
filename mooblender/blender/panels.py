@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 
 from ..mooble.localization import CATEGORY_LANGUAGE_ENGLISH, catalog_country_name
+from ..mooble.models import format_external_dimensions
 from .operators import _browser_preferences, ensure_thumbnails
 from .properties import CATALOG_DEPARTMENTS
 from .runtime import icon_for_item
@@ -153,8 +154,26 @@ def _draw_catalog_items(content, state) -> None:
             box.label(text=item.brand, icon="BOOKMARKS")
         if item.collection_name:
             box.label(text=item.collection_name, icon="OUTLINER_COLLECTION")
-        operator = box.operator("promob.catalog_import", text="Import", icon="IMPORT")
-        operator.item_id = item.item_id
+        dimensions = format_external_dimensions(
+            item.width_mm,
+            item.depth_mm,
+            item.height_mm,
+        )
+        if dimensions:
+            box.label(text=dimensions, icon="DRIVER_DISTANCE")
+        actions = box.row(align=True)
+        import_operator = actions.operator(
+            "promob.catalog_import",
+            text="Import",
+            icon="IMPORT",
+        )
+        import_operator.item_id = item.item_id
+        info_operator = actions.operator(
+            "promob.catalog_info",
+            text="",
+            icon="INFO",
+        )
+        info_operator.item_id = item.item_id
     if state.local_result_limit < state.local_result_total:
         content.operator("promob.catalog_load_more", text="Load More", icon="ADD")
 

@@ -59,8 +59,22 @@ class _CatalogClient:
             return CatalogPage(
                 categories=(root, child),
                 items=(
-                    CatalogItem(id="one", name="One", brand="Maker A"),
-                    CatalogItem(id="two", name="Two", brand="Maker B"),
+                    CatalogItem(
+                        id="one",
+                        name="One",
+                        brand="Maker A",
+                        width_mm=1200.0,
+                        depth_mm=510.0,
+                        height_mm=820.0,
+                    ),
+                    CatalogItem(
+                        id="two",
+                        name="Two",
+                        brand="Maker B",
+                        width_mm=900.0,
+                        depth_mm=400.0,
+                        height_mm=2000.0,
+                    ),
                 ),
                 current_url=url,
                 pin_name="Departamento",
@@ -165,6 +179,23 @@ class CatalogStoreTests(unittest.TestCase):
             self.assertIsNotNone(root)
             assert root is not None
             self.assertEqual([item.id for item in root.items], ["one", "two"])
+            self.assertEqual(
+                (
+                    root.items[0].width_mm,
+                    root.items[0].depth_mm,
+                    root.items[0].height_mm,
+                ),
+                (1200.0, 510.0, 820.0),
+            )
+            self.assertEqual(
+                (
+                    root.items[1].width_mm,
+                    root.items[1].depth_mm,
+                    root.items[1].height_mm,
+                ),
+                (900.0, 400.0, 2000.0),
+                "a later membership without dimensions replaced cached values",
+            )
             self.assertEqual(
                 [category.name for category in root.categories],
                 ["Catalog", "Furniture"],

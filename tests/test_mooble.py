@@ -4,7 +4,7 @@ import unittest
 from tempfile import TemporaryDirectory
 
 from mooblender.mooble.client import MoobleClient
-from mooblender.mooble.models import CatalogItem
+from mooblender.mooble.models import CatalogItem, format_external_dimensions
 
 
 class FakeTransport:
@@ -79,6 +79,13 @@ class MoobleClientTests(unittest.TestCase):
                             "Links": {"ContentImageSmall": "https://cdn.mooble.com/x.png"},
                             "DetailUrl": "https://catalog.mooble.com/api/explorer/GetSpec/id-1",
                             "Type": "Shape",
+                            "Properties": {
+                                "Dimension": {
+                                    "Width": 1200.0,
+                                    "Depth": 510.0,
+                                    "Height": 820.0,
+                                }
+                            },
                         }
                     ],
                 },
@@ -90,7 +97,22 @@ class MoobleClientTests(unittest.TestCase):
         self.assertEqual(page.categories[0].name, "Cozinha")
         self.assertEqual(page.items[0].brand, "Brand")
         self.assertEqual(page.items[0].collection, "Kitchen")
+        self.assertEqual(
+            (
+                page.items[0].width_mm,
+                page.items[0].depth_mm,
+                page.items[0].height_mm,
+            ),
+            (1200.0, 510.0, 820.0),
+        )
         self.assertTrue(page.next_url.endswith("/next"))
+
+    def test_formats_complete_external_dimensions_for_cards(self):
+        self.assertEqual(
+            format_external_dimensions(1200.0, 510.0, 820.0),
+            "W 1,200 × D 510 × H 820 mm",
+        )
+        self.assertEqual(format_external_dimensions(1200.0, 0.0, 820.0), "")
 
     def test_maps_get_next_root_data_and_links(self):
         payload = {

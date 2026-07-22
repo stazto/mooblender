@@ -25,6 +25,9 @@ The response contains `Output.Pin.AvailableTags.Data` for hierarchical category
 navigation and `Output.Specifications.Data` for product cards. Tag records expose
 navigation URLs and counts. Specification summaries expose IDs, names,
 descriptions, brands, collections, thumbnail links, dimensions, and detail URLs.
+External millimetre dimensions are observed at `Properties.Dimension.Width`,
+`Depth`, and `Height`. Mooblender normalizes and stores them with each item, so
+cards and their information dialogs need no detail request.
 Pagination is supplied as a server-generated `Links.Next` URL.
 Initial Explorer responses place product records under
 `Output.Specifications.Data`; observed `GetNext/Specs` responses instead place

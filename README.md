@@ -16,6 +16,7 @@ formats are identified from reproducible samples.
   atomic SQLite cache, with source-language or English category labels.
 - Offline category browsing, text search, manufacturer filtering, and
   brand-collection filtering after synchronization.
+- Cached external dimensions and a local information dialog on every model card.
 - On-demand model and thumbnail downloads with persistent caches.
 - Configurable model/thumbnail cache limits and catalog-preserving cleanup.
 - Geometry Nodes controls for supported finishes, optional components, doors,

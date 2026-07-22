@@ -103,6 +103,24 @@ class PanelLayoutTests(unittest.TestCase):
         }
         self.assertTrue({"is_loading", "is_syncing"}.isdisjoint(attributes))
 
+    def test_each_catalog_card_exposes_dimensions_and_local_info(self) -> None:
+        """Keep dimensions and the information action on every model card."""
+        cards = _function(self.tree, "_draw_catalog_items")
+        string_values = {
+            node.value
+            for node in ast.walk(cards)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        call_names = {
+            node.func.id
+            for node in ast.walk(cards)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+
+        self.assertIn("promob.catalog_info", string_values)
+        self.assertIn("promob.catalog_import", string_values)
+        self.assertIn("format_external_dimensions", call_names)
+
 
 if __name__ == "__main__":
     unittest.main()
