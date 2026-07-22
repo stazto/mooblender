@@ -46,14 +46,16 @@ inside the node group. Imports do not create helper empties.
 
 Modifier controls are ordered as follows:
 
-1. **Realize Instances** converts the transformed mesh instances to geometry when a
-   downstream workflow requires it. Non-default material overrides operate on
-   this realized branch.
+1. **Realize Instances** converts the transformed model instance to mesh
+   geometry when a downstream editing workflow requires it. Finish overrides
+   work in both the default instanced branch and the realized branch.
 2. The **Finish** panel contains one named style menu per affected part. Menu
    labels contain only the part name, such as **Tampo**, without a redundant
-   `Finish:` or `Acabamento` prefix.
+   `Finish:` or `Acabamento` prefix. A model-wide style is named **Main** rather
+   than repeating the imported object's full name.
 3. **Options** contains default-enabled switches for independently selectable
-   components such as worktops and baseboards. Models marked as mirrorable also
+   or coupled components such as worktops and baseboards. Repeated segments
+   with the same component name share one switch. Models marked as mirrorable also
    receive a **Reverse** switch that mirrors the full model in place.
 4. **Doors and Drawers** contains independent 0–1 controls for movable parts.
 5. **Parameters** contains editable insertion dimensions such as **Largura** and
@@ -71,6 +73,8 @@ of using the disabled gray appearance reserved for unused inputs.
 The importer preserves PMob transforms and source units, reconstructs smoothing
 groups and compatible normal fans, compacts UV-seam duplicate vertices onto
 Blender's corner domain, and generates physical UV projection when required.
+Negative-determinant component transforms and whole-model reversal correct face
+winding inside Geometry Nodes, so mirroring does not invert visible normals.
 Fixed hardware remains fixed while supported editable panels stretch around its
 boundary. Exactly equal, unmodified materials are reused; edited Blender
 materials are left untouched.

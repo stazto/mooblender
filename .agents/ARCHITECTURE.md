@@ -56,7 +56,10 @@ nodes and then discards those records. Static placement, opening pivots,
 dimensions, optional-part visibility, and whole-model reversal therefore run
 inside the node group. No helper empty datablocks or transform drivers are
 created. An explicit top-level **Realize Instances** input selects the realized
-branch when downstream mesh operations need it.
+branch when downstream mesh operations need it. Source instances are realized
+internally before face materials and mirrored-winding correction, then wrapped
+as one model instance; both public branches therefore share finishes and
+correct normals.
 
 Modifier interfaces place **Realize Instances** first, followed by a **Finish**
 panel whose menu labels name only the affected part, an **Options** panel for selectable aggregate components, a
@@ -70,6 +73,8 @@ ordered style names share one menu across package scopes; differing option sets
 receive unique interface names. Every exposed control has a directed path
 through its actual transform or material operation to the group output, so
 Blender keeps the modifier input active instead of graying it as unused.
+Generic root finish groups use **Main**, while component metadata supplies names
+such as **Tampo**. Repeated `Coupled` components share one Options socket.
 
 Before Blender datablock creation, the neutral topology adapter reconstructs
 normal fans for PMob meshes that omit normals. It honors nested smoothing

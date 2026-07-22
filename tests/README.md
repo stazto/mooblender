@@ -25,6 +25,7 @@ geometry responsible for each failure:
 | Porta de Giro 31 | `test_porta_de_giro_31_resolves_long_parent_dimension_variables` | long-form aggregate variables in `blender_smoke.py` |
 | Porta de Correr 21 | `test_porta_de_correr_21_distributes_three_panels_across_frame` | long-form aggregate variables in `blender_smoke.py` |
 | ELA-2 opposing lift carriages | — | `test_ela_2_opposing_side_normals_keep_both_carriages_above_anchor` |
+| C66/C69 coupled options, mirrored normals, instanced finishes, and concise finish names | `test_customization.py` | `test_c66_mirror_and_inverted_parts_preserve_outward_face_orientation`, `test_finish_names_use_main_or_the_available_component_name`, and `blender_smoke.py` |
 
 Catalog synchronization, local-only search/navigation, category membership,
 manufacturer and collection filters, parallel snapshot creation, asynchronous

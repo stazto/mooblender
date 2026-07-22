@@ -168,9 +168,9 @@ geometry, hierarchy, transforms, materials, and animation independently.
   aggregate paths and collapse alternate service records so each movable
   component owns one single-value input connected to its node transform.
 - Resolve model-information visibility tokens from the package's selected
-  `References.ModelsId` entry. Expose nonconstant `Concurrent` aggregate
-  components as independent, default-enabled Boolean controls in an **Options**
-  panel.
+  `References.ModelsId` entry. Expose nonconstant `Concurrent` and `Coupled`
+  aggregate components as default-enabled Boolean controls in an **Options**
+  panel, grouping repeated coupled segments by component name.
 - Map observed variable `InsertDimension` axes to bounded Geometry Nodes
   distance controls such as Largura and Profundidade, scoped per package
   instance so nested/repeated configurable components remain independent.
@@ -192,6 +192,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
   around that attachment axis. Resolve the normal's otherwise ambiguous roll
   from a stable global vertical reference so opposing side attachments remain
   symmetric.
+- Track negative transform parity per face and XOR it with whole-model reversal
+  before instancing, so C66/C69 components preserve outward face orientation.
+- Apply finish menus to internal mesh geometry before creating the default model
+  instance. Realization is no longer required for material changes.
 - Measure serialized PMob geometry after primitive transforms, redimension only
   that geometry, and leave nested aggregate placement in target coordinates.
   Preserve partial-axis fixed hardware size when a non-editable component layer

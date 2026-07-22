@@ -38,6 +38,9 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
   assert that source meshes have identity object transforms and that importing
   creates no helper empties; all placement and controlled transforms live in
   the Geometry Nodes graph.
+- The C66/C69 regressions cover `Coupled` Tampo/Rodapé grouping, positive signed
+  volume before and after `Reverse`, finish nodes upstream of the default model
+  instance, and concise **Main**/component finish labels.
 
 ## Catalog behavior
 

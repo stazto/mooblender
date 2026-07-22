@@ -396,8 +396,7 @@ def _geometry_nodes_controller(name: str, collection):
     realize_socket = node_group.interface.new_socket(
         name="Realize Instances",
         description=(
-            "Convert the nested source hierarchy to a mesh; required for "
-            "material overrides"
+            "Convert the transformed model instance to editable mesh geometry"
         ),
         in_out="INPUT",
         socket_type="NodeSocketBool",

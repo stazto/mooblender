@@ -90,17 +90,20 @@ dimension name, while nested entities use a component-qualified name such as
 `Prateleira: Largura`; changing one nested control scales that entity subtree
 without changing a sibling instance.
 
-An aggregate marked `Concurrent: true` is independently selectable unless it
-is also `Constant` or `AlwaysVisible`. Every resolved selectable aggregate gets
-a default-enabled Boolean control in the Geometry Nodes **Options** panel. The
-control drives only that aggregate instance's node-based visibility transform.
+An aggregate marked `Concurrent: true` or `Coupled: true` is independently
+selectable unless it is also `Constant` or `AlwaysVisible`. Every resolved
+selectable aggregate gets a default-enabled Boolean control in the Geometry
+Nodes **Options** panel. Repeated coupled aggregates with the same description
+share one control, which drives all of their node-based visibility transforms.
 In the observed C67 package, **Tampo** and **Rodapé**
 therefore receive separate controls, while the constant door does not.
 
 The root `Attributes.CANMIRROR.VALUE` flag exposes whole-model reversal. The
 **Reverse** control reflects X around the midpoint reported by `Limits.Min` and
 `Limits.Max`, preserving the insertion footprint instead of moving the model
-to negative coordinates. The observed C67 uses a 0–790 mm X footprint.
+to negative coordinates. Face-winding parity is corrected per component and
+XORed with this control, preventing reversed normals. The observed C67 uses a
+0–790 mm X footprint.
 
 Some fixed hardware is flattened into the same PMob document as a resizable
 panel. In the observed 728 door, `Models.Components` marks `PUXADOR` with
@@ -115,7 +118,9 @@ do not place hardware in a separate constant aggregate.
 
 `Models` groups map layer IDs to material specification UUIDs. Multi-option
 groups become named **Finish** menu inputs whose entries use the source style
-names, and select the resolved remote material per face layer.
+names, and select the resolved remote material per face layer before the model
+is instanced. A generic root `Acabamento` group is labeled **Main**; available
+component names such as **Tampo** are retained.
 The first option in every model group is also assigned as the default, including
 single-option groups and PMob meshes whose local material ID is `-1`. Finish
 selections match both package identity and layer ID, because parent bodies and
