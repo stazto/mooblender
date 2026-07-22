@@ -1,0 +1,17 @@
+:root {
+  --color-brand-primary: #6f4bf2;
+  --color-brand-content: #5d3bd1;
+}
+
+.content {
+  line-height: 1.65;
+}
+
+.sidebar-brand-text {
+  font-weight: 700;
+}
+
+table.docutils td,
+table.docutils th {
+  vertical-align: top;
+}
