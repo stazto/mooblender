@@ -11,13 +11,14 @@ import bpy
 from mathutils import Matrix, Quaternion, Vector
 
 from ..formats.pcontent import PContentPackage
+from ..model.customization import is_optional_aggregate, selected_model_information
 from ..model.dimensions import (
     configurable_dimensions,
     dimension_variables,
     property_dimensions,
     serialized_geometry_dimensions,
 )
-from ..model.expressions import evaluate_expression
+from ..model.expressions import evaluate_condition, evaluate_expression
 from ..model.openings import control_name, door_motion
 from ..model.scene import PmobDocument
 from .mesh_builder import _document_root, _entity_code, _remote_material, _unique_name
@@ -82,6 +83,23 @@ def _add_dimension_driver(
     variable.type = "SINGLE_PROP"
     variable.targets[0].id = controller
     variable.targets[0].data_path = controller_data_path
+
+
+def _add_visibility_driver(
+    target,
+    controller,
+    controller_data_path: str,
+    default_scale: tuple[float, float, float],
+) -> None:
+    for axis, scale in enumerate(default_scale):
+        driver = target.driver_add("scale", axis).driver
+        driver.type = "SCRIPTED"
+        driver.expression = f"{scale:.17g}*enabled"
+        variable = driver.variables.new()
+        variable.name = "enabled"
+        variable.type = "SINGLE_PROP"
+        variable.targets[0].id = controller
+        variable.targets[0].data_path = controller_data_path
 
 
 def _apply_open_services(
@@ -184,6 +202,7 @@ def _build_package_tree(
     material_cache: dict[tuple[int, int], bpy.types.Material],
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]],
     dimension_nodes: list[dict[str, Any]] | None,
+    option_nodes: list[dict[str, Any]] | None,
     convert_tris_to_quads: bool,
     prefix: tuple[int, ...] = (),
     current_dimensions: tuple[float, float, float] | None = None,
@@ -191,6 +210,7 @@ def _build_package_tree(
     control_label: str = "",
     dimension_controls_enabled: bool = True,
 ):
+    model_information = selected_model_information(package.properties)
     logical_dimensions = property_dimensions(package.properties)
     drawing_dimensions = property_dimensions(
         package.properties,
@@ -278,8 +298,10 @@ def _build_package_tree(
         )
         variables.update(dimension_variables(target_dimensions))
         visible_condition = raw.get("VisibleCondition")
-        if visible_condition is not None and not bool(
-            evaluate_expression(visible_condition, variables)
+        if visible_condition is not None and not evaluate_condition(
+            visible_condition,
+            variables,
+            model_information,
         ):
             continue
         position = raw.get("Position", {})
@@ -328,6 +350,14 @@ def _build_package_tree(
         placement["mooble_specification_id"] = resolved.specification_id
         placement["promob_aggregate_index"] = resolved.index
         collection.objects.link(placement)
+        if option_nodes is not None and is_optional_aggregate(raw):
+            option_nodes.append(
+                {
+                    "label": name,
+                    "object": placement,
+                    "default_scale": tuple(placement.scale),
+                }
+            )
 
         motion = bpy.data.objects.new(f"{name} Opening", None)
         motion.parent = placement
@@ -352,6 +382,7 @@ def _build_package_tree(
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
+            option_nodes=option_nodes,
             convert_tris_to_quads=convert_tris_to_quads,
             prefix=path,
             current_dimensions=target_dimensions,
@@ -494,6 +525,46 @@ def _add_dimension_controls(
     node_group.interface_update(bpy.context)
     if controls:
         controller["mooblender_dimension_control_count"] = controls
+    return controls
+
+
+def _add_visibility_controls(
+    option_nodes: list[dict[str, Any]],
+    *,
+    controller,
+    modifier,
+    group_input,
+    panel,
+) -> int:
+    """Expose independently selectable aggregates as single-value switches."""
+    if not option_nodes:
+        return 0
+    node_group = modifier.node_group
+    used_names = {item.name for item in node_group.interface.items_tree}
+    controls = 0
+    for data in option_nodes:
+        name = _unique_interface_name(str(data["label"]), used_names)
+        socket = node_group.interface.new_socket(
+            name=name,
+            in_out="INPUT",
+            socket_type="NodeSocketBool",
+            parent=panel,
+        )
+        _make_socket_single_value(socket)
+        socket.default_value = True
+        socket.description = f"Show or hide {data['label']}"
+        node_group.interface_update(bpy.context)
+        _keep_modifier_input_active(node_group, group_input, socket)
+        data_path = _modifier_socket_value(modifier, socket, True)
+        _add_visibility_driver(
+            data["object"],
+            controller,
+            data_path,
+            data["default_scale"],
+        )
+        controls += 1
+    node_group.interface_update(bpy.context)
+    controller["mooblender_option_control_count"] = controls
     return controls
 
 
@@ -849,6 +920,7 @@ def build_document(
 
     aggregate_nodes: dict[tuple[int, ...], dict[str, Any]] = {}
     dimension_nodes: list[dict[str, Any]] = []
+    option_nodes: list[dict[str, Any]] = []
     cache: dict[int, dict[str, list[bpy.types.Mesh]]] = {}
     material_cache: dict[tuple[int, int], bpy.types.Material] = {}
     if package is not None:
@@ -861,7 +933,24 @@ def build_document(
             material_cache=material_cache,
             aggregate_nodes=aggregate_nodes,
             dimension_nodes=dimension_nodes,
+            option_nodes=option_nodes,
             convert_tris_to_quads=convert_tris_to_quads,
+        )
+        options_panel = (
+            geometry_modifier.node_group.interface.new_panel(
+                name="Options",
+                description="Optional components included with this model",
+                default_closed=False,
+            )
+            if option_nodes
+            else None
+        )
+        _add_visibility_controls(
+            option_nodes,
+            controller=root,
+            modifier=geometry_modifier,
+            group_input=group_input,
+            panel=options_panel,
         )
         open_services = 0
         controlled_paths: set[tuple[int, ...]] = set()

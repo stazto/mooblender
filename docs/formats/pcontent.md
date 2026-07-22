@@ -31,10 +31,14 @@ dimensions. Some packages serialize the equivalent long names
 `$PARENTWIDTH$`, `$PARENTDEPTH$`, `$PARENTHEIGHT$`, `$WIDTH$`, `$DEPTH$`, and
 `$HEIGHT$`; both vocabularies refer to the same values. Open-service expressions
 additionally use C-style ternaries inside an `@(...)` wrapper. Aggregate
-`VisibleCondition` records use numeric comparisons and Boolean operators.
-Mooblender evaluates only this small numeric grammar; it does not execute Python
-or arbitrary source text, and it omits an aggregate when its visibility
-expression is false.
+`VisibleCondition` records use numeric comparisons and Boolean operators. Some
+also compare model information through tokens such as
+`@Coz_bal(TIPO)@ == "P1"`. The selected model comes from the current
+`References.ModelsId` entry, with the first declared model as a fallback for an
+unreferenced group. Mooblender evaluates only this small grammar; it does not
+execute Python or arbitrary source text. It omits an aggregate when a supported
+visibility expression is false, but retains geometry when an unfamiliar token
+cannot be resolved instead of silently deleting every alternative.
 
 `Dimension`, `DrawingDimension`, and the serialized PMob geometry are distinct.
 `Dimension` supplies logical/default values when an aggregate omits an axis.
@@ -85,6 +89,13 @@ Controls belong to the concrete package instance. A root entity uses the plain
 dimension name, while nested entities use a component-qualified name such as
 `Prateleira: Largura`; changing one nested control scales that entity subtree
 without changing a sibling instance.
+
+An aggregate marked `Concurrent: true` is independently selectable unless it
+is also `Constant` or `AlwaysVisible`. Every resolved selectable aggregate gets
+a default-enabled Boolean control in the Geometry Nodes **Options** panel. The
+control keeps the source hierarchy intact and drives only that aggregate
+instance's visibility. In the observed C67 package, **Tampo** and **Rodapé**
+therefore receive separate controls, while the constant door does not.
 
 Some fixed hardware is flattened into the same PMob document as a resizable
 panel. In the observed 728 door, `Models.Components` marks `PUXADOR` with

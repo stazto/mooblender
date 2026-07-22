@@ -132,6 +132,113 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         observed = tuple(round(value, 6) for value in material.diffuse_color[:3])
         self.assertEqual(observed, (round(5 / 255, 6),) * 3)
 
+    def test_c67_imports_selected_door_and_exposes_optional_components(self):
+        door_p1 = _part_package("C67 Door P1")
+        door_p2 = _part_package("C67 Door P2")
+        top = _part_package("C67 Top")
+        baseboard = _part_package("C67 Baseboard")
+        package = PContentPackage(
+            document=None,
+            properties={
+                "Dimension": {"Width": 790, "Depth": 790, "Height": 820},
+                "Models": [
+                    {
+                        "Id": "coz_bal|plain",
+                        "ModelDefinitionId": "coz_bal",
+                        "Informations": {"TIPO": "P2"},
+                    },
+                    {
+                        "Id": "coz_bal|mixed",
+                        "ModelDefinitionId": "coz_bal",
+                        "Informations": {"TIPO": "P1"},
+                    },
+                ],
+                "References": {"C67": {"ModelsId": ["coz_bal|mixed"]}},
+                "Aggregates": [
+                    {
+                        "Description": "Porta",
+                        "Concurrent": True,
+                        "Constant": True,
+                        "VisibleCondition": '@Coz_bal(TIPO)@ == "P1"',
+                        "Dimension": {"Width": 400, "Depth": 15, "Height": 625},
+                    },
+                    {"Description": "Tampo", "Concurrent": True, "Coupled": True},
+                    {"Description": "Rodapé", "Concurrent": True},
+                    {
+                        "Description": "Porta Inferior",
+                        "Concurrent": True,
+                        "Constant": True,
+                        "VisibleCondition": '@Coz_bal(TIPO)@ == "P2"',
+                        "Dimension": {"Width": 400, "Depth": 15, "Height": 625},
+                    },
+                ],
+                "OpenServices": [
+                    {
+                        "Type": "Door",
+                        "AggregatePath": [0, 0],
+                        "Description": "Porta",
+                        "X": "$D$/2",
+                        "Y": "-$D$/2",
+                        "Max": "90",
+                    },
+                    {
+                        "Type": "Door",
+                        "AggregatePath": [3, 0],
+                        "Description": "Porta Inferior",
+                        "X": "$D$/2",
+                        "Y": "-$D$/2",
+                        "Max": "90",
+                    },
+                ],
+            },
+            resolved_aggregates=[
+                ResolvedAggregate(0, "door-p1", door_p1),
+                ResolvedAggregate(1, "top", top),
+                ResolvedAggregate(2, "baseboard", baseboard),
+                ResolvedAggregate(3, "door-p2", door_p2),
+            ],
+        )
+
+        controller = self._build(package, "C67 regression")
+        modifier = controller.modifiers["Mooblender"]
+        interface = modifier.node_group.interface.items_tree
+        option_sockets = {
+            item.name: item
+            for item in interface
+            if item.item_type == "SOCKET"
+            and item.socket_type == "NodeSocketBool"
+            and item.parent is not None
+            and item.parent.name == "Options"
+        }
+        opening_sockets = {
+            item.name
+            for item in interface
+            if item.item_type == "SOCKET"
+            and item.socket_type == "NodeSocketFloat"
+            and item.parent is not None
+            and item.parent.name == "Doors and Drawers"
+        }
+        source = _geometry_source_collection(controller)
+        placements = {
+            obj["promob_aggregate_index"]: obj
+            for obj in source.all_objects
+            if "promob_aggregate_index" in obj
+        }
+
+        self.assertEqual(set(option_sockets), {"Tampo", "Rodapé"})
+        self.assertTrue(
+            all(socket.structure_type == "SINGLE" for socket in option_sockets.values())
+        )
+        self.assertEqual(opening_sockets, {"Porta"})
+        self.assertEqual(set(placements), {0, 1, 2})
+        self.assertEqual(controller["mooblender_option_control_count"], 2)
+        self.assertEqual(controller["mooblender_open_service_count"], 1)
+
+        _set_modifier_input(modifier, option_sockets["Rodapé"], False)
+        self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (0, 0, 0))
+        _set_modifier_input(modifier, option_sockets["Rodapé"], True)
+        self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (1, 1, 1))
+
     def test_modifier_keeps_nested_instances_until_top_option_realizes_them(self):
         controller = self._build(_part_package("Instance hierarchy"), "Instances")
         modifier = controller.modifiers["Mooblender"]

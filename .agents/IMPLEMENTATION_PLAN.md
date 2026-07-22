@@ -166,6 +166,10 @@ geometry, hierarchy, transforms, materials, and animation independently.
   the localization is only ordinal or directional. Bind services to exact
   aggregate paths and collapse alternate service records so each movable
   component owns one single-value input and driver.
+- Resolve model-information visibility tokens from the package's selected
+  `References.ModelsId` entry. Expose nonconstant `Concurrent` aggregate
+  components as independent, default-enabled Boolean controls in an **Options**
+  panel.
 - Map observed variable `InsertDimension` axes to bounded Geometry Nodes
   distance controls such as Largura and Profundidade, scoped per package
   instance so nested/repeated configurable components remain independent.

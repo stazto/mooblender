@@ -49,8 +49,10 @@ Modifier controls are ordered as follows:
    downstream workflow requires it. Non-default material overrides operate on
    this realized branch.
 2. Named **Finish** menus select source material styles.
-3. **Doors and Drawers** contains independent 0–1 controls for movable parts.
-4. **Parameters** contains editable insertion dimensions such as **Largura** and
+3. **Options** contains default-enabled switches for independently selectable
+   components such as worktops and baseboards.
+4. **Doors and Drawers** contains independent 0–1 controls for movable parts.
+5. **Parameters** contains editable insertion dimensions such as **Largura** and
    **Profundidade**, including their source limits.
 
 Controls are single values rather than fields. Numeric or directional component

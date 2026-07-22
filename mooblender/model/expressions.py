@@ -8,6 +8,7 @@ import re
 from collections.abc import Mapping
 
 _VARIABLE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)\$")
+_MODEL_INFORMATION = re.compile(r"@([^@()]+)\(([^@()]+)\)@")
 _BINARY = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -64,9 +65,11 @@ def _ternary_parts(value: str) -> tuple[str, str, str] | None:
     return None
 
 
-def _evaluate_node(node: ast.AST) -> float:
+def _evaluate_node(node: ast.AST) -> float | str:
     if isinstance(node, ast.Expression):
         return _evaluate_node(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
     if isinstance(node, ast.Constant) and isinstance(node.value, (bool, int, float)):
         return float(node.value)
     if isinstance(node, ast.BinOp) and type(node.op) in _BINARY:
@@ -122,6 +125,51 @@ def evaluate_expression(
             branch = when_true if evaluate_expression(condition, default=0.0) else when_false
             return evaluate_expression(branch, default=default)
         tree = ast.parse(text, mode="eval")
-        return _evaluate_node(tree)
+        return float(_evaluate_node(tree))
+    except (SyntaxError, TypeError, ValueError, ZeroDivisionError, OverflowError):
+        return default
+
+
+def evaluate_condition(
+    expression: object,
+    variables: Mapping[str, float | bool] | None = None,
+    model_information: Mapping[str, Mapping[str, object]] | None = None,
+    *,
+    default: bool = True,
+) -> bool:
+    """Safely evaluate a Boolean expression, including model information tokens."""
+    if isinstance(expression, bool):
+        return expression
+    if not isinstance(expression, str) or not expression.strip():
+        return default
+    values = {key.casefold(): value for key, value in (variables or {}).items()}
+    models = {
+        key.casefold(): {field.casefold(): value for field, value in fields.items()}
+        for key, fields in (model_information or {}).items()
+    }
+    unresolved = False
+
+    def replace_variable(match: re.Match[str]) -> str:
+        value = values.get(match.group(1).casefold(), 0.0)
+        return "1" if value is True else "0" if value is False else repr(float(value))
+
+    def replace_information(match: re.Match[str]) -> str:
+        nonlocal unresolved
+        fields = models.get(match.group(1).strip().casefold(), {})
+        key = match.group(2).strip().casefold()
+        if key not in fields or not isinstance(fields[key], (bool, int, float, str)):
+            unresolved = True
+            return "None"
+        return repr(fields[key])
+
+    text = _MODEL_INFORMATION.sub(replace_information, expression.strip())
+    text = _VARIABLE.sub(replace_variable, text)
+    if unresolved:
+        return default
+    if text.startswith("@"):
+        text = text[1:].strip()
+    text = _strip_outer_parentheses(text)
+    try:
+        return bool(_evaluate_node(ast.parse(text, mode="eval")))
     except (SyntaxError, TypeError, ValueError, ZeroDivisionError, OverflowError):
         return default

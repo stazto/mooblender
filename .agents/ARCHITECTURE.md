@@ -58,8 +58,9 @@ import returns one controller linked directly to the active collection, while
 the source collection remains an unlinked implementation detail.
 
 Modifier interfaces place **Realize Instances** first, followed by unpanelled
-finish menus, a **Doors and Drawers** panel, and a **Parameters** panel for
-configurable sizes. All controls use single-value sockets. Opening services
+finish menus, an **Options** panel for selectable aggregate components, a
+**Doors and Drawers** panel, and a **Parameters** panel for configurable sizes.
+All controls use single-value sockets. Opening services
 bind only to an exact resolved
 aggregate path, and multiple source records for that path collapse to the one
 movable component control. Numeric or directional component names retain a

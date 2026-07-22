@@ -15,6 +15,9 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
 - SUP01.0003 chooses one condition-selected drawer body per front. The 44950/007
   tool cart places drawers from the drawing depth, and the 10122 bed keeps
   side-attached handles inside their drawer fronts.
+- C67 resolves its active `TIPO=P1` model information to the matching door and
+  exposes independent **Tampo** and **Rodapé** switches without treating its
+  constant door as optional.
 - Porta de Giro 31 and Porta de Correr 21 resolve long-form parent-dimension
   variables. ELA-2 keeps opposing lift carriages consistently oriented above
   their anchors.

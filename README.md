@@ -16,8 +16,8 @@ formats are identified from reproducible samples.
 - Offline category browsing, text search, manufacturer filtering, and
   brand-collection filtering after synchronization.
 - On-demand model and thumbnail downloads with persistent caches.
-- Geometry Nodes controls for supported finishes, doors, drawers, and editable
-  insertion dimensions.
+- Geometry Nodes controls for supported finishes, optional components, doors,
+  drawers, and editable insertion dimensions.
 - Transform, smoothing, hard-edge, UV, material, and aggregate reconstruction
   covered by synthetic regression tests.
 
