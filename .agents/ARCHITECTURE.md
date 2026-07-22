@@ -69,7 +69,9 @@ ordered style names share one menu across package scopes; differing option sets
 receive unique interface names. The controller node group has a geometry output
 only because source geometry enters through its Collection Info node.
 Float inputs also feed hidden zero-effect sink nodes, keeping Blender's modifier
-UI controls enabled while their values drive source-hierarchy transforms.
+UI controls enabled while their values drive source-hierarchy transforms. Those
+neutral dependencies remain on the path to the node-group geometry output;
+Blender grays inputs whose node branches do not contribute to an output.
 
 Before Blender datablock creation, the neutral topology adapter reconstructs
 normal fans for PMob meshes that omit normals. It honors nested smoothing

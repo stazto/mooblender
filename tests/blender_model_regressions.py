@@ -23,6 +23,7 @@ from mooblender.formats.pcontent import PContentPackage, ResolvedAggregate  # no
 from mooblender.model.scene import Material, Mesh, PmobDocument, SceneLayer  # noqa: E402
 from tests.blender_smoke import (  # noqa: E402
     _geometry_source_collection,
+    _modifier_inputs_reaching_output,
     _remove_import,
     _set_modifier_input,
 )
@@ -238,6 +239,10 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         self.assertEqual(set(placements), {0, 1, 2})
         self.assertEqual(controller["mooblender_option_control_count"], 2)
         self.assertEqual(controller["mooblender_open_service_count"], 1)
+        active_inputs = _modifier_inputs_reaching_output(modifier.node_group)
+        self.assertTrue(
+            {socket.identifier for socket in option_sockets.values()} <= active_inputs
+        )
 
         _set_modifier_input(modifier, option_sockets["Rodapé"], False)
         self.assertEqual(tuple(round(value, 6) for value in placements[2].scale), (0, 0, 0))

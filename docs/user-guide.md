@@ -61,6 +61,9 @@ Modifier controls are ordered as follows:
 Controls are single values rather than fields. Numeric or directional component
 labels retain their kind, for example **Drawer: 1ª** and **Door: Esq**. Constant
 aggregate children do not expose misleading size controls.
+Driver-backed inputs also remain connected to the final Geometry Nodes output
+through neutral geometry operations. This keeps Blender from drawing active,
+editable controls with the disabled gray appearance reserved for unused inputs.
 
 ## Geometry and material behavior
 

@@ -33,7 +33,8 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
   and hard edges.
 - Synthetic Blender fixtures verify custom corner normals, UV-seam retention,
   optional triangle-to-quad conversion, material reuse, single-value modifier
-  inputs, and non-duplicated Geometry Nodes interface entries.
+  inputs, non-duplicated Geometry Nodes interface entries, and a directed path
+  from every exposed modifier input to the final geometry output.
 
 ## Catalog behavior
 

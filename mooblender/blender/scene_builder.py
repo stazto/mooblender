@@ -498,12 +498,44 @@ def _group_input_output(group_input, socket):
 
 
 def _keep_modifier_input_active(node_group, group_input, socket) -> None:
-    value_sink = node_group.nodes.new("ShaderNodeMath")
-    value_sink.operation = "MULTIPLY"
-    value_sink.hide = True
-    value_sink.label = "Modifier input driver"
-    value_sink.inputs[1].default_value = 0.0
-    node_group.links.new(_group_input_output(group_input, socket), value_sink.inputs[0])
+    """Route a driver-only input through a neutral path to the group output.
+
+    Blender intentionally grays interface values that cannot affect an output.
+    Our controls drive source objects, outside the node tree, so a neutral
+    geometry dependency is needed to communicate that they are active.
+    """
+    output = next(node for node in node_group.nodes if node.bl_idname == "NodeGroupOutput")
+    geometry_input = next(value for value in output.inputs if value.type == "GEOMETRY")
+    source_link = geometry_input.links[0]
+    source_geometry = source_link.from_socket
+    node_group.links.remove(source_link)
+    interface_value = _group_input_output(group_input, socket)
+
+    if socket.socket_type == "NodeSocketBool":
+        dependency = node_group.nodes.new("GeometryNodeSwitch")
+        dependency.input_type = "GEOMETRY"
+        dependency.label = "Active modifier input"
+        dependency.hide = True
+        node_group.links.new(interface_value, dependency.inputs["Switch"])
+        node_group.links.new(source_geometry, dependency.inputs["False"])
+        node_group.links.new(source_geometry, dependency.inputs["True"])
+        result = dependency.outputs["Output"]
+    else:
+        zero = node_group.nodes.new("ShaderNodeMath")
+        zero.operation = "MULTIPLY"
+        zero.inputs[1].default_value = 0.0
+        zero.hide = True
+        combine = node_group.nodes.new("ShaderNodeCombineXYZ")
+        combine.hide = True
+        dependency = node_group.nodes.new("GeometryNodeTransform")
+        dependency.label = "Active modifier input"
+        dependency.hide = True
+        node_group.links.new(interface_value, zero.inputs[0])
+        node_group.links.new(zero.outputs[0], combine.inputs["X"])
+        node_group.links.new(combine.outputs["Vector"], dependency.inputs["Translation"])
+        node_group.links.new(source_geometry, dependency.inputs["Geometry"])
+        result = dependency.outputs["Geometry"]
+    node_group.links.new(result, geometry_input)
 
 
 def _add_dimension_controls(

@@ -98,6 +98,28 @@ def _geometry_source_collection(controller):
     return source
 
 
+def _modifier_inputs_reaching_output(node_group) -> set[str]:
+    """Return interface identifiers with a directed path to the group output."""
+    output = next(node for node in node_group.nodes if node.bl_idname == "NodeGroupOutput")
+    reachable = {output}
+    pending = [output]
+    while pending:
+        node = pending.pop()
+        for socket in node.inputs:
+            for link in socket.links:
+                if link.from_node not in reachable:
+                    reachable.add(link.from_node)
+                    pending.append(link.from_node)
+    group_input = next(
+        node for node in node_group.nodes if node.bl_idname == "NodeGroupInput"
+    )
+    return {
+        socket.identifier
+        for socket in group_input.outputs
+        if any(link.to_node in reachable for link in socket.links)
+    }
+
+
 def main() -> None:
     controller = None
     registered = False
@@ -1012,6 +1034,17 @@ def main() -> None:
         ]
         if len(socket_identifiers) != len(set(socket_identifiers)):
             raise AssertionError("node interface socket identifiers are not unique")
+        active_identifiers = _modifier_inputs_reaching_output(modifier.node_group)
+        exposed_inputs = {
+            item.identifier
+            for item in interface_items
+            if item.item_type == "SOCKET" and item.in_out == "INPUT"
+        }
+        if not exposed_inputs <= active_identifiers:
+            raise AssertionError(
+                "modifier inputs remain disconnected and visually disabled: "
+                f"{exposed_inputs - active_identifiers}"
+            )
         if any(item.name == "Open Ratio" for item in interface_items):
             raise AssertionError("legacy shared Open Ratio control is still exposed")
         finish_socket = next(
