@@ -56,8 +56,15 @@ class PanelLayoutTests(unittest.TestCase):
 
     def test_catalog_status_belongs_to_sync_controls(self) -> None:
         """Require catalog progress to be drawn by the Sync Catalog section."""
-        calls = _named_call_lines(_function(self.tree, "_draw_import_options"))
+        import_options = _function(self.tree, "_draw_import_options")
+        calls = _named_call_lines(import_options)
         self.assertIn("_draw_catalog_sync_status", calls)
+        string_values = {
+            node.value
+            for node in ast.walk(import_options)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertIn("promob.catalog_cancel", string_values)
 
     def test_object_status_is_immediately_before_browser_search(self) -> None:
         """Require object progress after sync controls and before search."""

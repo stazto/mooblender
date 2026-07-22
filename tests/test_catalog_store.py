@@ -3,9 +3,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Event
 
-from mooblender.mooble.catalog_store import CatalogStore
+from mooblender.mooble.catalog_store import CatalogStore, CatalogSyncCancelled
 from mooblender.mooble.client import MoobleClient
 from mooblender.mooble.models import CatalogCategory, CatalogItem, CatalogPage
 
@@ -120,6 +120,20 @@ class _ParallelCatalogClient(_CatalogClient):
         if url == self.fail_url:
             raise ValueError("parallel sync failed")
         return super().browse_url(url, cache=cache)
+
+
+class _CancellingCatalogClient(_CatalogClient):
+    """Request cancellation as soon as the first bounded response arrives."""
+
+    def __init__(self, cancel_event: Event) -> None:
+        super().__init__()
+        self.cancel_event = cancel_event
+
+    def browse_url(self, url: str, *, cache: bool) -> CatalogPage:
+        """Return one valid page, then stop before it can be persisted."""
+        page = super().browse_url(url, cache=cache)
+        self.cancel_event.set()
+        return page
 
 
 class CatalogStoreTests(unittest.TestCase):
@@ -244,6 +258,28 @@ class CatalogStoreTests(unittest.TestCase):
             self.assertEqual(
                 [category.name for category in root.categories],
                 ["Catalog", "Furniture"],
+            )
+
+    def test_cancelled_sync_preserves_snapshot_and_removes_temporary_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.sqlite3"
+            store = CatalogStore(path)
+            store.sync(_CatalogClient(), categories=("Moveis",))  # type: ignore[arg-type]
+            cancel_event = Event()
+            client = _CancellingCatalogClient(cancel_event)
+
+            with self.assertRaisesRegex(CatalogSyncCancelled, "cancelled"):
+                store.sync(  # type: ignore[arg-type]
+                    client,
+                    categories=("Moveis",),
+                    cancelled=cancel_event.is_set,
+                )
+
+            self.assertTrue(client.closed)
+            self.assertEqual([item.id for item in store.page().items], ["one", "two"])
+            self.assertEqual(
+                sorted(entry.name for entry in Path(directory).iterdir()),
+                ["catalog.sqlite3"],
             )
 
     def test_sync_requires_at_least_one_department(self) -> None:

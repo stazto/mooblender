@@ -1,9 +1,11 @@
 """Blender operators for cached catalog navigation and model imports."""
 
 import json
+from concurrent.futures import CancelledError
 from functools import partial
 from pathlib import Path
 from queue import Empty, SimpleQueue
+from threading import Event
 from types import SimpleNamespace
 
 import bpy
@@ -13,7 +15,7 @@ from ..formats import PContentPackage, UnsupportedPromobFormat, load_path
 from ..formats.pcontent import PContentFormatError
 from ..formats.pmob.reader import PmobFormatError
 from ..mooble import CatalogItem, CatalogPage
-from ..mooble.catalog_store import CatalogStore
+from ..mooble.catalog_store import CatalogStore, CatalogSyncCancelled
 from ..mooble.client import thumbnail_cache_path
 from ..mooble.search import filter_catalog_items
 from .background import (
@@ -36,6 +38,7 @@ from .scene_builder import build_document
 _ACTIVE_POLLS = set()
 _ACTIVE_THUMBNAILS = {}
 _CATALOG_INDEXES: dict[str, CatalogPage] = {}
+_ACTIVE_CATALOG_SYNC = None
 
 
 def _catalog_store() -> CatalogStore:
@@ -57,6 +60,11 @@ def _browser_preferences(context):
 
 def shutdown_async_operators() -> None:
     """Cancel pending UI callbacks and shut down background worker pools."""
+    global _ACTIVE_CATALOG_SYNC
+    if _ACTIVE_CATALOG_SYNC is not None:
+        # The worker will discard its temporary SQLite snapshot at its next
+        # request boundary, even though Blender is no longer polling its UI.
+        _ACTIVE_CATALOG_SYNC.cancel()
     callbacks = tuple(_ACTIVE_POLLS) + tuple(_ACTIVE_THUMBNAILS.values())
     for callback in callbacks:
         if bpy.app.timers.is_registered(callback):
@@ -64,6 +72,7 @@ def shutdown_async_operators() -> None:
     _ACTIVE_POLLS.clear()
     _ACTIVE_THUMBNAILS.clear()
     _CATALOG_INDEXES.clear()
+    _ACTIVE_CATALOG_SYNC = None
 
 
 def _online_or_report(operator) -> bool:
@@ -361,13 +370,20 @@ def ensure_thumbnails(context, entries) -> None:
 class _CatalogSyncCompletion:
     """Forward sync progress and atomically expose the completed catalog."""
 
-    def __init__(self, future, progress_queue) -> None:
-        """Store the sync future and its thread-safe progress channel."""
+    def __init__(self, future, progress_queue, cancel_event: Event) -> None:
+        """Store the future, progress channel, and cooperative cancellation flag."""
         self.future = future
         self.progress_queue = progress_queue
+        self.cancel_event = cancel_event
+
+    def cancel(self) -> None:
+        """Request worker cancellation and cancel it immediately if still queued."""
+        self.cancel_event.set()
+        self.future.cancel()
 
     def __call__(self):
         """Refresh progress text until the new database snapshot is ready."""
+        global _ACTIVE_CATALOG_SYNC
         context = bpy.context
         state = context.window_manager.promob_browser
         latest = None
@@ -376,7 +392,9 @@ class _CatalogSyncCompletion:
                 latest = self.progress_queue.get_nowait()
         except Empty:
             pass
-        if latest is not None:
+        if self.cancel_event.is_set():
+            state.status = "Cancelling catalog sync..."
+        elif latest is not None:
             state.status = (
                 f"Syncing {latest.current_category}: page {latest.pages}, "
                 f"{latest.item_records} records, {latest.categories} categories"
@@ -401,12 +419,17 @@ class _CatalogSyncCompletion:
                 f"Catalog synced: {summary.item_count} models in "
                 f"{summary.category_count} categories"
             )
+        except (CancelledError, CatalogSyncCancelled):
+            state.error = ""
+            state.status = "Catalog sync cancelled; cached catalog unchanged"
         except Exception as error:
             message = str(error) or type(error).__name__
             state.error = message
             state.status = "Could not sync Mooble catalog"
         finally:
             _ACTIVE_POLLS.discard(self)
+            if _ACTIVE_CATALOG_SYNC is self:
+                _ACTIVE_CATALOG_SYNC = None
         return None
 
 
@@ -424,6 +447,7 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
 
     def execute(self, context):
         """Start a full snapshot sync for the selected catalog departments."""
+        global _ACTIVE_CATALOG_SYNC
         if not _online_or_report(self):
             return {"CANCELLED"}
         state = context.window_manager.promob_browser
@@ -438,15 +462,42 @@ class PROMOB_OT_catalog_refresh(bpy.types.Operator):
         state.error = ""
         state.status = f"Starting sync for {len(departments)} catalog section(s)..."
         progress_queue = SimpleQueue()
+        cancel_event = Event()
         future = JOBS.submit(
             _catalog_store().sync,
             client_from_context(context),
             categories=departments,
             progress=progress_queue.put,
+            cancelled=cancel_event.is_set,
         )
-        callback = _CatalogSyncCompletion(future, progress_queue)
+        callback = _CatalogSyncCompletion(future, progress_queue, cancel_event)
+        _ACTIVE_CATALOG_SYNC = callback
         _ACTIVE_POLLS.add(callback)
         bpy.app.timers.register(callback, first_interval=0.1)
+        return {"FINISHED"}
+
+
+class PROMOB_OT_catalog_cancel(bpy.types.Operator):
+    """Cooperatively stop the active catalog synchronization."""
+
+    bl_idname = "promob.catalog_cancel"
+    bl_label = "Cancel Sync"
+    bl_description = "Stop synchronization and keep the previous cached catalog"
+
+    @classmethod
+    def poll(cls, context):
+        """Enable cancellation only while this process owns an active sync."""
+        return (
+            context.window_manager.promob_browser.is_syncing
+            and _ACTIVE_CATALOG_SYNC is not None
+        )
+
+    def execute(self, context):
+        """Signal cancellation without blocking Blender's main thread."""
+        if _ACTIVE_CATALOG_SYNC is None:
+            return {"CANCELLED"}
+        _ACTIVE_CATALOG_SYNC.cancel()
+        context.window_manager.promob_browser.status = "Cancelling catalog sync..."
         return {"FINISHED"}
 
 
@@ -753,6 +804,7 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
 CLASSES = (
     PROMOB_OT_catalog_search,
     PROMOB_OT_catalog_refresh,
+    PROMOB_OT_catalog_cancel,
     PROMOB_OT_catalog_open_category,
     PROMOB_OT_catalog_back,
     PROMOB_OT_catalog_load_more,

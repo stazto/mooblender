@@ -22,6 +22,16 @@ SCHEMA_VERSION = "2"
 LOCAL_ROOT_URL = "mooblender://catalog/root"
 
 
+class CatalogSyncCancelled(RuntimeError):
+    """Raised when the user cooperatively stops a catalog synchronization."""
+
+
+def _raise_if_cancelled(cancelled: Callable[[], bool] | None) -> None:
+    """Stop at a safe sync boundary when the caller requested cancellation."""
+    if cancelled is not None and cancelled():
+        raise CatalogSyncCancelled("Catalog synchronization was cancelled")
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogSyncProgress:
     """Immutable progress snapshot emitted during a full catalog sync."""
@@ -148,6 +158,7 @@ def _complete_page(
     *,
     max_pages: int,
     progress: Callable[[int, int, str], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> tuple[CatalogPage, int]:
     """Download and merge every paginated response for one category."""
     visited: set[str] = set()
@@ -157,12 +168,18 @@ def _complete_page(
     pin_name = ""
     pages = 0
     while next_url:
+        # HTTP requests cannot be interrupted safely from another thread.  The
+        # worker checks immediately before and after each bounded request, so a
+        # cancellation waits for at most the active response and publishes no
+        # partial category.
+        _raise_if_cancelled(cancelled)
         if next_url in visited:
             raise ValueError("Mooble catalog pagination contains a cycle")
         if pages >= max_pages:
             raise ValueError("Mooble category exceeds the page safety limit")
         visited.add(next_url)
         page = client.browse_url(next_url, cache=False)
+        _raise_if_cancelled(cancelled)
         categories.update((category.id, category) for category in page.categories)
         items.update((item.id, item) for item in page.items)
         next_url = client.with_page_size(page.next_url, 48)
@@ -210,6 +227,7 @@ class _CatalogCrawler:
         max_categories: int,
         max_unique_items: int,
         max_memberships: int,
+        cancelled: Callable[[], bool] | None,
     ) -> None:
         """Configure bounded work queues, safety limits, and the write connection."""
         self.store = store
@@ -221,6 +239,7 @@ class _CatalogCrawler:
         self.max_categories = max_categories
         self.max_unique_items = max_unique_items
         self.max_memberships = max_memberships
+        self.cancelled = cancelled
         self.pending: deque[_CategoryRequest] = deque()
         self.in_flight: dict[Future[tuple[CatalogPage, int]], _CategoryRequest] = {}
         self.visited: set[str] = set()
@@ -235,6 +254,7 @@ class _CatalogCrawler:
             thread_name_prefix="mooblender-catalog",
         ) as executor:
             while self.pending or self.in_flight:
+                _raise_if_cancelled(self.cancelled)
                 self._fill_workers(executor)
                 if not self.in_flight:
                     continue
@@ -242,12 +262,14 @@ class _CatalogCrawler:
                     tuple(self.in_flight), return_when=FIRST_COMPLETED
                 )
                 for future in completed:
+                    _raise_if_cancelled(self.cancelled)
                     self._consume(future)
         return self.department_item_ids
 
     def _fill_workers(self, executor: ThreadPoolExecutor) -> None:
         """Submit unseen categories until the bounded worker pool is full."""
         while self.pending and len(self.in_flight) < self.workers:
+            _raise_if_cancelled(self.cancelled)
             request = self.pending.popleft()
             request = _CategoryRequest(
                 self.client.with_page_size(request.url, 48),
@@ -276,12 +298,14 @@ class _CatalogCrawler:
                 request.url,
                 max_pages=self.max_pages,
                 progress=report_page,
+                cancelled=self.cancelled,
             )
             self.in_flight[future] = request
             self._update_work()
 
     def _consume(self, future: Future[tuple[CatalogPage, int]]) -> None:
         """Serialize one completed download into SQLite and queue its children."""
+        _raise_if_cancelled(self.cancelled)
         request = self.in_flight.pop(future)
         page, downloaded_pages = future.result()
         current = _selected_category(page) or CatalogCategory(
@@ -490,6 +514,7 @@ class CatalogStore:
         max_categories: int = 4096,
         max_unique_items: int = 100_000,
         max_memberships: int = 1_000_000,
+        cancelled: Callable[[], bool] | None = None,
     ) -> CatalogSummary:
         """Download selected department trees into one atomic local database."""
         categories = tuple(dict.fromkeys(category for category in categories if category))
@@ -498,6 +523,7 @@ class CatalogStore:
             raise ValueError("Select at least one Mooble catalog section")
 
         try:
+            _raise_if_cancelled(cancelled)
             source_urls = tuple(
                 client.root_url(category=category, search="", page_size=48)
                 for category in categories
@@ -545,7 +571,9 @@ class CatalogStore:
                     max_categories=max_categories,
                     max_unique_items=max_unique_items,
                     max_memberships=max_memberships,
+                    cancelled=cancelled,
                 ).crawl(requests)
+                _raise_if_cancelled(cancelled)
                 root_item_ids: list[str] = []
                 root_item_set: set[str] = set()
                 for position in sorted(department_item_ids):
@@ -591,6 +619,9 @@ class CatalogStore:
                 )
                 self._set_metadata(connection, "synced_at", synced_at)
                 connection.commit()
+            # Check once more at the final safe boundary before publishing the
+            # completed temporary database over the usable snapshot.
+            _raise_if_cancelled(cancelled)
             os.replace(temporary_path, self.path)
             return self.summary()
         finally:

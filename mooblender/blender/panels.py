@@ -59,8 +59,10 @@ def _draw_catalog_scope(content, preferences, state) -> None:
 def _draw_import_options(content, preferences, state) -> None:
     """Draw synchronization, mesh-conversion, and snapshot summary controls."""
     sync = content.row()
-    sync.enabled = not state.is_syncing and bpy.app.online_access
+    sync.enabled = bpy.app.online_access
     sync.operator("promob.catalog_refresh", text="Sync Catalog", icon="FILE_REFRESH")
+    if state.is_syncing:
+        sync.operator("promob.catalog_cancel", text="Cancel Sync", icon="CANCEL")
     _draw_catalog_sync_status(content, state)
 
     options = content.box()

@@ -111,6 +111,9 @@ Implemented follow-up work:
 - Cached thumbnail paths are restored before scheduling work; only materialized
   uncached cards are requested, queued stale batches are cancelled when
   possible, and newly visible work is not trapped behind one old batch.
+- Active catalog synchronization can be cancelled cooperatively from its local
+  status block. Workers stop at bounded request boundaries, discard the
+  temporary database, and retain the previously published snapshot.
 - Geometry Nodes imports link only their controller object to the scene. Source
   meshes remain in a scene-unlinked collection and are referenced by Object
   Info nodes. Static and controlled transforms are compiled into Transform
@@ -124,8 +127,7 @@ Implemented follow-up work:
 
 Remaining exit work:
 
-- Add catalog-sync cancellation, retry-after support, cache size controls, and
-  a clear-cache operator.
+- Add retry-after support, cache size controls, and a clear-cache operator.
 - Add a selected-product details panel with dimensions and source URL.
 - Preserve category state independently for every Blender window.
 - Add schema-change diagnostics that retain a redacted response shape.

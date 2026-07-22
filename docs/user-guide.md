@@ -27,7 +27,9 @@ Lareiras/Churrasqueiras, Layout, Luzes, Materiais, and Plantas. Only Móveis is
 enabled by default. A complete catalog synchronization can take a very long
 time—even many minutes for large department selections, depending on the
 service and network. Its progress appears directly below **Sync Catalog**, and
-the download work remains outside Blender's main thread.
+the download work remains outside Blender's main thread. Use **Cancel Sync** to
+stop at the next completed network request; the incomplete temporary database
+is discarded and the previous cached catalog remains unchanged.
 
 When a selected model is downloading for import, its separate progress message
 appears immediately above the search box. Catalog synchronization and model

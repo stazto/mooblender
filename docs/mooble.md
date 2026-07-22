@@ -49,6 +49,9 @@ A full synchronization can take a very long time, potentially many minutes
 for large department selections. The sidebar therefore displays its progress
 directly below **Sync Catalog** and keeps the previous atomic snapshot usable.
 Selected-model download progress is a separate message above the search box.
+**Cancel Sync** sets a thread-safe cancellation flag. Each worker observes it
+before and after a bounded HTTP request, and the synchronization thread removes
+the temporary SQLite database without replacing the previous snapshot.
 
 The synchronizer uses a bounded four-worker pool for independent department and
 category downloads. A category's continuation pages remain sequential because

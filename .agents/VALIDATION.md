@@ -53,6 +53,10 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
 - The same sample took 4.35 seconds with one worker and 2.37 seconds with four
   configured workers. Pagination remains ordered within a category and SQLite
   writes remain serialized.
+- Cooperative cancellation is tested after a valid response but before its
+  category can be persisted. The temporary SQLite file is removed, the prior
+  snapshot remains byte-for-byte usable, and Blender returns to idle without
+  blocking its main thread.
 
 Live measurements document observations, not service guarantees. CI assertions
 use fake transports and Python-built fixtures; the optional live job checks

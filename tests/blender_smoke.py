@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import sys
+from concurrent.futures import Future
 from pathlib import Path
+from queue import SimpleQueue
+from threading import Event
 from types import SimpleNamespace
 
 import bpy
@@ -256,6 +259,30 @@ def main() -> None:
         state = bpy.context.window_manager.promob_browser
         if state.is_loading or state.is_syncing:
             raise AssertionError("Mooblender browser started in a loading state")
+        if bpy.ops.promob.catalog_cancel.poll():
+            raise AssertionError("catalog cancellation is enabled without an active sync")
+
+        # Cancellation remains entirely asynchronous: the operator sets a
+        # thread-safe flag, while the timer callback restores UI state only
+        # after the worker future acknowledges it.
+        cancel_future = Future()
+        cancel_event = Event()
+        cancel_completion = operators._CatalogSyncCompletion(
+            cancel_future,
+            SimpleQueue(),
+            cancel_event,
+        )
+        operators._ACTIVE_CATALOG_SYNC = cancel_completion
+        state.is_syncing = True
+        if bpy.ops.promob.catalog_cancel() != {"FINISHED"}:
+            raise AssertionError("catalog cancellation operator did not finish")
+        if not cancel_event.is_set() or cancel_future.cancelled() is not True:
+            raise AssertionError("catalog cancellation did not reach its worker")
+        cancel_completion()
+        if state.is_syncing or operators._ACTIVE_CATALOG_SYNC is not None:
+            raise AssertionError("catalog cancellation did not restore idle UI state")
+        if "cached catalog unchanged" not in state.status:
+            raise AssertionError("catalog cancellation did not explain snapshot safety")
         expected_departments = {
             "Moveis",
             "Decoracao",
