@@ -24,8 +24,14 @@ Thumbnails and models are separate on-demand downloads; cached files are reused.
 
 The department checkboxes cover Móveis, Decor, Construção, Eletros,
 Lareiras/Churrasqueiras, Layout, Luzes, Materiais, and Plantas. Only Móveis is
-enabled by default. Large furniture snapshots can take several minutes, but
-download work remains outside Blender's main thread.
+enabled by default. A complete catalog synchronization can take a very long
+time—even many minutes for large department selections, depending on the
+service and network. Its progress appears directly below **Sync Catalog**, and
+the download work remains outside Blender's main thread.
+
+When a selected model is downloading for import, its separate progress message
+appears immediately above the search box. Catalog synchronization and model
+downloads do not replace the existing browser contents.
 
 ## Local files
 

@@ -10,17 +10,29 @@ from .runtime import icon_for_item
 
 
 def _draw_background_status(layout, state) -> None:
-    """Keep network and background-job feedback visible above the browser."""
+    """Keep only panel-wide Online Access feedback at the panel top."""
     if not bpy.app.online_access:
         layout.label(text="Blender is in offline mode", icon="ERROR")
         layout.label(text="The cached catalog remains available")
         layout.operator("screen.userpref_show", text="Open Preferences").section = "SYSTEM"
+
+
+def _draw_catalog_sync_status(content, state) -> None:
+    """Place catalog timing and active sync feedback beside its trigger."""
+    sync_status = content.box()
     if state.is_syncing:
-        syncing = layout.box()
-        syncing.label(text=state.status or "Syncing catalog...", icon="FILE_REFRESH")
-        syncing.label(text="The cached catalog remains available while syncing")
+        sync_status.label(
+            text=state.status or "Syncing catalog...",
+            icon="FILE_REFRESH",
+        )
+        sync_status.label(text="The cached catalog remains available while syncing")
+    sync_status.label(text="A full catalog sync can take several minutes", icon="TIME")
+
+
+def _draw_object_download_status(content, state) -> None:
+    """Place selected-object download feedback immediately above search."""
     if state.is_loading:
-        loading = layout.box()
+        loading = content.box()
         loading.label(text=state.status or "Loading Mooble...", icon="INFO")
         loading.label(text="You can keep working while the download finishes")
 
@@ -49,6 +61,7 @@ def _draw_import_options(content, preferences, state) -> None:
     sync = content.row()
     sync.enabled = not state.is_syncing and bpy.app.online_access
     sync.operator("promob.catalog_refresh", text="Sync Catalog", icon="FILE_REFRESH")
+    _draw_catalog_sync_status(content, state)
 
     options = content.box()
     options.label(text="Import options", icon="MODIFIER")
@@ -76,7 +89,12 @@ def _draw_search_and_navigation(content, state) -> None:
 
     navigation = content.row(align=True)
     navigation.operator("promob.catalog_back", text="Back", icon="BACK")
-    navigation.label(text=state.status)
+    if state.is_loading or state.is_syncing:
+        # Background-job text has a dedicated box near the action that started
+        # it. Keep this row about the cached result set instead of duplicating it.
+        navigation.label(text=f"{state.local_result_total} cached model(s)")
+    else:
+        navigation.label(text=state.status)
     if state.error:
         error = content.box()
         error.label(text=state.error, icon="ERROR")
@@ -137,15 +155,22 @@ class PROMOB_PT_browser(bpy.types.Panel):
         layout = self.layout
         state = context.window_manager.promob_browser
         _draw_background_status(layout, state)
-        content = layout.column()
-        content.enabled = not state.is_loading
+
+        # Model downloads disable actions that could start conflicting work,
+        # while their status remains readable outside the disabled columns.
+        catalog_controls = layout.column()
+        catalog_controls.enabled = not state.is_loading
         preferences = _browser_preferences(context)
-        _draw_catalog_scope(content, preferences, state)
-        _draw_import_options(content, preferences, state)
-        _draw_search_and_navigation(content, state)
-        _draw_categories(content, state)
+        _draw_catalog_scope(catalog_controls, preferences, state)
+        _draw_import_options(catalog_controls, preferences, state)
+
+        _draw_object_download_status(layout, state)
+        browser = layout.column()
+        browser.enabled = not state.is_loading
+        _draw_search_and_navigation(browser, state)
+        _draw_categories(browser, state)
         ensure_thumbnails(context, state.items)
-        _draw_catalog_items(content, state)
+        _draw_catalog_items(browser, state)
 
 
 CLASSES = (PROMOB_PT_browser,)

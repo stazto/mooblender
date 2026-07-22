@@ -47,6 +47,10 @@ only when needed. Each import creates one visible controller object. Unlinked
 source meshes are referenced directly by Geometry Nodes; their complete
 transform hierarchy is encoded in the node graph, without helper empties.
 
+> **Note:** A complete catalog synchronization can take a very long time—often
+> several minutes for large department selections. Progress remains visible
+> below **Sync Catalog**, and the previous cached catalog stays available.
+
 See the [user guide](docs/user-guide.md) for catalog behavior, import options,
 and modifier controls.
 
