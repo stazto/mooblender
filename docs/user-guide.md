@@ -2,6 +2,9 @@
 
 ## Open the Mooble browser
 
+The browser uses catalog information from the official
+[Mooble](https://www.mooble.com/br/) platform.
+
 1. Switch to the **3D View**.
 2. Press {kbd}`N` or use **View → Sidebar**.
 3. Select the **Mooble** tab.
@@ -95,6 +98,9 @@ visible and disabled. -->
 
 ## Import a local file
 
+This command reads the supported local formats associated with
+[Promob](https://promob.com/) assets.
+
 1. Open **File → Import → Promob Model**.
 2. Choose a `.pmob` or `.pcontent` file.
 3. In the file browser's options region, decide whether to enable
@@ -108,9 +114,6 @@ option visible. Do not show personal directories. -->
 Triangle-to-quad conversion is disabled by default. It joins only compatible
 planar triangle pairs and preserves material boundaries, UV seams, sharp edges,
 and meaningful surface changes.
-
-`.content` and `.mob` are not currently supported. Mooblender reports them as
-unsupported instead of assuming they use the PMob or PContent layout.
 
 ## Work with the imported object
 

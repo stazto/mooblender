@@ -21,11 +21,6 @@ def load_path(path: str | Path):
         return read_pmob(source.read_bytes())
     if extension == ".pcontent":
         return read_pcontent(source.read_bytes())
-    if extension in {".content", ".mob"}:
-        raise UnsupportedPromobFormat(
-            f"{extension} identification is planned but not yet verified; "
-            "the importer will not guess its format"
-        )
     raise UnsupportedPromobFormat(f"unsupported extension: {extension or '<none>'}")
 
 

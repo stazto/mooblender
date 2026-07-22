@@ -4,18 +4,24 @@
 [Source](https://github.com/dantedex/mooblender) ·
 [License](LICENSE.md)
 
-Mooblender brings supported Promob content into Blender. It combines a local
-file importer with an offline-first Mooble catalog browser and creates one clean
-scene object whose supported finishes, options, movable parts, and dimensions
-remain accessible through Geometry Nodes.
+Mooblender brings supported [Promob](https://promob.com/) content into Blender.
+It combines a local file importer with an offline-first
+[Mooble](https://www.mooble.com/br/) catalog browser and creates one clean scene
+object whose supported finishes, options, movable parts, and dimensions remain
+accessible through Geometry Nodes.
+
+> [!IMPORTANT]
+> Mooblender is an independent community project. It is not affiliated with,
+> endorsed by, sponsored by, authorized by, or maintained by Mooble, Promob,
+> 2020 Spaces, Cyncly, or any related company. Their names, trademarks, catalog
+> data, images, and models belong to their respective owners.
 
 The extension is open source, written entirely in Python, and does not require
 Promob, .NET, Wine, or proprietary runtime libraries inside Blender.
 
-The current development target imports `.pmob` and `.pcontent`, resolves
-Mooble aggregate packages, and creates one scene-linked object controlled by
-Geometry Nodes. `.content` and `.mob` remain research targets until their
-formats are identified from reproducible samples.
+The current development target imports `.pmob` and `.pcontent`, resolves Mooble
+aggregate packages, and creates one scene-linked object controlled by Geometry
+Nodes.
 
 ## Highlights
 
@@ -64,8 +70,23 @@ transform hierarchy is encoded in the node graph, without helper empties.
 > below **Sync Catalog**. **Cancel Sync** safely discards incomplete work, and
 > the previous cached catalog stays available.
 
-See the [documentation](https://dantedex.github.io/mooblender/) for installation, catalog navigation,
-configuration, troubleshooting, format references, and contributor workflows.
+See the [documentation](https://dantedex.github.io/mooblender/) for
+installation, catalog navigation, configuration, troubleshooting, format
+references, and contributor workflows.
+
+## Mooble and Promob
+
+[Mooble](https://www.mooble.com/br/) is an online 3D environment-planning
+platform for creating and decorating rooms with real products. Its objective is
+to connect room projects with product discovery and, where available, stores or
+e-commerce. The interactive application is the
+[Mooble Planner](https://planner.mooble.com/br/).
+
+[Promob](https://promob.com/) provides software for the furniture industry,
+connecting design, quoting, production, sales, and management. Its official
+company page identifies the business as **Promob | A Cyncly Company**. See the
+[project credits](https://dantedex.github.io/mooblender/credits.html) for a
+longer description, official links, ownership context, and trademark notice.
 
 ## Documentation
 
@@ -103,13 +124,15 @@ Read the [development guide](docs/development.md) and
 
 ## Status
 
-The PMob and Mooble formats are only implemented where behavior has been
-observed and reproduced. Unsupported semantics are documented rather than
-guessed. Current format evidence and open questions live in
+The PMob and PContent readers and Mooble integration are implemented only where
+behavior has been observed and reproduced. Unsupported semantics are documented
+rather than guessed. Current format evidence and open questions live in
 [`docs/formats/`](docs/formats/) and [`docs/mooble.md`](docs/mooble.md).
 
 ## License
 
-Original source in this repository is licensed under GPL-3.0-or-later. Promob,
-Mooble, and catalog assets remain the property of their respective owners;
-users are responsible for ensuring they may access and use downloaded assets.
+Original source in this repository is licensed under GPL-3.0-or-later. Mooble,
+Promob, 2020 Spaces, Cyncly, and their related names and trademarks remain the
+property of their respective owners. Catalog assets remain the property of
+their publishers or licensors; users are responsible for ensuring they may
+access and use downloaded assets.

@@ -24,9 +24,9 @@ mooblender/                  # Public repository root
 └── tests/                  # Unit, fixture, and malformed-input tests
 ```
 
-`.content`, `.mob`, structured diagnostics, and deeper Blender adapters should
-be added when a tested behavior needs them; do not create empty packages merely
-to mirror a future plan.
+Structured diagnostics and deeper Blender adapters should be added when a
+tested behavior needs them; do not create empty packages merely to mirror a
+future plan.
 
 ## Data flow
 

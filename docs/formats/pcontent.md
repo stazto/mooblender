@@ -122,8 +122,3 @@ The reader operates in memory and does not extract archive paths. It rejects:
 
 Images are loaded through a private temporary file, packed into the Blender
 datablock, and the temporary file is removed immediately.
-
-## Unknown or incomplete
-
-`.content` is not treated as an alias for `.pcontent`. Its container and
-semantics remain unknown pending independent, legally usable evidence.

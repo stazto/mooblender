@@ -235,27 +235,7 @@ benchmark are summarized in [`VALIDATION.md`](VALIDATION.md). The executable
 mapping from reported regressions to synthetic tests lives in
 [`../tests/README.md`](../tests/README.md).
 
-## Milestone 4 — Identify and implement `.content`
-
-Do not alias `.content` to PContent based on its name.
-
-1. Acquire at least two legally usable samples and provenance notes.
-2. Record magic bytes, container structure, versions, and relationships.
-3. Determine whether it embeds or references PMob, textures, metadata, or other
-   resources.
-4. Write a bounds-checked parser and malformed-input tests.
-5. Convert through the neutral model and document unsupported fields.
-
-Exit criteria: the public format document and fixtures reproduce imports without
-vendor runtime dependencies.
-
-## Milestone 5 — Identify and implement `.mob`
-
-Use the same evidence gate as `.content`. Investigate it independently, then
-add detection, a parser, neutral-model conversion, tests, and documentation.
-Only share code when byte-level evidence demonstrates shared structures.
-
-## Milestone 6 — Packaging and release quality
+## Milestone 4 — Packaging and release quality
 
 Implemented foundation:
 
@@ -294,7 +274,6 @@ supported fixtures with documented results.
 1. Validate PMob animation timing and interpolation, smoothing groups, and all
    observed mesh source types.
 2. Add structured import diagnostics for unsupported expressions and semantics.
-3. Obtain `.content` and `.mob` samples and begin independent identification.
-4. Complete conditional HTTP validation where the service supports it;
+3. Complete conditional HTTP validation where the service supports it;
    cancellation, progress, bounded cache management, clearing, and bounded
    `Retry-After` handling are implemented.

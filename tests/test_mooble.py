@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from tempfile import TemporaryDirectory
 
-from mooblender.mooble.client import MoobleClient
+from mooblender.mooble.client import MoobleClient, MoobleError
 from mooblender.mooble.models import CatalogItem, format_external_dimensions
 
 
@@ -209,6 +209,24 @@ class MoobleClientTests(unittest.TestCase):
 
             self.assertEqual(path.read_bytes(), b"content")
             self.assertIn("explorer/GetSpec/door-id", " ".join(transport.urls))
+
+    def test_rejects_downloaded_models_outside_supported_formats(self):
+        payload = {
+            "Id": "unsupported",
+            "Name": "Unsupported",
+            "Links": {"Content": "https://cdn.mooble.com/model.zip"},
+        }
+        with TemporaryDirectory() as directory:
+            client = MoobleClient(
+                cache_dir=directory,
+                transport=FakeTransport(payload),
+            )
+
+            with self.assertRaisesRegex(
+                MoobleError,
+                "unsupported downloaded model extension",
+            ):
+                client.download_specification("unsupported")
 
     def test_model_details_keep_selected_country_context(self):
         payload = {

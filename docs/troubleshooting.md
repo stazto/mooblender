@@ -63,9 +63,10 @@ its generated node tree.
 
 ## Clear only downloaded files
 
-Use **Clear Downloads** in the Mooble panel. It removes models and previews but
-keeps `catalog.sqlite3`. To discard the catalog too, close Blender and remove the
-catalog database from the cache directory shown in the user guide.
+Use **Clear Downloads** in the [Mooble](https://www.mooble.com/br/) panel. It
+removes models and previews but keeps `catalog.sqlite3`. To discard the catalog
+too, close Blender and remove the catalog database from the cache directory
+shown in the user guide.
 
 ## Reporting a problem
 

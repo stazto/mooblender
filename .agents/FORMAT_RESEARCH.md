@@ -26,9 +26,8 @@ Mark claims as **confirmed**, **inferred**, or **unknown**. Include byte offsets
 or minimal hex examples where useful. A field name alone is not proof of its
 meaning.
 
-Do not treat `.pmob`, `.content`, and `.mob` as related solely because they are
-used by the same product family. Identify each independently before deciding
-whether code can be shared.
+Document PMob records and the PContent container as separate layers. Share code
+only when byte-level evidence demonstrates a common structure.
 
 ## Mooble service records
 

@@ -87,3 +87,11 @@ only whether the configured public endpoint still responds.
 - The public format references describe reusable format traits and unknowns;
   product-specific regression evidence remains in these internal validation
   notes and executable synthetic tests.
+- The landing page and credits page distinguish Mooble's documented platform
+  purpose from Promob's documented corporate identity as a Cyncly company.
+  Their cited official Mooble, Planner, 2020 Spaces, Promob, and Cyncly links
+  all returned HTTP 200 after redirects on 2026-07-22.
+- Public targets, the Blender file selector, local dispatch, remote model
+  validation, implementation planning, and project-wide agent notes list only
+  PMob and PContent. A structural regression prevents retired extension targets
+  from returning to documentation, plans, or runtime source.

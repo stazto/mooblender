@@ -394,7 +394,7 @@ class MoobleClient:
     ) -> Path:
         """Validate, download, and atomically cache content plus safe metadata."""
         suffix = Path(urlparse(details.content_url).path).suffix.lower() or ".pcontent"
-        if suffix not in {".pcontent", ".pmob", ".content", ".mob"}:
+        if suffix not in {".pcontent", ".pmob"}:
             raise MoobleError(f"unsupported downloaded model extension: {suffix}")
         path = self._cache_path("models", cache_key, suffix)
         metadata_path = path.with_suffix(path.suffix + ".json")

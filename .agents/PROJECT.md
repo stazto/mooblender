@@ -8,8 +8,7 @@ working with Promob assets.
 ## Product goals
 
 - Import `.pmob` files.
-- Import `.content` files.
-- Import `.mob` files.
+- Import `.pcontent` packages.
 - Let users browse or resolve models dynamically from the Mooble platform at
   `https://planner.mooble.com` and download models they are authorized to use.
 - Publish accurate, reproducible documentation for every supported file format.
@@ -48,6 +47,8 @@ offline, unauthorized, missing, changed, and rate-limited responses.
 ## Non-goals unless scope changes
 
 - Reimplementing the Promob application.
+- Adding file formats beyond PMob and PContent without an explicit future scope
+  decision.
 - Circumventing authentication, licensing, or access controls.
 - Shipping proprietary binaries or non-redistributable catalog content.
 - Making Blender APIs a dependency of the low-level file parsers.

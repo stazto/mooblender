@@ -16,5 +16,3 @@ pcontent
 | --- | --- | --- |
 | `.pmob` | Supported for documented records | Recursive geometry and material data |
 | `.pcontent` | Supported baseline | ZIP package containing PMob, properties, and images |
-| `.content` | Unknown | Not treated as PContent without independent evidence |
-| `.mob` | Unknown | Not treated as PMob without independent evidence |

@@ -6,8 +6,8 @@
 - A Mooblender extension ZIP built by the project or downloaded from a trusted
   project release.
 - Blender **Online Access** enabled if you want to synchronize or download from
-  Mooble. Local file imports do not require network access unless a PContent
-  package references remote child resources.
+  [Mooble](https://www.mooble.com/br/). Local file imports do not require
+  network access unless a PContent package references remote child resources.
 
 ## Install from a ZIP
 
@@ -24,7 +24,7 @@ Blender 4.5 LTS Preferences > Extensions with the top-right menu open and
 "Install from Disk" highlighted. Crop out usernames and filesystem paths. -->
 
 The extension appears as a **Mooble** tab in the 3D View sidebar and adds
-**Promob Model** to Blender's File → Import menu.
+**[Promob](https://promob.com/) Model** to Blender's File → Import menu.
 
 ## Enable online access
 

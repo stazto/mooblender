@@ -1,7 +1,9 @@
 # Mooble catalog integration
 
-Status: observed public web-service behavior. Endpoints and schemas are not a
-vendor compatibility guarantee and can change independently of Mooblender.
+[Mooble](https://www.mooble.com/br/) is the online environment-planning platform
+whose public catalog is used by this integration. Status: observed public
+web-service behavior. Endpoints and schemas are not a vendor compatibility
+guarantee and can change independently of Mooblender.
 
 ## Explorer request
 

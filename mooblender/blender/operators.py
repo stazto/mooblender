@@ -834,7 +834,7 @@ class PROMOB_OT_import_file(bpy.types.Operator, ImportHelper):
 
     filename_ext = ".pmob"
     filter_glob: bpy.props.StringProperty(  # type: ignore
-        default="*.pmob;*.pcontent;*.content;*.mob",
+        default="*.pmob;*.pcontent",
         options={"HIDDEN"},
     )
     convert_tris_to_quads: bpy.props.BoolProperty(  # type: ignore

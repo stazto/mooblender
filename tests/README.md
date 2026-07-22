@@ -32,6 +32,7 @@ than individual catalog products.
 | Retry limits, `Retry-After`, host validation, and atomic downloads | transport/client suites | offline-state checks |
 | Deterministic archive versioning and fixture policy | build/policy suites | extension installation layout |
 
-The opt-in live test checks only whether the public catalog endpoint still
-responds. It runs once outside the normal Python matrix and is not a source of
-binary fixtures or product-specific assertions.
+The opt-in live test checks only whether the public
+[Mooble](https://www.mooble.com/br/) catalog endpoint still responds. It runs
+once outside the normal Python matrix and is not a source of binary fixtures or
+product-specific assertions.
