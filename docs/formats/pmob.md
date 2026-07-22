@@ -108,6 +108,14 @@ Metallic. `_TRANSPARENT` is derived from a `_DIFFUSE` name and connected to
 Principled Alpha. These channel-name rules remain an observed Mooble packaging
 convention rather than a guarantee for every PMob producer.
 
+The `REFRACTION_FACTOR` material record is retained as a first-class neutral
+field. In the sampled catalog, ordinary materials use `1.0`, while glass and
+transparent acrylic consistently use approximately `1.4`. Values above `1.0`
+are therefore interpreted as optical IOR and enable Principled transmission;
+this is necessary because valid glass records may still store opacity `1.0`.
+Values at or below `1.0` do not enable transmission because the corpus also
+contains non-glass finishes with a factor of `0.5`.
+
 These interpretations need broader fixtures, especially asymmetric geometry,
 before being promoted to confirmed format guarantees.
 

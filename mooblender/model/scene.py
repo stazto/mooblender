@@ -88,6 +88,7 @@ class Material:
     opacity: float = 1.0
     metallic: float | None = None
     roughness: float | None = None
+    refraction_factor: float | None = None
     diffuse_texture: str | None = None
     specular_texture: str | None = None
     normal_texture: str | None = None

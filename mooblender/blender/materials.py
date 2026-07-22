@@ -213,6 +213,16 @@ def _source_digest(source: Material, package: PContentPackage | None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _transmission_ior(source: Material) -> float | None:
+    """Return a bounded optical IOR when PMob identifies a transmissive surface."""
+    value = source.refraction_factor
+    if value is None or not math.isfinite(value) or value <= 1.0 + 1e-4:
+        return None
+    # Match the Principled IOR socket's upper bound while preserving the source
+    # value throughout its normal physical range.
+    return min(value, 1000.0)
+
+
 def _configure_principled(material, source: Material, package, color, opacity) -> None:
     """Populate the Principled shader and its optional texture nodes."""
     nodes = material.node_tree.nodes
@@ -224,6 +234,14 @@ def _configure_principled(material, source: Material, package, color, opacity) -
     principled.inputs["Metallic"].default_value = material.metallic
     principled.inputs["Roughness"].default_value = material.roughness
     principled.inputs["Alpha"].default_value = opacity
+    transmission_ior = _transmission_ior(source)
+    if transmission_ior is not None:
+        # PMob glass can have opacity 1.0: refraction, rather than alpha blending,
+        # is what makes it transparent. Ordinary materials use factor 1.0, while
+        # observed glass and acrylic use 1.4, so only values above one enable the
+        # physical transmission path.
+        principled.inputs["IOR"].default_value = transmission_ior
+        principled.inputs["Transmission Weight"].default_value = 1.0
 
     diffuse = _texture_node(
         nodes, _embedded_image(package, source.diffuse_texture), label="Promob Diffuse"
@@ -311,5 +329,7 @@ def create_material(
     if source.normal_texture:
         material["promob_normal_texture"] = source.normal_texture
     material["promob_mapping_type"] = source.mapping_type or 0
+    if source.refraction_factor is not None:
+        material["promob_refraction_factor"] = source.refraction_factor
     material["mooblender_material_state_sha256"] = _material_state_digest(material)
     return material

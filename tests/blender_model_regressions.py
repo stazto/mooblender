@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import mooblender  # noqa: E402
 from mooblender.blender.geometry_nodes import finish_part_name  # noqa: E402
+from mooblender.blender.materials import _transmission_ior  # noqa: E402
 from mooblender.blender.scene_builder import (  # noqa: E402
     _aggregate_orientation,
     build_document,
@@ -134,6 +135,34 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         self.assertEqual(finish_part_name("Acabamento", "Main"), "Main")
         self.assertEqual(finish_part_name("Acabamento Tampo", "Main"), "Tampo")
         self.assertEqual(finish_part_name("Door finish", "Main"), "Door")
+
+    def test_pe12a_refraction_factor_creates_transmissive_glass(self):
+        self.assertIsNone(_transmission_ior(Material(refraction_factor=1.0)))
+        self.assertIsNone(_transmission_ior(Material(refraction_factor=0.5)))
+        package = _part_package("PE12A glass")
+        package.document.materials[0] = Material(
+            name="2578|fab_vid_01",
+            color=(255, 255, 255, 255),
+            opacity=1.0,
+            roughness=0.0,
+            refraction_factor=1.4,
+        )
+
+        controller = self._build(package, "PE12A material regression")
+        source = _geometry_source_collection(controller)
+        source_object = next(obj for obj in source.all_objects if obj.type == "MESH")
+        material = source_object.data.materials[0]
+        principled = next(
+            node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"
+        )
+
+        self.assertAlmostEqual(principled.inputs["IOR"].default_value, 1.4)
+        self.assertEqual(
+            principled.inputs["Transmission Weight"].default_value,
+            1.0,
+        )
+        self.assertEqual(principled.inputs["Alpha"].default_value, 1.0)
+        self.assertAlmostEqual(material["promob_refraction_factor"], 1.4)
 
     def test_r678_constant_door_only_exposes_opening_and_keeps_black_handle(self):
         child = _part_package("R678 Handle")

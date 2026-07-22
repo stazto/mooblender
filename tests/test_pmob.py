@@ -72,8 +72,13 @@ def make_document() -> bytes:
     layer_list = record(children=((ContentType.LAYER, layer),))
     material_name = record(utf16("White"))
     color = record(bytes((255, 255, 255, 255)))
+    refraction = record(struct.pack("<f", 1.4))
     material = record(
-        children=((ContentType.NAME, material_name), (ContentType.COLOR, color))
+        children=(
+            (ContentType.NAME, material_name),
+            (ContentType.COLOR, color),
+            (ContentType.REFRACTION_FACTOR, refraction),
+        )
     )
     material_list = record(children=((ContentType.MATERIAL, material),))
     return encode_record(record(
@@ -96,6 +101,7 @@ class PmobReaderTests(unittest.TestCase):
         self.assertEqual(document.layers[0].meshes[0].triangle_faces(), [(0, 1, 2)])
         self.assertEqual(document.layers[0].meshes[0].smooth_groups, [[0, 1]])
         self.assertEqual(document.materials[0].name, "White")
+        self.assertAlmostEqual(document.materials[0].refraction_factor, 1.4)
         self.assertEqual(document.primitive.children[0].layer_ref, "Top")
 
     def test_rejects_out_of_range_child_offset(self):

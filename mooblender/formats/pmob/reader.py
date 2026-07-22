@@ -237,6 +237,7 @@ _MATERIAL_FIELDS = {
     ContentType.OPACITY: ("opacity", _float),
     ContentType.METALLIC: ("metallic", _float),
     ContentType.ROUGHNESS: ("roughness", _float),
+    ContentType.REFRACTION_FACTOR: ("refraction_factor", _float),
     ContentType.DIFFUSE_TEXTURE: ("diffuse_texture", _string),
     ContentType.SPECULAR_TEXTURE: ("specular_texture", _string),
     ContentType.NORMAL_TEXTURE: ("normal_texture", _string),
@@ -254,7 +255,6 @@ _MATERIAL_FLOAT_EXTRAS = {
     ContentType.EMISSION,
     ContentType.TRANSLUCENCY,
     ContentType.FRESNEL_TERM,
-    ContentType.REFRACTION_FACTOR,
 }
 _MATERIAL_BOOL_EXTRAS = {
     ContentType.MIRROR,
