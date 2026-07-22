@@ -71,6 +71,7 @@ def _draw_import_options(content, preferences, state) -> None:
         options.prop(preferences, "convert_tris_to_quads")
     else:
         options.label(text="Keep triangulated meshes")
+    options.operator("promob.cache_clear", text="Clear Downloads", icon="TRASH")
     if state.has_catalog and state.catalog_synced_at:
         content.label(
             text=(

@@ -122,6 +122,10 @@ synthetic local root whose deduplicated item membership supports global search.
 Catalog HTTP uses a bounded four-worker category pool backed by the transport's
 thread-local HTTPS connections. Pagination stays sequential inside each
 category, while the synchronization worker remains the only SQLite writer.
+Downloaded model and thumbnail groups have separate byte limits and flat,
+non-following LRU cleanup. Paths registered by active workers cannot be pruned
+or cleared. Explicit cache clearing releases Blender preview handles and removes
+only those two groups; the atomic catalog database is a separate durable asset.
 
 ## Design rules
 

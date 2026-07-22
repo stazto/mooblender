@@ -35,6 +35,7 @@ from mooblender.model.scene import (  # noqa: E402
     PrimitiveType,
     SceneLayer,
 )
+from mooblender.mooble.cache import CacheCleanup  # noqa: E402
 from mooblender.mooble.models import CatalogItem, CatalogPage  # noqa: E402
 
 
@@ -304,10 +305,39 @@ def main() -> None:
             raise AssertionError("only Móveis should be synchronized by default")
         if PROMOB_AP_preferences.bl_rna.properties["convert_tris_to_quads"].default:
             raise AssertionError("triangle-to-quad conversion should be opt-in")
+        if PROMOB_AP_preferences.bl_rna.properties["model_cache_limit_mb"].default != 2048:
+            raise AssertionError("model cache limit default changed unexpectedly")
+        if (
+            PROMOB_AP_preferences.bl_rna.properties[
+                "thumbnail_cache_limit_mb"
+            ].default
+            != 512
+        ):
+            raise AssertionError("thumbnail cache limit default changed unexpectedly")
         if bpy.ops.import_scene.promob.get_rna_type().properties[
             "convert_tris_to_quads"
         ].default:
             raise AssertionError("local triangle-to-quad conversion should be opt-in")
+
+        original_clear_cache = operators.clear_download_cache
+        original_clear_previews = operators.clear_previews
+        original_cache_directory = operators.cache_directory
+        cleared = []
+        operators.clear_download_cache = lambda _path: CacheCleanup(
+            removed_files=2,
+            removed_bytes=1024,
+        )
+        operators.clear_previews = lambda: cleared.append(True)
+        operators.cache_directory = lambda: Path("unused-test-cache")
+        try:
+            if bpy.ops.promob.cache_clear() != {"FINISHED"}:
+                raise AssertionError("download cache clear operator did not finish")
+        finally:
+            operators.clear_download_cache = original_clear_cache
+            operators.clear_previews = original_clear_previews
+            operators.cache_directory = original_cache_directory
+        if not cleared or "catalog kept" not in state.status:
+            raise AssertionError("cache clear did not release previews or preserve catalog")
 
         class LocalStore:
             def __init__(self):

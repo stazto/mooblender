@@ -267,6 +267,23 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         max=48,
         update=_reset_browser,
     )
+    model_cache_limit_mb: bpy.props.IntProperty(  # type: ignore
+        name="Model cache limit",
+        description=(
+            "Target disk space for downloaded models; the model currently being "
+            "imported is retained even if it is larger"
+        ),
+        default=2048,
+        min=64,
+        max=32768,
+    )
+    thumbnail_cache_limit_mb: bpy.props.IntProperty(  # type: ignore
+        name="Thumbnail cache limit",
+        description="Target disk space for downloaded catalog previews",
+        default=512,
+        min=16,
+        max=8192,
+    )
 
     def draw(self, _context) -> None:
         """Render connection, paging, and default mesh import preferences."""
@@ -276,6 +293,10 @@ class PROMOB_AP_preferences(bpy.types.AddonPreferences):
         layout.prop(self, "partnership")
         layout.prop(self, "page_size")
         layout.prop(self, "convert_tris_to_quads")
+        cache = layout.box()
+        cache.label(text="Download cache limits (MB)", icon="DISK_DRIVE")
+        cache.prop(self, "model_cache_limit_mb", text="Models")
+        cache.prop(self, "thumbnail_cache_limit_mb", text="Thumbnails")
         layout.label(text="Credentials are never stored by this add-on.", icon="INFO")
 
 

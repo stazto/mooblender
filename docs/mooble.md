@@ -53,6 +53,14 @@ Selected-model download progress is a separate message above the search box.
 before and after a bounded HTTP request, and the synchronization thread removes
 the temporary SQLite database without replacing the previous snapshot.
 
+Model and thumbnail downloads have separate least-recently-used limits,
+configured in MiB in the add-on preferences. Successful cache hits refresh the
+file timestamp. Atomic writes protect their destination paths across concurrent
+workers, then prune only direct files in the same allow-listed cache group.
+Automatic management never traverses nested directories or follows links.
+**Clear Downloads** is confirmed explicitly and removes only inactive model and
+thumbnail entries; `catalog.sqlite3` remains untouched.
+
 The synchronizer uses a bounded four-worker pool for independent department and
 category downloads. A category's continuation pages remain sequential because
 each next URL is supplied by the preceding response. Completed category data is

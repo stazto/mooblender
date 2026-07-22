@@ -60,6 +60,11 @@ test is maintained in [`../tests/README.md`](../tests/README.md).
 - Synthetic HTTP 429/503 responses verify bounded `Retry-After` handling for
   both delta-seconds and HTTP dates. Tests inject the sleeper, make no real
   delay, cap hostile values, and confirm retry limits and fresh connections.
+- Cache regressions verify oldest-first pruning, nested concurrent protection,
+  automatic client eviction, stale-temporary cleanup, and non-following link
+  removal. Explicit clearing retains the catalog, external link targets, and
+  unknown nested directories. Blender tests cover preferences, operator state,
+  preview release, and catalog-preserving user feedback.
 
 Live measurements document observations, not service guarantees. CI assertions
 use fake transports and Python-built fixtures; the optional live job checks

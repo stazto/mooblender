@@ -88,5 +88,16 @@ boundary. Exactly equal, unmodified materials are reused; edited Blender
 materials are left untouched.
 
 The browser stores catalog data, models, and thumbnails in Blender's managed
-user-data directory. It stores no credentials and restricts downloads to
-configured HTTPS hosts.
+user-data directory. Models and thumbnails have independent limits under the
+add-on preferences: 2 GB for models and 512 MB for thumbnails by default.
+After a successful download, Mooblender removes the oldest inactive files from
+that group until it reaches the configured limit; the model currently being
+imported and previews still downloading are protected. A limit is therefore a
+target: one active model larger than its configured limit is retained so the
+requested import can finish.
+
+Use **Clear Downloads** in the sidebar to remove cached models and thumbnails
+after confirmation. This releases loaded preview icons and refreshes visible
+cards, but deliberately keeps the synchronized SQLite catalog, current search,
+and category navigation. The add-on stores no credentials and restricts
+downloads to configured HTTPS hosts.

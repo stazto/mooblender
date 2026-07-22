@@ -45,6 +45,8 @@ def client_from_context(context) -> MoobleClient:
         partnership=preferences.partnership,
         page_size=preferences.page_size,
         cache_dir=cache_directory(),
+        model_cache_bytes=preferences.model_cache_limit_mb * 1024 * 1024,
+        thumbnail_cache_bytes=preferences.thumbnail_cache_limit_mb * 1024 * 1024,
     )
 
 

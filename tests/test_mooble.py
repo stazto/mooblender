@@ -195,6 +195,29 @@ class MoobleClientTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(transport.urls, calls_after_first)
 
+    def test_model_download_prunes_older_entries_to_configured_limit(self):
+        payload = {
+            "Id": "model",
+            "Name": "Model",
+            "Links": {"Content": "https://cdn.mooble.com/model.pcontent"},
+        }
+        with TemporaryDirectory() as directory:
+            client = MoobleClient(
+                cache_dir=directory,
+                model_cache_bytes=1,
+                transport=FakeTransport(payload),
+            )
+            first = client.download_specification("first")
+            second = client.download_specification("second")
+            remaining = sorted(path.name for path in first.parent.iterdir())
+
+            self.assertFalse(first.exists())
+            self.assertTrue(second.exists())
+            self.assertEqual(
+                remaining,
+                sorted((second.name, second.name + ".json")),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

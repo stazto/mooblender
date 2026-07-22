@@ -15,6 +15,7 @@ from ..formats import PContentPackage, UnsupportedPromobFormat, load_path
 from ..formats.pcontent import PContentFormatError
 from ..formats.pmob.reader import PmobFormatError
 from ..mooble import CatalogItem, CatalogPage
+from ..mooble.cache import clear_download_cache
 from ..mooble.catalog_store import CatalogStore, CatalogSyncCancelled
 from ..mooble.client import thumbnail_cache_path
 from ..mooble.search import filter_catalog_items
@@ -32,7 +33,7 @@ from .properties import (
     set_collection_items,
     set_manufacturer_items,
 )
-from .runtime import cache_directory, client_from_context
+from .runtime import cache_directory, clear_previews, client_from_context
 from .scene_builder import build_document
 
 _ACTIVE_POLLS = set()
@@ -501,6 +502,46 @@ class PROMOB_OT_catalog_cancel(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PROMOB_OT_cache_clear(bpy.types.Operator):
+    """Clear downloaded models and thumbnails while retaining the catalog."""
+
+    bl_idname = "promob.cache_clear"
+    bl_label = "Clear Downloads"
+    bl_description = (
+        "Delete cached models and thumbnails; the synchronized catalog is preserved"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Allow clearing only when no job can still be using a cache file."""
+        state = context.window_manager.promob_browser
+        return not state.is_loading and not state.is_syncing and not _ACTIVE_THUMBNAILS
+
+    def invoke(self, context, event):
+        """Ask for confirmation before deleting downloaded cache files."""
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        """Release preview handles, clear downloads, and refresh visible cards."""
+        clear_previews()
+        cleanup = clear_download_cache(cache_directory())
+        for window_manager in bpy.data.window_managers:
+            if not hasattr(window_manager, "promob_browser"):
+                continue
+            state = window_manager.promob_browser
+            for item in state.items:
+                item.thumbnail_path = ""
+                item.thumbnail_loading = False
+                item.thumbnail_failed = False
+            state.view_revision += 1
+            state.status = (
+                f"Cleared {cleanup.removed_files} download cache file(s) "
+                f"({cleanup.removed_bytes / (1024 * 1024):.1f} MB); catalog kept"
+            )
+        self.report({"INFO"}, "Mooblender download cache cleared; catalog preserved")
+        return {"FINISHED"}
+
+
 class PROMOB_OT_catalog_search(bpy.types.Operator):
     """Apply search and brand filters to the current cached category."""
 
@@ -805,6 +846,7 @@ CLASSES = (
     PROMOB_OT_catalog_search,
     PROMOB_OT_catalog_refresh,
     PROMOB_OT_catalog_cancel,
+    PROMOB_OT_cache_clear,
     PROMOB_OT_catalog_open_category,
     PROMOB_OT_catalog_back,
     PROMOB_OT_catalog_load_more,

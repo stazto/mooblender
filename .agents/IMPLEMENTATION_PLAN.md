@@ -117,6 +117,11 @@ Implemented follow-up work:
 - The HTTPS transport honors `Retry-After` on HTTP 429 and 503 responses using
   at most two retries. Delta-seconds and HTTP-date values are accepted, waits
   are capped, and connections with unread error bodies are never reused.
+- Downloaded models and thumbnails use independent configurable disk limits
+  (2 GB and 512 MB by default). Cache hits refresh recency, completed writes
+  prune oldest inactive files, concurrent targets are protected, and **Clear
+  Downloads** removes only downloads after confirmation while retaining the
+  catalog snapshot.
 - Geometry Nodes imports link only their controller object to the scene. Source
   meshes remain in a scene-unlinked collection and are referenced by Object
   Info nodes. Static and controlled transforms are compiled into Transform
@@ -130,7 +135,6 @@ Implemented follow-up work:
 
 Remaining exit work:
 
-- Add cache size controls and a clear-cache operator.
 - Add a selected-product details panel with dimensions and source URL.
 - Preserve category state independently for every Blender window.
 - Add schema-change diagnostics that retain a redacted response shape.
@@ -284,6 +288,6 @@ supported fixtures with documented results.
    observed mesh source types.
 2. Add structured import diagnostics for unsupported expressions and semantics.
 3. Obtain `.content` and `.mob` samples and begin independent identification.
-4. Complete bounded cache management and conditional HTTP validation where the
-   service supports it; cancellation, progress, and bounded `Retry-After`
-   handling are implemented.
+4. Complete conditional HTTP validation where the service supports it;
+   cancellation, progress, bounded cache management, clearing, and bounded
+   `Retry-After` handling are implemented.

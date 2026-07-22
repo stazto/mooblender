@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit, urlunsplit
 
+from .cache import cache_paths_in_use, prune_cache_group, touch_cache_file
 from .models import CatalogCategory, CatalogItem, CatalogPage, ItemDetails
 from .transport import HttpTransport, TransportError
 
@@ -82,6 +83,8 @@ class MoobleClient:
         partnership: str = "",
         page_size: int = 12,
         cache_dir: str | Path | None = None,
+        model_cache_bytes: int = 2 * 1024 * 1024 * 1024,
+        thumbnail_cache_bytes: int = 512 * 1024 * 1024,
         transport: JsonTransport | None = None,
     ) -> None:
         """Validate settings, bound paging, and create an injectable transport."""
@@ -95,6 +98,8 @@ class MoobleClient:
         self.partnership = partnership
         self.page_size = min(max(page_size, 1), 48)
         self.cache_dir = Path(cache_dir) if cache_dir else None
+        self.model_cache_bytes = max(int(model_cache_bytes), 0)
+        self.thumbnail_cache_bytes = max(int(thumbnail_cache_bytes), 0)
         allowed = tuple(
             dict.fromkeys((parsed.hostname.lower(), "catalog.mooble.com", "cdn.mooble.com"))
         )
@@ -360,23 +365,33 @@ class MoobleClient:
         if suffix not in {".pcontent", ".pmob", ".content", ".mob"}:
             raise MoobleError(f"unsupported downloaded model extension: {suffix}")
         path = self._cache_path("models", cache_key, suffix)
-        if path.exists() and path.stat().st_size:
+        metadata_path = path.with_suffix(path.suffix + ".json")
+        with cache_paths_in_use((path, metadata_path)):
+            if path.exists() and path.stat().st_size:
+                touch_cache_file(path)
+                touch_cache_file(metadata_path)
+                return path
+            try:
+                data = self.transport.get_bytes(details.content_url, max_bytes=max_bytes)
+            except TransportError as error:
+                raise MoobleError(f"could not download model: {error}") from error
+            self._atomic_write(path, data)
+            metadata = {
+                "id": cache_key,
+                "name": details.item.name,
+                "content_url": details.content_url,
+            }
+            self._atomic_write(
+                metadata_path,
+                json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
+            prune_cache_group(
+                self._cache_root(),
+                "models",
+                self.model_cache_bytes,
+                protected=(path, metadata_path),
+            )
             return path
-        try:
-            data = self.transport.get_bytes(details.content_url, max_bytes=max_bytes)
-        except TransportError as error:
-            raise MoobleError(f"could not download model: {error}") from error
-        self._atomic_write(path, data)
-        metadata = {
-            "id": cache_key,
-            "name": details.item.name,
-            "content_url": details.content_url,
-        }
-        self._atomic_write(
-            path.with_suffix(path.suffix + ".json"),
-            json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
-        )
-        return path
 
     def download_thumbnail(
         self,
@@ -387,23 +402,32 @@ class MoobleClient:
         """Download a preview on demand, returning None for recoverable failures."""
         if not item.thumbnail_url:
             return None
-        path = thumbnail_cache_path(
-            self.cache_dir or Path(tempfile.gettempdir()) / "mooblender",
-            item,
-        )
+        path = thumbnail_cache_path(self._cache_root(), item)
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists() and path.stat().st_size:
+        with cache_paths_in_use((path,)):
+            if path.exists() and path.stat().st_size:
+                touch_cache_file(path)
+                return path
+            try:
+                data = self.transport.get_bytes(item.thumbnail_url, max_bytes=max_bytes)
+            except TransportError:
+                return None
+            self._atomic_write(path, data)
+            prune_cache_group(
+                self._cache_root(),
+                "thumbnails",
+                self.thumbnail_cache_bytes,
+                protected=(path,),
+            )
             return path
-        try:
-            data = self.transport.get_bytes(item.thumbnail_url, max_bytes=max_bytes)
-        except TransportError:
-            return None
-        self._atomic_write(path, data)
-        return path
+
+    def _cache_root(self) -> Path:
+        """Return the configured cache root or the process-local fallback."""
+        return self.cache_dir or Path(tempfile.gettempdir()) / "mooblender"
 
     def _cache_path(self, group: str, key: str, suffix: str) -> Path:
         """Create a deterministic cache path from an opaque remote identifier."""
-        base = self.cache_dir or Path(tempfile.gettempdir()) / "mooblender"
+        base = self._cache_root()
         safe_key = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
         path = base / group / f"{safe_key}{suffix}"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -413,7 +437,11 @@ class MoobleClient:
     def _atomic_write(path: Path, data: bytes) -> None:
         """Publish bytes only after a complete flushed temporary-file write."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=path.name + ".",
+            suffix=".tmp",
+            dir=path.parent,
+        )
         try:
             with os.fdopen(descriptor, "wb") as stream:
                 stream.write(data)

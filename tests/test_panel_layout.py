@@ -65,6 +65,7 @@ class PanelLayoutTests(unittest.TestCase):
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
         }
         self.assertIn("promob.catalog_cancel", string_values)
+        self.assertIn("promob.cache_clear", string_values)
 
     def test_object_status_is_immediately_before_browser_search(self) -> None:
         """Require object progress after sync controls and before search."""
