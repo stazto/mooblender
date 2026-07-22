@@ -22,7 +22,8 @@ import bpy
 from ..formats.pcontent import PContentPackage
 from ..model.scene import Material
 
-_MATERIAL_SCHEMA_VERSION = 1
+_MATERIAL_SCHEMA_VERSION = 2
+_REFRACTIVE_ALPHA_LIMIT = 0.35
 
 
 def _clean_name(value: str, fallback: str) -> str:
@@ -101,9 +102,18 @@ def _connect_texture_coordinates(nodes, links, source: Material, texture_nodes) 
         if source.mapping_number:
             x_scale, y_scale = source.mapping_number
         elif source.mapping_scale:
-            width, height = source.mapping_scale
-            x_scale = 1000.0 / width if width > 1e-9 else 1.0
-            y_scale = 1000.0 / height if height > 1e-9 else 1.0
+            first, second = source.mapping_scale
+            if source.mapping_type == 1:
+                # Cubic mapping stores a physical texture footprint in source
+                # millimetres; generated UVs are in Blender metres.
+                x_scale = 1000.0 / first if first > 1e-9 else 1.0
+                y_scale = 1000.0 / second if second > 1e-9 else 1.0
+            else:
+                # Planar/fixed mapping already owns normalized UVs and stores a
+                # direct scale. Treating PE12A's (1, 1) as millimetres repeated
+                # its transparent logo a thousand times across the surface.
+                x_scale = first
+                y_scale = second
         else:
             x_scale = y_scale = 1.0
         mapping.inputs["Scale"].default_value = (x_scale, y_scale, 1.0)
@@ -181,6 +191,11 @@ def _material_state_digest(material) -> str:
         "metallic": material.metallic,
         "roughness": material.roughness,
         "surface_render_method": getattr(material, "surface_render_method", None),
+        "use_transparency_overlap": getattr(
+            material,
+            "use_transparency_overlap",
+            None,
+        ),
         "use_nodes": material.use_nodes,
         "nodes": nodes,
         "links": links,
@@ -221,8 +236,8 @@ def _source_digest(source: Material, package: PContentPackage | None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _transmission_ior(source: Material) -> float | None:
-    """Return a bounded optical IOR when PMob identifies a transmissive surface."""
+def _refraction_ior(source: Material) -> float | None:
+    """Return a bounded optical IOR when PMob identifies a refractive surface."""
     value = source.refraction_factor
     if value is None or not math.isfinite(value) or value <= 1.0 + 1e-4:
         return None
@@ -254,11 +269,21 @@ def _connect_alpha(nodes, links, material, principled, opacity, alpha_sources) -
     if previous is None:
         return
     links.new(previous, principled.inputs["Alpha"])
-    if hasattr(material, "surface_render_method"):
+    if (
+        hasattr(material, "surface_render_method")
+        and material.surface_render_method != "BLENDED"
+    ):
         material.surface_render_method = "DITHERED"
 
 
-def _configure_principled(material, source: Material, package, color, opacity) -> None:
+def _configure_principled(
+    material,
+    source: Material,
+    package,
+    color,
+    opacity,
+    refraction_ior,
+) -> None:
     """Populate the Principled shader and its optional texture nodes."""
     nodes = material.node_tree.nodes
     links = material.node_tree.links
@@ -276,14 +301,19 @@ def _configure_principled(material, source: Material, package, color, opacity) -
     principled.inputs["Specular IOR Level"].default_value = _unit_interval(
         source.specular_power
     )
-    transmission_ior = _transmission_ior(source)
-    if transmission_ior is not None:
-        # PMob glass can have opacity 1.0: refraction, rather than alpha blending,
-        # is what makes it transparent. Ordinary materials use factor 1.0, while
-        # observed glass and acrylic use 1.4, so only values above one enable the
-        # physical transmission path.
-        principled.inputs["IOR"].default_value = transmission_ior
-        principled.inputs["Transmission Weight"].default_value = 1.0
+    if refraction_ior is not None:
+        # Eevee transmission requires a scene-level ray-tracing option and makes
+        # thick catalog shells appear dark/metallic when that option is off.
+        # Alpha blending is stable in both supported Blender versions and does
+        # not make the add-on silently alter the user's render settings.
+        principled.inputs["IOR"].default_value = refraction_ior
+        principled.inputs["Transmission Weight"].default_value = 0.0
+        if hasattr(material, "surface_render_method"):
+            material.surface_render_method = "BLENDED"
+        if hasattr(material, "use_transparency_overlap"):
+            # Complex glass shells contain front/back and internal surfaces.
+            # Rendering every overlap would accumulate the fallback opacity.
+            material.use_transparency_overlap = False
 
     diffuse = _texture_node(
         nodes, _embedded_image(package, source.diffuse_texture), label="Promob Diffuse"
@@ -362,11 +392,27 @@ def create_material(
 
     material = bpy.data.materials.new(_clean_name(source.name, f"Promob Material {index}"))
     red, green, blue, alpha = source.color
-    opacity = max(
+    source_opacity = max(
         0.0,
         min(1.0, source.opacity if source.opacity is not None else alpha / 255.0),
     )
-    color = (red / 255.0, green / 255.0, blue / 255.0, opacity)
+    refraction_ior = _refraction_ior(source)
+    # Several valid glass materials serialize opacity 1.0 because their native
+    # renderer derives visibility from refraction. Cap only refractive surfaces;
+    # explicitly more-transparent glass keeps its lower source opacity.
+    opacity = (
+        min(source_opacity, _REFRACTIVE_ALPHA_LIMIT)
+        if refraction_ior is not None
+        else source_opacity
+    )
+    color_rgb = (red / 255.0, green / 255.0, blue / 255.0)
+    if refraction_ior is not None:
+        # The alpha fallback must retain Promob's glass tint. In the observed
+        # legacy material model, RGB is modulated by ambient intensity; PE12A's
+        # white RGB with ambient 0.0 produces the observed smoked dark fallback.
+        ambient = _unit_interval(source.ambient)
+        color_rgb = tuple(component * ambient for component in color_rgb)
+    color = (*color_rgb, opacity)
     material.diffuse_color = color
     material.metallic = max(0.0, min(1.0, source.metallic or 0.0))
     material.roughness = max(
@@ -374,7 +420,14 @@ def create_material(
         min(1.0, source.roughness if source.roughness is not None else 0.5),
     )
     material.use_nodes = True
-    _configure_principled(material, source, package, color, opacity)
+    _configure_principled(
+        material,
+        source,
+        package,
+        color,
+        opacity,
+        refraction_ior,
+    )
 
     material["promob_material_index"] = index
     material["mooblender_material_schema"] = _MATERIAL_SCHEMA_VERSION

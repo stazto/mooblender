@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import mooblender  # noqa: E402
 from mooblender.blender.geometry_nodes import finish_part_name  # noqa: E402
-from mooblender.blender.materials import _transmission_ior  # noqa: E402
+from mooblender.blender.materials import _refraction_ior  # noqa: E402
 from mooblender.blender.scene_builder import (  # noqa: E402
     _aggregate_orientation,
     build_document,
@@ -143,9 +143,9 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         self.assertEqual(finish_part_name("Acabamento Tampo", "Main"), "Tampo")
         self.assertEqual(finish_part_name("Door finish", "Main"), "Door")
 
-    def test_pe12a_refraction_factor_creates_transmissive_glass(self):
-        self.assertIsNone(_transmission_ior(Material(refraction_factor=1.0)))
-        self.assertIsNone(_transmission_ior(Material(refraction_factor=0.5)))
+    def test_pe12a_refraction_factor_creates_alpha_blended_glass(self):
+        self.assertIsNone(_refraction_ior(Material(refraction_factor=1.0)))
+        self.assertIsNone(_refraction_ior(Material(refraction_factor=0.5)))
         package = _part_package("PE12A glass")
         package.document.materials[0] = Material(
             name="2578|fab_vid_01",
@@ -164,21 +164,25 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         )
 
         self.assertAlmostEqual(principled.inputs["IOR"].default_value, 1.4)
-        self.assertEqual(
-            principled.inputs["Transmission Weight"].default_value,
-            1.0,
-        )
+        self.assertEqual(principled.inputs["Transmission Weight"].default_value, 0.0)
         self.assertEqual(principled.inputs["Specular IOR Level"].default_value, 0.0)
-        self.assertEqual(principled.inputs["Alpha"].default_value, 1.0)
+        self.assertAlmostEqual(principled.inputs["Alpha"].default_value, 0.35)
+        self.assertEqual(tuple(principled.inputs["Base Color"].default_value[:3]), (0, 0, 0))
+        self.assertEqual(tuple(material.diffuse_color[:3]), (0, 0, 0))
+        self.assertAlmostEqual(material.diffuse_color[3], 0.35)
+        self.assertEqual(material.surface_render_method, "BLENDED")
+        self.assertFalse(material.use_transparency_overlap)
         self.assertAlmostEqual(material["promob_refraction_factor"], 1.4)
-        self.assertEqual(material["mooblender_material_schema"], 1)
+        self.assertEqual(material["mooblender_material_schema"], 2)
 
-    def test_diffuse_image_alpha_multiplies_serialized_opacity(self):
+    def test_planar_logo_preserves_uv_scale_alpha_and_serialized_opacity(self):
         package = _part_package("Image alpha")
         package.document.materials[0] = Material(
             name="RGBA finish",
             opacity=0.25,
             diffuse_texture="rgba.png",
+            mapping_type=2,
+            mapping_scale=(1.0, 0.6),
         )
         package.resources["rgba.png"] = _ALPHA_PNG
 
@@ -192,6 +196,9 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         diffuse = next(
             node for node in material.node_tree.nodes if node.label == "Promob Diffuse"
         )
+        mapping = next(
+            node for node in material.node_tree.nodes if node.type == "MAPPING"
+        )
         alpha_link = principled.inputs["Alpha"].links[0]
         multiply = alpha_link.from_node
 
@@ -201,6 +208,12 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         alpha_source = multiply.inputs[1].links[0].from_socket
         self.assertEqual(alpha_source.node.name, diffuse.name)
         self.assertEqual(alpha_source.identifier, diffuse.outputs["Alpha"].identifier)
+        for observed, expected in zip(
+            mapping.inputs["Scale"].default_value,
+            (1.0, 0.6, 1.0),
+            strict=True,
+        ):
+            self.assertAlmostEqual(observed, expected)
 
     def test_r678_constant_door_only_exposes_opening_and_keeps_black_handle(self):
         child = _part_package("R678 Handle")

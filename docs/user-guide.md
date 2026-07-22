@@ -85,11 +85,11 @@ Negative-determinant component transforms and whole-model reversal correct face
 winding inside Geometry Nodes, so mirroring does not invert visible normals.
 Fixed hardware remains fixed while supported editable panels stretch around its
 boundary. Exactly equal, unmodified materials are reused; edited Blender
-materials are left untouched. PMob glass and acrylic refraction metadata is
-mapped to Principled transmission and IOR, including glass whose source opacity
-is `1.0`. Serialized specular strength controls dielectric reflection, and
-embedded diffuse-image alpha is multiplied by material opacity instead of being
-discarded.
+materials are left untouched. PMob glass and acrylic refraction metadata keeps
+its IOR and uses an alpha-blended viewport/render fallback that does not require
+enabling Eevee ray tracing, including glass whose source opacity is `1.0`.
+Serialized specular strength controls dielectric reflection, and embedded
+diffuse-image alpha is multiplied by material opacity instead of being discarded.
 
 The browser stores catalog data, models, and thumbnails in Blender's managed
 user-data directory. Models and thumbnails have independent limits under the

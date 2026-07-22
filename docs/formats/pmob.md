@@ -97,9 +97,10 @@ transforms and target-size correction, stores final physical coordinates in
 metres as a Blender UV map, and converts the physical texture dimensions to UV
 scale. This gives every use of the same material the same texel density even
 when one component was resized. Serialized UVs remain authoritative for
-non-cubic mappings. The numeric mapping types are supported from observed files
-and the decompiled mapping conversion: `0` fixed, `1` cubic, and `2` planar;
-spherical variants remain unverified.
+non-cubic mappings. Planar/fixed `MAPPING_SCALE` values are direct normalized UV
+scales (commonly `1×1`), not millimetre dimensions. The numeric mapping types
+are supported from observed files and the decompiled mapping conversion: `0`
+fixed, `1` cubic, and `2` planar; spherical variants remain unverified.
 
 Observed PContent packages embed the diffuse, metallic, and transparency image
 members named by or derived from PMob materials. `SPECULAR_TEXTURE` points to
@@ -112,10 +113,18 @@ Mooble packaging convention rather than a guarantee for every PMob producer.
 The `REFRACTION_FACTOR` material record is retained as a first-class neutral
 field. In the sampled catalog, ordinary materials use `1.0`, while glass and
 transparent acrylic consistently use approximately `1.4`. Values above `1.0`
-are therefore interpreted as optical IOR and enable Principled transmission;
-this is necessary because valid glass records may still store opacity `1.0`.
-Values at or below `1.0` do not enable transmission because the corpus also
-contains non-glass finishes with a factor of `0.5`.
+are therefore interpreted as optical IOR and identify refractive materials;
+values at or below `1.0` do not, because the corpus also contains non-glass
+finishes with a factor of `0.5`.
+
+Eevee physical transmission depends on a scene-level ray-tracing setting. With
+the default setting, thick catalog glass shells become dark reflective solids
+and hide decals behind them. Mooblender therefore retains the IOR on Principled
+but uses alpha blending as a render-setting-independent fallback. Refractive
+opacity is capped at `0.35` only when the source value would be more opaque, and
+overlapping transparent surfaces are disabled to avoid opacity accumulation.
+The fallback tint multiplies material RGB by PMob ambient intensity, retaining
+the observed smoked appearance of PE12A's white RGB with ambient `0.0`.
 
 `SPECULAR_POWER` is a normalized reflection level rather than a conventional
 unbounded shininess exponent. This is confirmed by the version-zero reader,
