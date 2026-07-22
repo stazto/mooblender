@@ -172,6 +172,9 @@ geometry, hierarchy, transforms, materials, and animation independently.
   Suppress those controls below a `Constant` aggregate edge.
 - Import one visible Geometry Nodes object directly into the active collection;
   keep the node source collection unlinked and create no visible import wrapper.
+- Preserve that collection's nested instances by default and expose an explicit
+  top-level realization switch. Keep material menus immediately below it, with
+  opening and configurable-size controls separated into named interface panels.
 - Convert multi-option model finish groups into named Geometry Nodes menu inputs
   that assign the resolved material by PMob layer and package scope; apply the
   first option from single- and multi-option groups as the default material.

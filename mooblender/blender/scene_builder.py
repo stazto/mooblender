@@ -1113,17 +1113,48 @@ def _geometry_nodes_controller(name: str, collection, source_collection):
         in_out="OUTPUT",
         socket_type="NodeSocketGeometry",
     )
+    realize_socket = node_group.interface.new_socket(
+        name="Realize Instances",
+        description=(
+            "Convert the nested source hierarchy to a mesh; required for "
+            "material overrides"
+        ),
+        in_out="INPUT",
+        socket_type="NodeSocketBool",
+    )
+    _make_socket_single_value(realize_socket)
+    realize_socket.default_value = False
     nodes = node_group.nodes
     links = node_group.links
     collection_info = nodes.new("GeometryNodeCollectionInfo")
+    collection_info.label = "Nested Source Hierarchy"
     collection_info.inputs["Collection"].default_value = source_collection
+    collection_info.inputs["Separate Children"].default_value = False
+    collection_info.inputs["Reset Children"].default_value = False
     realize = nodes.new("GeometryNodeRealizeInstances")
+    realize.label = "Optional Realization"
+    geometry_switch = nodes.new("GeometryNodeSwitch")
+    geometry_switch.input_type = "GEOMETRY"
+    geometry_switch.label = "Keep Instances / Realize"
     group_input = nodes.new("NodeGroupInput")
     output = nodes.new("NodeGroupOutput")
     output.is_active_output = True
     links.new(collection_info.outputs["Instances"], realize.inputs["Geometry"])
-    links.new(realize.outputs["Geometry"], output.inputs[output_socket.name])
-    return controller, modifier, group_input, realize, output
+    links.new(collection_info.outputs["Instances"], geometry_switch.inputs["False"])
+    links.new(realize.outputs["Geometry"], geometry_switch.inputs["True"])
+    links.new(group_input.outputs[realize_socket.name], geometry_switch.inputs["Switch"])
+    links.new(geometry_switch.outputs["Output"], output.inputs[output_socket.name])
+    node_group.interface_update(bpy.context)
+    _modifier_socket_value(modifier, realize_socket, False)
+    controller["mooblender_instances_realized_by_default"] = False
+    return (
+        controller,
+        modifier,
+        group_input,
+        realize,
+        geometry_switch,
+        realize_socket,
+    )
 
 
 def _make_socket_single_value(socket) -> None:
@@ -1145,6 +1176,7 @@ def _add_dimension_controls(
     controller,
     modifier,
     group_input,
+    panel,
 ) -> int:
     if not dimension_nodes:
         return 0
@@ -1168,6 +1200,7 @@ def _add_dimension_controls(
                 name=name,
                 in_out="INPUT",
                 socket_type="NodeSocketFloat",
+                parent=panel,
             )
             _make_socket_single_value(socket)
             socket.subtype = "DISTANCE"
@@ -1293,7 +1326,7 @@ def _add_material_options(
     modifier,
     group_input,
     realize,
-    output,
+    geometry_switch,
     material_cache: dict[tuple[int, int], bpy.types.Material],
 ) -> int:
     groups = _model_groups(package)
@@ -1302,8 +1335,8 @@ def _add_material_options(
         return 0
     node_group = modifier.node_group
     links = node_group.links
-    output_geometry = output.inputs.get("Geometry")
-    for link in list(output_geometry.links):
+    realized_geometry = geometry_switch.inputs["True"]
+    for link in list(realized_geometry.links):
         node_group.links.remove(link)
     geometry = realize.outputs["Geometry"]
     controls = 0
@@ -1424,7 +1457,7 @@ def _add_material_options(
         socket.default_value = option_names[0]
         menu_defaults.append((socket, option_names[0], 0))
         controls += 1
-    links.new(geometry, output_geometry)
+    links.new(geometry, realized_geometry)
     node_group.interface_update(bpy.context)
     for socket, name, index in menu_defaults:
         _modifier_menu_value(modifier, socket, name, index)
@@ -1456,7 +1489,8 @@ def build_document(
         geometry_modifier,
         group_input,
         realize,
-        group_output,
+        geometry_switch,
+        realize_socket,
     ) = _geometry_nodes_controller(
         name,
         destination,
@@ -1467,11 +1501,19 @@ def build_document(
     source_collection.objects.link(hierarchy_root)
     target_collection = source_collection
     control_name_counts: dict[str, int] = {}
+    opening_panel = None
 
     def opening_control(
         service: dict[str, object],
         fallback: str,
     ) -> tuple[str, str]:
+        nonlocal opening_panel
+        if opening_panel is None:
+            opening_panel = geometry_modifier.node_group.interface.new_panel(
+                name="Doors and Drawers",
+                description="Independent opening controls for movable components",
+                default_closed=False,
+            )
         base = control_name(service, fallback)
         count = control_name_counts.get(base, 0) + 1
         control_name_counts[base] = count
@@ -1480,6 +1522,7 @@ def build_document(
             name=name,
             in_out="INPUT",
             socket_type="NodeSocketFloat",
+            parent=opening_panel,
         )
         _make_socket_single_value(socket)
         socket.default_value = 0.0
@@ -1540,14 +1583,24 @@ def build_document(
             modifier=geometry_modifier,
             group_input=group_input,
             realize=realize,
-            output=group_output,
+            geometry_switch=geometry_switch,
             material_cache=material_cache,
+        )
+        parameters_panel = (
+            geometry_modifier.node_group.interface.new_panel(
+                name="Parameters",
+                description="Configurable dimensions and other model parameters",
+                default_closed=False,
+            )
+            if dimension_nodes
+            else None
         )
         _add_dimension_controls(
             dimension_nodes,
             controller=root,
             modifier=geometry_modifier,
             group_input=group_input,
+            panel=parameters_panel,
         )
     elif document is not None:
         _document_root(
@@ -1565,4 +1618,5 @@ def build_document(
     if source_id:
         root["mooble_item_id"] = source_id
     root["mooblender_convert_tris_to_quads"] = convert_tris_to_quads
+    root["mooblender_realize_instances_socket"] = realize_socket.identifier
     return root

@@ -21,7 +21,11 @@ from mooblender.blender.scene_builder import (  # noqa: E402
 )
 from mooblender.formats.pcontent import PContentPackage, ResolvedAggregate  # noqa: E402
 from mooblender.model.scene import Material, Mesh, PmobDocument, SceneLayer  # noqa: E402
-from tests.blender_smoke import _geometry_source_collection, _remove_import  # noqa: E402
+from tests.blender_smoke import (  # noqa: E402
+    _geometry_source_collection,
+    _remove_import,
+    _set_modifier_input,
+)
 
 
 def _part_package(name: str = "Part") -> PContentPackage:
@@ -114,17 +118,55 @@ class BlenderReportedModelRegressions(unittest.TestCase):
         float_sockets = {
             item.name: item
             for item in modifier.node_group.interface.items_tree
-            if item.socket_type == "NodeSocketFloat"
+            if item.item_type == "SOCKET"
+            and item.socket_type == "NodeSocketFloat"
         }
 
         self.assertEqual(set(float_sockets), {"Door: 1ª"})
         self.assertEqual(float_sockets["Door: 1ª"].structure_type, "SINGLE")
+        self.assertEqual(float_sockets["Door: 1ª"].parent.name, "Doors and Drawers")
         source = _geometry_source_collection(controller)
         material = next(
             obj for obj in source.all_objects if obj.type == "MESH"
         ).data.materials[0]
         observed = tuple(round(value, 6) for value in material.diffuse_color[:3])
         self.assertEqual(observed, (round(5 / 255, 6),) * 3)
+
+    def test_modifier_keeps_nested_instances_until_top_option_realizes_them(self):
+        controller = self._build(_part_package("Instance hierarchy"), "Instances")
+        modifier = controller.modifiers["Mooblender"]
+        interface_items = modifier.node_group.interface.items_tree
+        realize_socket = next(
+            item for item in interface_items if item.name == "Realize Instances"
+        )
+        collection_info = next(
+            node
+            for node in modifier.node_group.nodes
+            if node.bl_idname == "GeometryNodeCollectionInfo"
+        )
+
+        self.assertFalse(realize_socket.default_value)
+        self.assertFalse(collection_info.inputs["Separate Children"].default_value)
+        self.assertFalse(collection_info.inputs["Reset Children"].default_value)
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        depsgraph.update()
+        instances = [
+            item
+            for item in depsgraph.object_instances
+            if item.is_instance
+            and item.parent is not None
+            and item.parent.original == controller
+        ]
+        self.assertGreaterEqual(len(instances), 2)
+        evaluated = controller.evaluated_get(depsgraph)
+        self.assertEqual(len(evaluated.to_mesh().polygons), 0)
+        evaluated.to_mesh_clear()
+
+        _set_modifier_input(modifier, realize_socket, True)
+
+        evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        self.assertEqual(len(evaluated.to_mesh().polygons), 1)
+        evaluated.to_mesh_clear()
 
     def test_ela_2_opposing_side_normals_keep_both_carriages_above_anchor(self):
         part = _part_package("Lift carriage")

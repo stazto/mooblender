@@ -895,9 +895,46 @@ def main() -> None:
         ):
             raise AssertionError("material did not use its physical UV mapping")
         modifier = controller.modifiers.get("Mooblender")
+        realize_socket = next(
+            item
+            for item in modifier.node_group.interface.items_tree
+            if item.name == "Realize Instances"
+        )
+        if (
+            realize_socket.socket_type != "NodeSocketBool"
+            or realize_socket.structure_type != "SINGLE"
+            or realize_socket.default_value
+        ):
+            raise AssertionError("instance realization is not an opt-in single value")
+        geometry_switch = next(
+            node
+            for node in modifier.node_group.nodes
+            if node.bl_idname == "GeometryNodeSwitch"
+            and node.label == "Keep Instances / Realize"
+        )
+        false_source = geometry_switch.inputs["False"].links[0].from_node
+        if false_source.bl_idname != "GeometryNodeCollectionInfo":
+            raise AssertionError("the default Geometry Nodes branch lost its hierarchy")
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        depsgraph.update()
+        source_instances = [
+            instance
+            for instance in depsgraph.object_instances
+            if instance.is_instance
+            and instance.parent is not None
+            and instance.parent.original == controller
+        ]
+        if len(source_instances) < 2:
+            raise AssertionError("the default modifier output did not retain nested instances")
         evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
         evaluated_mesh = evaluated.to_mesh()
-        if modifier is None or len(evaluated_mesh.polygons) != 5:
+        if len(evaluated_mesh.polygons) != 0:
+            raise AssertionError("instances were realized while the option was disabled")
+        evaluated.to_mesh_clear()
+        _set_modifier_input(modifier, realize_socket, True)
+        evaluated = controller.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        evaluated_mesh = evaluated.to_mesh()
+        if len(evaluated_mesh.polygons) != 5:
             raise AssertionError("single-object Geometry Nodes import is not producing geometry")
         child_placement = next(
             obj
@@ -969,10 +1006,32 @@ def main() -> None:
             raise AssertionError(f"duplicate node interface entries: {interface_names}")
         if any(item.name == "Open Ratio" for item in interface_items):
             raise AssertionError("legacy shared Open Ratio control is still exposed")
+        finish_socket = next(
+            item for item in interface_items if item.name == "Finish: Child finish"
+        )
+        doors_panel = next(
+            item for item in interface_items if item.name == "Doors and Drawers"
+        )
+        parameters_panel = next(
+            item for item in interface_items if item.name == "Parameters"
+        )
+        root_items = [item for item in interface_items if not item.parent.name]
+        root_names = [item.name for item in root_items]
+        expected_order = [
+            "Realize Instances",
+            "Finish: Child finish",
+            "Doors and Drawers",
+            "Parameters",
+        ]
+        if [name for name in root_names if name in expected_order] != expected_order:
+            raise AssertionError(f"modifier controls are ordered incorrectly: {root_names}")
+        if finish_socket.parent.name:
+            raise AssertionError("material choices are not above the control panels")
         control_sockets = {
             item.name: item
             for item in interface_items
-            if item.socket_type == "NodeSocketFloat"
+            if item.item_type == "SOCKET"
+            and item.socket_type == "NodeSocketFloat"
         }
         expected_controls = {
             "Gaveta externa",
@@ -986,6 +1045,16 @@ def main() -> None:
             )
         if any(socket.structure_type != "SINGLE" for socket in control_sockets.values()):
             raise AssertionError("modifier float controls are fields instead of single values")
+        if any(
+            control_sockets[name].parent != doors_panel
+            for name in ("Gaveta externa", "Gaveta interna")
+        ):
+            raise AssertionError("door/drawer controls are outside their panel")
+        if any(
+            control_sockets[name].parent != parameters_panel
+            for name in ("Largura", "Profundidade")
+        ):
+            raise AssertionError("size controls are outside the Parameters panel")
         group_input = next(
             node
             for node in modifier.node_group.nodes
@@ -1102,11 +1171,6 @@ def main() -> None:
                 "nested aggregate position inherited geometry redimension scale: "
                 f"{nested_center_x}"
             )
-        finish_socket = next(
-            item
-            for item in modifier.node_group.interface.items_tree
-            if item.name == "Finish: Child finish"
-        )
         if finish_socket.socket_type != "NodeSocketMenu":
             raise AssertionError("finish control is not a named menu")
         if finish_socket.structure_type != "SINGLE":

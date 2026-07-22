@@ -63,14 +63,20 @@ available in the local-file import dialog. It is disabled by default and does
 not join across UV seams, sharp edges, material boundaries, or non-planar
 surface changes.
 
-Each import creates one visible object with a Geometry Nodes modifier. Each
+Each import creates one visible object with a Geometry Nodes modifier. Its
+source collection remains a nested instance hierarchy by default. A top-level
+**Realize Instances** checkbox converts that hierarchy to mesh geometry when a
+downstream workflow needs it; non-default material overrides operate on this
+realized branch. Material menus follow the checkbox at the top of the modifier,
+while independent door/drawer controls live in a **Doors and Drawers** panel
+and editable sizes live in a separate **Parameters** panel. Each
 recognized door or drawer gets its own 0–1 input, named from its
 Mooble component metadata; models without movable components get no opening
 inputs. Ordinal or directional names retain their type, such as
 **Drawer: 1ª** or **Door: Esq**. Alternate Promob records that address the same
 movable aggregate share that component's one control instead of creating
-duplicate drivers. Door,
-drawer, dimension, and finish inputs are connected single values, not geometry
+duplicate drivers. Door, drawer, dimension, realization, and finish inputs are
+connected single values, not geometry
 fields, so Blender keeps them editable in the modifier.
 Editable insertion dimensions become distance inputs such as
 **Largura** and **Profundidade**, with the source limits preserved. Child

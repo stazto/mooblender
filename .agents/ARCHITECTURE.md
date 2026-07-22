@@ -43,14 +43,18 @@ same format readers as local files.
 
 Geometry Nodes imports expose exactly one scene-linked controller object. The
 source mesh and transform hierarchy lives in an unlinked collection referenced
-by the controller's Collection Info node. This keeps helper empties out of the
+by the controller's Collection Info node. Collection children and their origins
+remain nested until an explicit top-level **Realize Instances** input selects
+the realized graph branch. This keeps helper empties out of the
 scene Outliner while preserving their datablocks, parenting, drivers, and
 procedural controls. Collection-hierarchy mode is no longer exposed: every
 import returns one controller linked directly to the active collection, while
 the source collection remains an unlinked implementation detail.
 
-Modifier interfaces use single-value sockets for openings, configurable
-dimensions, and finish menus. Opening services bind only to an exact resolved
+Modifier interfaces place **Realize Instances** first, followed by unpanelled
+finish menus, a **Doors and Drawers** panel, and a **Parameters** panel for
+configurable sizes. All controls use single-value sockets. Opening services
+bind only to an exact resolved
 aggregate path, and multiple source records for that path collapse to the one
 movable component control. Numeric or directional component names retain a
 `Door` or `Drawer` prefix. Material definitions with the same display name and

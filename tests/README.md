@@ -10,6 +10,7 @@ geometry responsible for each failure:
 
 | Reported model or behavior | Offline regression | Blender integration |
 | --- | --- | --- |
+| Nested instances, optional realization, and interface panels | — | `test_modifier_keeps_nested_instances_until_top_option_realizes_them` and `blender_smoke.py` |
 | Ônix kitchen-kit root scale | `test_onix_kitchen_kit_preserves_root_scale_and_millimetre_translation` | root transform in `blender_smoke.py` |
 | 728 mirrored doors and labels | `test_728_pair_has_named_independent_symmetric_outward_door_motions` | independent single-value controls in `blender_smoke.py` |
 | 728 stretching, fixed handles, generated UVs | dimension and opening primitives | resized panel/hardware/UV checks in `blender_smoke.py` |
